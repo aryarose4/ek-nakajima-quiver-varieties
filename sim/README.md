@@ -8,6 +8,9 @@ This package is deliberately decoupled from any UI framework.  It is the
 reference implementation (NumPy / SciPy / SymPy); a browser JS port may come
 later once the mathematics is verified.
 
+> **Current state & next task: see [`STATE.md`](STATE.md).** Run the suite with
+> `python -m pytest -q` from this directory.
+
 ## Layout
 
 ```
