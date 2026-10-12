@@ -39,6 +39,12 @@ from .charts import (  # noqa: F401
 from .stability import class_margins, exceptional_z, is_stable  # noqa: F401
 from .geometry import extract_geometry  # noqa: F401
 from .fixtures import symmetric_y0_fixture  # noqa: F401
+from .transverse import (  # noqa: F401
+    build_transverse_rep,
+    transverse_kernel,
+    transverse_pairing,
+    y_system_matrix,
+)
 
 __all__ = [
     "NB",
@@ -68,6 +74,10 @@ __all__ = [
     "exceptional_z",
     "extract_geometry",
     "symmetric_y0_fixture",
+    "build_transverse_rep",
+    "transverse_kernel",
+    "transverse_pairing",
+    "y_system_matrix",
 ]
 
 __version__ = "0.1.0"
