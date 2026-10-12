@@ -30,6 +30,15 @@ from .continuation import (  # noqa: F401
     log_gauge_to_H,
     transport_seed,
 )
+from .charts import (  # noqa: F401
+    candidate_y0_chart,
+    central_flags,
+    dxdz,
+    x_gauge_action,
+)
+from .stability import class_margins, exceptional_z, is_stable  # noqa: F401
+from .geometry import extract_geometry  # noqa: F401
+from .fixtures import symmetric_y0_fixture  # noqa: F401
 
 __all__ = [
     "NB",
@@ -50,6 +59,15 @@ __all__ = [
     "log_gauge_to_H",
     "transport_seed",
     "continue_path",
+    "candidate_y0_chart",
+    "central_flags",
+    "x_gauge_action",
+    "dxdz",
+    "class_margins",
+    "is_stable",
+    "exceptional_z",
+    "extract_geometry",
+    "symmetric_y0_fixture",
 ]
 
 __version__ = "0.1.0"
