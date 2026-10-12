@@ -10,9 +10,12 @@ from e6sim.continuation import (
     log_gauge_to_H,
     transport_seed,
 )
+from e6sim.charts import candidate_y0_chart
 from e6sim.fixtures import symmetric_y0_fixture
+from e6sim.geometry import extract_geometry
 from e6sim.hermitian_solver import solve_real_moment_map
 from e6sim.moment_maps import complex_residual_norm, real_residual_norm
+from e6sim.representation import Rep
 
 
 def central_Q(rep):
@@ -129,3 +132,32 @@ def test_failed_step_is_not_mislabeled():
     steps = continue_path([0.0], rep_of, bad)
     assert steps[0].result.success is False
     assert steps[0].accepted is False
+
+# --- M3 continuation in the chart coordinate z -----------------------------
+
+CERT_LEVELS = np.array([[3.0, 1.0], [3.0, 2.0], [3.0, 3.0]])
+
+
+def _chart_rep_of(z):
+    a, A, b, B = candidate_y0_chart(z)
+    return Rep.from_arrays(a, A, b, B)
+
+
+def test_continue_over_chart_z_warm():
+    points = [1.5, 1.75, 2.0, 2.25, 2.5, 3.0, 3.5, 4.0]
+    steps = continue_path(points, _chart_rep_of, CERT_LEVELS)
+    for s in steps:
+        assert s.accepted, f"z={s.point} failed"
+        assert real_residual_norm(s.result.solved_rep, CERT_LEVELS) < 1e-9
+        assert complex_residual_norm(s.result.solved_rep) < 1e-12
+
+
+def test_closed_loop_in_z_recovers_invariants():
+    r = 2.0
+    thetas = np.linspace(0.0, 2.0 * np.pi, 13)
+    zs = [r * np.exp(1j * t) for t in thetas]
+    steps = continue_path(zs, _chart_rep_of, CERT_LEVELS)
+    assert all(s.accepted for s in steps), [s.point for s in steps if not s.accepted]
+    g0 = extract_geometry(steps[0].result.solved_rep, CERT_LEVELS)
+    gN = extract_geometry(steps[-1].result.solved_rep, CERT_LEVELS)
+    np.testing.assert_allclose(g0["edge_norms"], gN["edge_norms"], atol=1e-8)
