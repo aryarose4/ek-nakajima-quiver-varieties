@@ -23,6 +23,13 @@ from .conventions import (  # noqa: F401
     level_to_beta,
 )
 from .representation import Rep  # noqa: F401
+from .hermitian_solver import SolveResult, solve_real_moment_map  # noqa: F401
+from .continuation import (  # noqa: F401
+    H_to_log_gauge,
+    continue_path,
+    log_gauge_to_H,
+    transport_seed,
+)
 
 __all__ = [
     "NB",
@@ -37,6 +44,12 @@ __all__ = [
     "beta_to_level",
     "level_to_beta",
     "Rep",
+    "SolveResult",
+    "solve_real_moment_map",
+    "H_to_log_gauge",
+    "log_gauge_to_H",
+    "transport_seed",
+    "continue_path",
 ]
 
 __version__ = "0.1.0"
