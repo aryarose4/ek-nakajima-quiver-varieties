@@ -17,7 +17,7 @@ python -m e6sim.cli_solve    # solver demo (certified fixture)
 
 Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
 
-## Status (branch `main` @ aeb98c1)
+## Status (branch `main` — run `git log --oneline -1` for HEAD)
 
 | Milestone | State |
 |---|---|
