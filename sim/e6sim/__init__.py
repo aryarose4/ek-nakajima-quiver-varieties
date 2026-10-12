@@ -45,6 +45,12 @@ from .transverse import (  # noqa: F401
     transverse_pairing,
     y_system_matrix,
 )
+from .atlas import (  # noqa: F401
+    atlas_entries,
+    coverage_verdict,
+    north_chart,
+    south_chart,
+)
 
 __all__ = [
     "NB",
@@ -78,6 +84,10 @@ __all__ = [
     "transverse_kernel",
     "transverse_pairing",
     "y_system_matrix",
+    "north_chart",
+    "south_chart",
+    "atlas_entries",
+    "coverage_verdict",
 ]
 
 __version__ = "0.1.0"
