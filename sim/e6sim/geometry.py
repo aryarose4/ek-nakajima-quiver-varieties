@@ -54,6 +54,17 @@ def extract_geometry(solved_rep: Rep, levels=None) -> dict:
             pairwise[i, j] = float(np.trace(Q[i] @ Q[j]).real)
     branch_traces = np.array([float(np.trace(Ti).real) for Ti in T])
 
+    # V5 bilinear data: K_i = X_i Y_i = A_i B_i, split into Hermitian C_i, F_i.
+    # At complex level zero the branch equations give trace(K_i) = 0 and the
+    # central equation gives sum_i K_i = 0.
+    K, C, F = [], [], []
+    for i in range(NB):
+        Ki = X[i] @ Y[i]
+        K.append(Ki)
+        C.append((Ki + Ki.conj().T) / 2.0)
+        F.append((Ki - Ki.conj().T) / (2.0j))
+    closure_K = sum(K)
+
     out = {
         "u": u, "X": X, "v": v, "Y": Y,
         "T": T, "Q": Q, "q": q,
@@ -62,6 +73,9 @@ def extract_geometry(solved_rep: Rep, levels=None) -> dict:
         "edge_norms": edge_norms,
         "pairwise": pairwise,
         "branch_traces": branch_traces,
+        "K": K, "C": C, "F": F,
+        "closure_K": closure_K,
+        "closure_K_error": float(np.linalg.norm(closure_K)),
     }
     if levels is not None:
         levels = np.asarray(levels, dtype=float).reshape(NB, 2)
