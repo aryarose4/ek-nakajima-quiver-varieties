@@ -15,12 +15,30 @@ e6sim/
   conventions.py       dimensions, level/beta conversion, Hermitian bases
   representation.py    (a, A, b, B) matrices, validation, gauge action
   moment_maps.py       complex/real residuals, orthonormal Hermitian packing
-  charts.py            representative builders and overlap gauges      (M1)
-  stability.py         certified inequalities and domain checks        (M1)
-  hermitian_solver.py  positive-gauge real moment-map solver           (M2)
-  fixtures/            exact certified examples and expected properties
+  charts.py            candidate y=0 chart, exact flags, x-gauge action   (M1)
+  stability.py         King weights, exact enumeration, exceptional z     (M1)
+  hermitian_solver.py  positive-gauge real moment-map solver              (M2)
+  continuation.py      warm starts, seed transport across chart gauges    (M3)
+  transverse.py        exact transverse y kernel Y(z), family rep(z,w)     (M5)
+  geometry.py          V0 extract_geometry (traceless central Q_i, 8-vec) (V0)
+  fixtures/            exact certified examples (y=0 symmetric; certified chart)
 tests/                 pytest suite
 ```
+
+## Status
+
+- **M0** conventions/representation/moment maps: done.
+- **M1** certified stable rational `y=0` fixture (`z=2`, levels
+  `alpha=(3,3,3)`, `gamma=(1,2,3)`), exact King certificate (all weights `< 0`,
+  tightest `-1`), `x`-gauge rank 23, `dx/dz` not in the image, exceptional
+  `z in {0,1,infinity}`: done (independently re-verified).
+- **M2** 23-variable positive-Hermitian-gauge solver: done (solves the
+  certified fixture, residual ~1e-14).
+- **M3** continuation + chart seed transport: core done.
+- **M5** exact transverse `y` kernel `Y(z)`, `rep(z,w)=(x(z), w Y(z))`
+  complex-exact for all `w`: core done.
+- **V0** `extract_geometry`: done.
+- **M4** chart atlas, **M6-M9**, V1+: open.
 
 Run the tests from this directory:
 
