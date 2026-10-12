@@ -34,11 +34,18 @@ tests/                 pytest suite
   `z in {0,1,infinity}`: done (independently re-verified).
 - **M2** 23-variable positive-Hermitian-gauge solver: done (solves the
   certified fixture, residual ~1e-14).
-- **M3** continuation + chart seed transport: core done.
+- **M3** continuation + chart seed transport (warm starts, midpoint
+  subdivision, cold-start fallback) + `z`-sweep and closed-loop tests: done.
+- **M4** north/south chart atlas (`zeta = 1/z`), exact overlap gauge,
+  honest endpoint classification: `z=1` stable, `z=0` and the pole strictly
+  unstable (positive King weights). Coverage **partial** — stable locus is
+  `P^1 \ {0, infinity}`; the two unstable points are genuinely different
+  strata, not missing representatives: done (independently re-verified).
 - **M5** exact transverse `y` kernel `Y(z)`, `rep(z,w)=(x(z), w Y(z))`
-  complex-exact for all `w`: core done.
-- **V0** `extract_geometry`: done.
-- **M4** chart atlas, **M6-M9**, V1+: open.
+  complex-exact for all `w`, cotangent-transpose identity checked: core done.
+- **V0** `extract_geometry`; **V5** bilinear `K_i=X_iY_i` geometry
+  (`C_i/F_i`, closure, phase rotation): done.
+- **M6-M9**, V1-V4, V6: open.
 
 Run the tests from this directory:
 
