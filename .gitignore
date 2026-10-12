@@ -1,0 +1,19 @@
+# Live widget modules copied in by tests/run.sh before running the batteries.
+tests/quiver-data.js
+tests/core-layout.js
+tests/diagram-layout.js
+tests/tree-embed.js
+
+.DS_Store
+
+# Progress journals for long-running agent work: local only, never published
+# (the repository is public). Keep agent scratch notes here.
+journal/
+**/journal/
+
+# Python implementation of the E6 simulation: caches.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+sim/**/*.egg-info/
