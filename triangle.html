@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E6 Triangle Visualizer</title>
+<meta name="description" content="Solved, at-level E6 y=0 triangle: the exact closed triangle in the traceless-Hermitian space with projected flag decorations, from a balanced real-moment-map bundle.">
+<link rel="icon" href="assets/img/Star-Shaped_Quiver.jpg">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["$", "$"], ["\\(", "\\)"]], displayMath: [["$$", "$$"], ["\\[", "\\]"]] },
+    svg: { fontCache: "global" },
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+  :root {
+    --bg: #1c1c1d;
+    --fg: #e8e8e8;
+    --muted: #828282;
+    --panel: #212529;
+    --border: #424246;
+    --accent: #2698ba;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --fg: #151a22;
+    --muted: #828282;
+    --panel: #ffffff;
+    --border: #e6e6e6;
+    --accent: #2f6fd0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 72px; }
+  header.hero { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+  header.hero img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; }
+  header.hero h1 { font-size: 1.9rem; margin: 0; letter-spacing: -0.01em; }
+  header.hero .sub { color: var(--muted); margin: 2px 0 0; font-size: 0.95rem; }
+  .intro { max-width: 820px; color: var(--fg); margin: 18px 0 8px; }
+  .intro p { margin: 0.7em 0; }
+  .note { color: var(--muted); font-size: 0.92rem; }
+  .topbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .topbar .navlink { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+  .topbar .navlink:hover { text-decoration: underline; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 16px; }
+  footer a { color: var(--accent); }
+  button.theme-toggle {
+    background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 0.85rem;
+  }
+  button.theme-toggle:hover { border-color: var(--accent); }
+
+  /* --- ek-* panel / slider family (same look as the native widget) ------- */
+  #triangle-widget {
+    --ek-box-bd: #cfd4da;
+    --ek-box-tx: #666e78;
+    --ek-panel-bg: rgba(15, 23, 42, 0.028);
+    --ek-frame-bg: rgba(15, 23, 42, 0.016);
+    --ek-track: #c9cdd4;
+    --ek-thumb: #5b6570;
+    --ek-btn-bd: #cfd4da;
+    --ek-btn-tx: #666e78;
+    margin-top: 22px;
+    position: relative;
+  }
+  [data-theme="dark"] #triangle-widget {
+    --ek-box-bd: #4a525e;
+    --ek-box-tx: #a0a8b2;
+    --ek-panel-bg: rgba(148, 163, 184, 0.07);
+    --ek-frame-bg: rgba(148, 163, 184, 0.04);
+    --ek-track: #454d59;
+    --ek-thumb: #a8b2bd;
+    --ek-btn-bd: #4a525e;
+    --ek-btn-tx: #a0a8b2;
+  }
+  #triangle-widget .ek-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+  #triangle-widget .ek-col { flex: 1 1 460px; min-width: 320px; }
+  #triangle-widget .ek-col.side { flex: 1 1 340px; min-width: 300px; }
+  #triangle-widget .ek-frame { position: relative; width: 100%; aspect-ratio: 1 / 1;
+    border: 1px solid var(--ek-box-bd); border-radius: 10px; overflow: hidden;
+    background: var(--ek-frame-bg); }
+  #triangle-widget .ek-cap { margin-top: 8px; font-size: 0.85em; color: var(--ek-box-tx); text-align: center; }
+  #triangle-widget .ek-panel { border: 1px solid var(--ek-box-bd); border-radius: 10px;
+    background: var(--ek-panel-bg); padding: 10px 12px; margin-top: 12px; }
+  #triangle-widget .ek-panel:first-child { margin-top: 0; }
+  #triangle-widget .ek-sec { font-size: 0.82em; font-weight: 600; color: var(--ek-box-tx); margin: 0 0 8px 1px; }
+  #triangle-widget .ek-modrow { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  #triangle-widget .ek-mod { display: flex; align-items: center; gap: 8px; flex: 1 1 220px;
+    min-width: 200px; color: var(--ek-box-tx); font-size: 0.9em; }
+  #triangle-widget .ek-mod input[type=range] { flex: 1 1 auto; min-width: 110px; }
+  #triangle-widget .ek-readout { min-width: 4.2em; text-align: right; font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #triangle-widget .ek-slider { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; }
+  #triangle-widget .ek-slider::-webkit-slider-runnable-track { height: 5px; border-radius: 3px; background: var(--ek-track); }
+  #triangle-widget .ek-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--ek-thumb); margin-top: -4.5px; }
+  #triangle-widget .ek-slider::-moz-range-track { height: 5px; border-radius: 3px; background: var(--ek-track); }
+  #triangle-widget .ek-slider::-moz-range-thumb { width: 13px; height: 13px; border: none; border-radius: 50%; background: var(--ek-thumb); }
+  #triangle-widget select.ek-select { flex: 1 1 auto; min-width: 120px; padding: 3px 6px; border-radius: 6px;
+    border: 1px solid var(--ek-btn-bd); background: transparent; color: var(--ek-btn-tx); font: inherit; font-size: 0.9em; }
+  #triangle-widget .ek-status { font-size: 0.88em; color: var(--ek-box-tx); }
+  #triangle-widget .ek-status div { margin: 2px 0; }
+  #triangle-widget .ek-status .ek-val { font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #triangle-widget .ek-warn { color: #c8794b; }
+  #triangle-widget .ek-badge { display: inline-block; padding: 0 6px; border-radius: 5px;
+    border: 1px solid var(--ek-box-bd); font-size: 0.92em; }
+  #triangle-widget .ek-badge.ok { color: #4f9e4a; border-color: #4f9e4a; }
+  #triangle-widget .ek-labels { font-size: 0.85em; color: var(--ek-box-tx); }
+  #triangle-widget .ek-labels div { margin: 1px 0; }
+  #triangle-widget .ek-swatch { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="navlink" href="index.html">&larr; E_k Nakajima Quiver Varieties</a>
+    <button class="theme-toggle" id="theme-toggle" type="button">Light / dark</button>
+  </div>
+
+  <header class="hero">
+    <img src="assets/img/Star-Shaped_Quiver.jpg" alt="Affine quiver diagram">
+    <div>
+      <h1>E6 Triangle Visualizer</h1>
+      <p class="sub">The exact closed triangle of the solved, at-level representative, with projected flag decorations</p>
+    </div>
+  </header>
+
+  <div class="intro">
+    <p>
+      The points below come from a <strong>solved, at-level</strong> representative:
+      the real moment map is balanced, so the three traceless Hermitian central
+      moment maps \( Q_i \) close (\( \sum_i Q_i \approx 0 \)) and their edge
+      vectors \( q_i \) form the physical triangle in the eight-dimensional space
+      of traceless Hermitian \(3\times3\) matrices. The triangle shape is
+      <strong>fixed by the levels</strong> up to Euclidean rotation; the flag
+      markers are projected display data and do not lie on the triangle.
+    </p>
+    <p class="note">
+      Along the <em>z</em>-sweep the representative is carried by a V3-lite
+      central \(U(3)\) alignment, so the drawn frame moves smoothly; the two
+      presets are independent solutions and are not aligned to the sweep.
+    </p>
+  </div>
+
+  <div id="triangle-widget">
+    <div id="tri-loading" class="note">Loading solved bundle&hellip;</div>
+    <div class="ek-row" id="tri-body" style="display:none">
+      <div class="ek-col">
+        <div class="ek-frame" id="tri-frame"></div>
+        <div class="ek-cap">Closed triangle <span class="ek-swatch" style="background:#d94f4f"></span>branch 1
+          <span class="ek-swatch" style="background:#4f9ed9"></span>branch 2
+          <span class="ek-swatch" style="background:#63b85e"></span>branch 3</div>
+      </div>
+      <div class="ek-col side">
+        <div class="ek-panel">
+          <div class="ek-sec">Bundle point</div>
+          <div class="ek-modrow" id="row-sweep"></div>
+          <div class="ek-modrow" id="row-group" style="margin-top:6px"></div>
+          <div class="ek-labels" id="level-labels" style="margin-top:8px"></div>
+        </div>
+        <div class="ek-panel">
+          <div class="ek-sec">Status</div>
+          <div class="ek-status" id="status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Solved <em>y</em> = 0 triangle (visualizer milestones V0&ndash;V2), driven by
+    <code>assets/data/e6-triangle-solved.json</code>. See
+    <a href="index.html">the E_k Nakajima widget</a> for the ALE core view.
+  </footer>
+</div>
+
+<script src="assets/js/ek-nakajima/lib/three.min.js"></script>
+<script src="assets/js/ek-nakajima/lib/OrbitControls.js"></script>
+<script type="module">
+  // Query-parameter state freeze (documented):
+  //   ?theme=dark|light        set the theme
+  //   ?point=sweep:<i>         sweep point i in [0, sweep.length-1]
+  //   ?point=preset:<i>        preset i in [0, presets.length-1]
+  //   ?point=<n>               combined index: n < sweep.length -> sweep[n],
+  //                            else presets[n - sweep.length]
+  // Default: sweep:0.  Read once at load; the controls are authoritative after.
+  import { loadBundle } from "./assets/js/ek-nakajima/triangle-geometry.js";
+  import { makeTriangleView } from "./assets/js/ek-nakajima/triangle-view.js";
+
+  const BUNDLE_URL = "assets/data/e6-triangle-solved.json";
+  const NOTE = "solved at-level (real moment map); central U(3)-aligned along the sweep (V3-lite); presets not aligned to the sweep";
+
+  const root = document.documentElement;
+  function isDark() { return root.getAttribute("data-theme") === "dark"; }
+  function palette() {
+    return isDark()
+      ? { branch: [0xe06a6a, 0x6ab0e8, 0x7bd177], lineMark: 0xe06a6a, planeMark: 0x7bd177,
+          connector: 0x8a929c, vertex: 0xf0f0f0, bg: null }
+      : { branch: [0xc23b3b, 0x2f7fbf, 0x4f9e4a], lineMark: 0xc23b3b, planeMark: 0x4f9e4a,
+          connector: 0x9aa4b0, vertex: 0x111111, bg: null };
+  }
+
+  const params = new URLSearchParams(location.search);
+  if (params.get("theme")) root.setAttribute("data-theme", params.get("theme"));
+  else {
+    let stored = null;
+    try { stored = localStorage.getItem("theme"); } catch (e) {}
+    if (stored === "dark" || stored === "light") root.setAttribute("data-theme", stored);
+  }
+
+  const host = document.getElementById("tri-frame");
+  const view = makeTriangleView(host, { getPalette: palette });
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    root.setAttribute("data-theme", isDark() ? "light" : "dark");
+    if (view) view.refreshTheme();
+  });
+
+  function zLabel(p) {
+    const im = p.z_im;
+    const s = im >= 0 ? "+" : "-";
+    return p.z_re.toFixed(3) + s + Math.abs(im).toFixed(3) + "i";
+  }
+
+  function showError(msg) {
+    const box = document.getElementById("tri-loading");
+    box.className = "ek-warn";
+    box.style.display = "block";
+    box.innerHTML = "Could not load the solved bundle from <code>" + BUNDLE_URL + "</code>.<br>" +
+      "This page must be served over HTTP (opening it via <code>file://</code> blocks <code>fetch</code>).<br>" +
+      "Details: " + msg;
+    document.getElementById("tri-body").style.display = "none";
+  }
+
+  loadBundle(BUNDLE_URL).then(function (bundle) {
+    const sweep = (bundle.sweep || []).filter(function (p) { return p && p.stable !== false; });
+    const presets = bundle.presets || [];
+    if (!sweep.length) { showError("bundle has no sweep points"); return; }
+
+    document.getElementById("tri-loading").style.display = "none";
+    document.getElementById("tri-body").style.display = "flex";
+
+    // level option labels (informational)
+    const ll = document.getElementById("level-labels");
+    ll.innerHTML = "<div><strong>level options</strong></div>" +
+      (bundle.levels_options || []).map(function (o) { return "<div>" + o.label + "</div>"; }).join("");
+
+    // sweep slider
+    const sweepRow = document.getElementById("row-sweep");
+    const sweepBox = document.createElement("div");
+    sweepBox.className = "ek-mod";
+    const sweepLab = document.createElement("span");
+    sweepLab.textContent = "sweep";
+    const sweepInput = document.createElement("input");
+    sweepInput.type = "range";
+    sweepInput.className = "ek-slider";
+    sweepInput.min = "0"; sweepInput.max = String(sweep.length - 1); sweepInput.step = "1"; sweepInput.value = "0";
+    const sweepReadout = document.createElement("span");
+    sweepReadout.className = "ek-readout";
+    sweepBox.appendChild(sweepLab); sweepBox.appendChild(sweepInput); sweepBox.appendChild(sweepReadout);
+    sweepRow.appendChild(sweepBox);
+
+    // preset selector
+    const groupRow = document.getElementById("row-group");
+    const groupBox = document.createElement("div");
+    groupBox.className = "ek-mod";
+    const groupLab = document.createElement("span");
+    groupLab.textContent = "preset";
+    const groupSel = document.createElement("select");
+    groupSel.className = "ek-select";
+    const optSweep = document.createElement("option");
+    optSweep.value = "sweep"; optSweep.textContent = "\u2014 z-sweep \u2014";
+    groupSel.appendChild(optSweep);
+    presets.forEach(function (p, i) {
+      const o = document.createElement("option");
+      o.value = String(i); o.textContent = p.label || zLabel(p);
+      groupSel.appendChild(o);
+    });
+    groupBox.appendChild(groupLab); groupBox.appendChild(groupSel);
+    groupRow.appendChild(groupBox);
+
+    function currentPoint() {
+      if (groupSel.value === "sweep") return sweep[Math.min(Math.max(parseInt(sweepInput.value, 10) || 0, 0), sweep.length - 1)];
+      return presets[parseInt(groupSel.value, 10)];
+    }
+
+    function render() {
+      const sweepMode = groupSel.value === "sweep";
+      sweepInput.disabled = !sweepMode;
+      const point = currentPoint();
+      sweepReadout.textContent = sweepMode ? zLabel(sweep[parseInt(sweepInput.value, 10) || 0]) : "";
+      if (view) view.setState(point);
+
+      const st = document.getElementById("status");
+      const lines = [];
+      lines.push('<div><span class="ek-badge ' + (point.stable ? "ok" : "") + '">' +
+        (point.stable ? "stable" : "not stable") + "</span></div>");
+      lines.push('<div>closure error: <span class="ek-val">' + point.closure_error.toExponential(2) + "</span></div>");
+      const el = point.edge_norms_sq.map(function (x) { return Math.sqrt(Math.max(0, x)).toFixed(3); });
+      lines.push('<div>edge lengths: <span class="ek-val">' + el.join(", ") + "</span></div>");
+      lines.push('<div class="note">' + NOTE + "</div>");
+      st.innerHTML = lines.join("");
+      root.setAttribute("data-ek-ready", "1");
+    }
+
+    sweepInput.addEventListener("input", function () { groupSel.value = "sweep"; render(); });
+    groupSel.addEventListener("change", render);
+
+    // apply ?point= freeze
+    const pv = params.get("point");
+    if (pv) {
+      const m = /^([a-z]+):(\d+)$/.exec(pv);
+      if (m && m[1] === "preset" && presets[parseInt(m[2], 10)]) {
+        groupSel.value = m[2];
+      } else if (m && m[1] === "sweep") {
+        sweepInput.value = String(Math.min(Math.max(parseInt(m[2], 10), 0), sweep.length - 1));
+      } else if (/^\d+$/.test(pv)) {
+        const n = parseInt(pv, 10);
+        if (n < sweep.length) { sweepInput.value = String(n); }
+        else if (presets[n - sweep.length]) { groupSel.value = String(n - sweep.length); }
+      }
+    }
+    render();
+  }).catch(function (e) {
+    showError(String(e && e.message || e));
+  });
+</script>
+</body>
+</html>

@@ -3,6 +3,8 @@ tests/quiver-data.js
 tests/core-layout.js
 tests/diagram-layout.js
 tests/tree-embed.js
+tests/triangle-geometry.js
+ek-nakajima.html
 
 .DS_Store
 

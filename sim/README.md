@@ -21,7 +21,11 @@ e6sim/
   continuation.py      warm starts, seed transport across chart gauges    (M3)
   transverse.py        exact transverse y kernel Y(z), family rep(z,w)     (M5)
   geometry.py          V0 extract_geometry (traceless central Q_i, 8-vec) (V0)
+  v1.py                V1 line/plane projectors, spectra, flag invariants  (V1)
+  bundle.py            solved triangle bundle + central-U(3) alignment     (V2)
   fixtures/            exact certified examples (y=0 symmetric; certified chart)
+  tools/               export_triangle_solved.py  -> ../../assets/data/e6-triangle-solved.json
+                       export_chart_invariants.py -> tests/fixtures/chart_invariants_reference.json
 tests/                 pytest suite
 ```
 
@@ -45,7 +49,25 @@ tests/                 pytest suite
   complex-exact for all `w`, cotangent-transpose identity checked: core done.
 - **V0** `extract_geometry`; **V5** bilinear `K_i=X_iY_i` geometry
   (`C_i/F_i`, closure, phase rotation): done.
-- **M6-M9**, V1-V4, V6: open.
+- **V1** weighted-flag identities at positive-level `y=0`: the projector
+  identity `X_i X_i^* = alpha_i Pi_Li + gamma_i Pi_Pi` on the solved rep, the
+  ordered spectra `((2a+g)/3,(-a+g)/3,-(a+2g)/3)`, `||Q_i||^2 = (2/3)(a^2+ag+g^2)`,
+  the pairwise trace formula, and the flag-projector overlaps: done, verified
+  on the certified fixture (`e6sim/v1.py`, `tests/test_geometry_v1.py`).
+- **V2** the *solved* triangle bundle and the browser view: done.
+  `e6sim/bundle.py` solves the real moment map on a `z`-sweep (|z| 0.5->3.0,
+  arg 0->pi/6->0) plus level presets, aligns each point by the central `U(3)`
+  (Procrustes), and computes the V2 viewing frame / vertices / flag markers;
+  `tools/export_triangle_solved.py` writes `assets/data/e6-triangle-solved.json`
+  (schema `e6-triangle-solved/1`), which the browser page `../triangle.html`
+  renders via `../assets/js/ek-nakajima/triangle-{geometry,view}.js`.
+  KEY POINT: the *chart's own* orthogonal projectors are NOT a valid geometry
+  source — they are not equivariant under the solver's non-unitary complex
+  gauge, so the chart's `Q_i` do not close (`||sum Q_i|| ~ 3`) and give the
+  wrong pairwise traces. The bundle therefore solves the real moment map.
+- **M6-M9**, **V3** (frame continuity / cross-point alignment; only
+  central-`U(3)` alignment exists today), **V4** (invariant inspector), **V6**,
+  and a browser-side JS port of the solver: open.
 
 Run the tests from this directory:
 
