@@ -36,6 +36,13 @@ const MODULES = [
   "tree-embed",
   "core-layout",
   "core-view",
+  "core-math",
+  "chart",
+  "solver",
+  "element-view",
+  "element-model",
+  "element-screen",
+  "element-render",
   "widget",
 ];
 

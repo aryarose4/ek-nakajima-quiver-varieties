@@ -1,8 +1,5 @@
 # Live widget modules copied in by tests/run.sh before running the batteries.
-tests/quiver-data.js
-tests/core-layout.js
-tests/diagram-layout.js
-tests/tree-embed.js
+tests/*.js
 
 .DS_Store
 

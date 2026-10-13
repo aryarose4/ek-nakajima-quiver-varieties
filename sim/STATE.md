@@ -29,7 +29,14 @@ Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
 | M5 exact transverse y kernel Y(z) | done (core) |
 | V0 geometry extraction | done |
 | V5 bilinear K_i = X_i Y_i geometry | done |
-| M6-M9, V1-V4, V6, browser JS port | not started |
+| V1 weighted-flag geometry (flags.py, 9 tests) | done, verified |
+| V2 element view JS (element-view.js, 28 checks) | done (pure layer) |
+| JS core-math port (core-math.js, 40 checks) | done, verified |
+| JS solver port (solver.js, 35 checks) | done, verified |
+| JS live element driver (chart/element-model, 17 checks) | done, verified |
+| JS element projection/render + widget view toggle (screen 18, smoke 14) | done (pure + smoke) |
+| M6 wall arrangement + chambers (chambers.py, 11 tests) | done, verified |
+| M7-M9, V3-V4/V6 (gauge-aligned continuity, inspector) | not started |
 
 ## Frozen exact fixture (do not change without re-deriving)
 
@@ -59,8 +66,9 @@ into `3 + 3*4 + 8 = 23` Frobenius-orthonormal Hermitian coordinates.
 
 ## Next smallest tasks
 
-1. **V1**: weighted-flag spectral identity (`Q_i` eigenspaces = flag) on the
-   certified fixture.
-2. **M6**: exact wall arrangement in the six level coordinates (reuse the
-   stability enumeration machinery).
+1. **V3 / live view**: JS chart + warm-started continuation driver so the
+   browser solves `rep(z = r e^{i theta})` continuously and renders the
+   element view; wire it into the widget (the hyperpolygon-like product).
+2. **M6 task 3**: branch permutations and their actions on levels, matrices,
+   coordinates, and solver seeds (forward/inverse tests).
 3. Nonzero-y stability (the M4 open question) feeding M5/M7.

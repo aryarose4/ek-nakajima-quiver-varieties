@@ -20,12 +20,16 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** This is a work in progress. The settled, solver-free geometry
-> layers and the ALE **core / space view** are in place. The
-> **single-element view** — the real moment maps for central rank
-> $r_\star\ge 3$ — is an open mathematical question and is deliberately not
-> implemented; there is no moment-map solver yet. The type-D4 member of the
-> family is the [hyperpolygon](https://github.com/aryarose4/hyperpolygon-moduli-spaces),
+> **Status.** This is a work in progress. The settled geometry layers, the ALE
+> **core / space view**, and — newly — the **verified mathematics of the
+> single-element view** are in place: the E6 real moment-map solver, the
+> Milestone-0 core, and the projected su(3) "triangle + flag" element view all
+> exist as dependency-free ES modules with Node batteries (`core-math.js` 40,
+> `solver.js` 35, `element-view.js` 28 checks). What remains is the **widget
+> integration**: driving these modules live from the $(r,\theta)$ controls and
+> rendering the element panel — the analogue of the hyperpolygon's live polygon
+> view. The type-D4 member of the family is the
+> [hyperpolygon](https://github.com/aryarose4/hyperpolygon-moduli-spaces),
 > whose interaction is the template used here.
 
 ## Try it
@@ -81,12 +85,19 @@ layer uses a vendored three.js only.
 
 | Module | Role |
 |---|---|
+| `assets/js/ek-nakajima/core-math.js` | Frozen Milestone-0 core ported to JS: dimensions, Hermitian bases, complex/unitary gauge, complex/real moment maps, the 23-coordinate packing, and the V0/V5 geometry. |
+| `assets/js/ek-nakajima/solver.js` | The Milestone-2 positive-Hermitian-gauge real-moment-map solver (trust-region LM, Hermitian `expm`), ported from the Python reference. |
+| `assets/js/ek-nakajima/element-view.js` | V2: the weighted-flag geometry at `y=0` and its projected su(3) "triangle + flag marker" display data. |
+| `assets/js/ek-nakajima/chart.js` | The candidate `y=0` chart `z = r e^{iθ}` and its rep, ported from the Python reference. |
+| `assets/js/ek-nakajima/element-model.js` | Pure driver: `solveElement(r, θ, levels, {initialLogGauge})` = chart -> warm-started solve -> element view. |
+| `assets/js/ek-nakajima/element-screen.js` | Pure orthographic camera + projection (`elementScreen`) used by the browser renderer. |
+| `assets/js/ek-nakajima/element-render.js` | Browser canvas renderer for the single-element view (orbit, zoom, themes). |
 | `assets/js/ek-nakajima/quiver-data.js` | Per-type affine ADE data: nodes, edges, marks $=\delta$, junction, framing nodes, the finite core tree, and `validateQuiver`. |
 | `assets/js/ek-nakajima/tree-embed.js` | Shared pure radial tidy-tree embedding used by both layout layers. |
 | `assets/js/ek-nakajima/core-layout.js` | Quiet core-tree layout: a non-overlapping externally-tangent radial packing of the finite Dynkin core. |
 | `assets/js/ek-nakajima/diagram-layout.js` | Full affine-diagram layout (tree/cycle). Validated; not currently imported by the widget. |
 | `assets/js/ek-nakajima/core-view.js` | The generalized side view: `buildSideLayout`, the Node-safe `coreFlow`, and the browser `makeCoreView` three.js factory. |
-| `assets/js/ek-nakajima/widget.js` | DOM, the E6/E7/E8 tabs, the $(r,\theta,t,\phi)$ sliders and the ALE core viewport. |
+| `assets/js/ek-nakajima/widget.js` | DOM, the E6/E7/E8 tabs, the ALE-core / Single-element view toggle, the $(r,\theta,t,\phi)$ and $(|z|,\theta)$ sliders. |
 | `assets/js/hyperpolygon/sideview-shared.js` | The flow constants and vector helpers shared with the hyperpolygon side view (imported unchanged). |
 | `assets/js/ek-nakajima/lib/` | Vendored `three.min.js` and `OrbitControls.js`. |
 

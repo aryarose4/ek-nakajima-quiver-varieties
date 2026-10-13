@@ -48,7 +48,15 @@ tests/                 pytest suite
   complex-exact for all `w`, cotangent-transpose identity checked: core done.
 - **V0** `extract_geometry`; **V5** bilinear `K_i=X_iY_i` geometry
   (`C_i/F_i`, closure, phase rotation): done.
-- **M6-M9**, V1-V4, V6: open.
+- **M6** exact wall arrangement in the six level coordinates: 20 wall forms
+  (z-generic), 64 sign-chambers in the positive orthant, exactly 1 stable
+  chamber (forced by convexity), certified fixture `interior`/stable: done
+  (independently re-verified).
+- **V1** weighted-flag identity at `y=0` (`flags.py`): done.
+- **JS port** (dependency-free, Node batteries via Docker): `core-math.js`
+  (M0 + V0/V5, 40 checks), `element-view.js` (V2, 28 checks), `solver.js`
+  (M2 solver, 35 checks): done.
+- **M7-M9**, V3-V4, V6: open.
 
 Run the tests from this directory:
 

@@ -25,8 +25,18 @@
 
 import { AFFINE_ADE } from "./quiver-data.js";
 import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
+import { solveElement } from "./element-model.js";
+import { makeElementView } from "./element-render.js";
+import { INJECTIVITY_NOTE } from "./element-view.js";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
+
+// Fixed certified levels for the E6 single-element view: alpha = (3,3,3),
+// gamma = (1,2,3) (Milestone 1 certified fixture).
+const ELEM_LEVELS = [[3, 1], [3, 2], [3, 3]];
+const ELEM_LEVELS_LABEL =
+  "levels: \u03b1 = (" + ELEM_LEVELS.map((L) => L[0]).join(",") + "), " +
+  "\u03b3 = (" + ELEM_LEVELS.map((L) => L[1]).join(",") + ")";
 
 // Same palette values as the hyperpolygon side view (user request: match the
 // coloring scheme there).
@@ -169,17 +179,42 @@ function activate(container) {
     tabButtons[key] = btn;
   });
 
+  // --- view toggle (user request): "ALE core" (default) / "Single element".
+  // Two .ek-tab buttons; the ALE-core path below is unchanged.
+  const viewTabs = document.createElement("div");
+  viewTabs.className = "ek-tabs";
+  container.appendChild(viewTabs);
+  const VIEW_KEYS = [
+    { id: "core", label: "ALE core" },
+    { id: "element", label: "Single element" },
+  ];
+  const viewButtons = {};
+  VIEW_KEYS.forEach(function (v) {
+    const btn = document.createElement("button");
+    btn.className = "ek-tab";
+    btn.type = "button";
+    btn.textContent = v.label;
+    btn.addEventListener("click", function () { setMode(v.id); });
+    viewTabs.appendChild(btn);
+    viewButtons[v.id] = btn;
+  });
+  let viewMode = "core";
+
   const row = document.createElement("div");
   row.className = "ek-row";
   container.appendChild(row);
 
-  // --- left column: the ALE core viewport -------------------------------
+  // --- left column: the viewport (ALE core + single-element frames) -------
   const viewCol = document.createElement("div");
   viewCol.className = "ek-col";
   row.appendChild(viewCol);
-  const frame = document.createElement("div");
-  frame.className = "ek-frame";
-  viewCol.appendChild(frame);
+  const coreFrame = document.createElement("div");
+  coreFrame.className = "ek-frame";
+  viewCol.appendChild(coreFrame);
+  const elementFrame = document.createElement("div");
+  elementFrame.className = "ek-frame";
+  elementFrame.style.display = "none";
+  viewCol.appendChild(elementFrame);
   const cap = document.createElement("div");
   cap.className = "ek-cap";
   cap.textContent = "ALE core of E6: exceptional \u2119\u00b9's";
@@ -285,6 +320,54 @@ function activate(container) {
   tCol.appendChild(limBtn);
   modRowTG.insertBefore(tCol, phCtl.box);
 
+  // --- single-element controls (shown only in "Single element" mode) ------
+  // A |z| slider (1..4, default 2) and a theta slider (-pi..pi, default 0),
+  // plus the fixed certified levels readout and a solve-status line.
+  const elemBlock = document.createElement("div");
+  elemBlock.style.display = "none";
+  elemBlock.style.marginTop = "10px";
+  modPanel.appendChild(elemBlock);
+
+  const elemSec = document.createElement("div");
+  elemSec.className = "ek-sec";
+  elemSec.textContent = "Single element (E6, certified chart)";
+  elemBlock.appendChild(elemSec);
+
+  const elemRow = document.createElement("div");
+  elemRow.className = "ek-modrow";
+  elemBlock.appendChild(elemRow);
+  const elemRow2 = document.createElement("div");
+  elemRow2.className = "ek-modrow";
+  elemBlock.appendChild(elemRow2);
+
+  const zCtl = makeSlider("|z|", 1.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
+    "chart parameter |z| = r; the certified real moment map");
+  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, 0.01, 0, function (v) {
+    return v.toFixed(2);
+  }, [], elemRow2, "phase of z = |z| exp(i theta)");
+  zCtl.box._role = "elementZ";
+  elemThCtl.box._role = "elementTheta";
+
+  const levelsLine = document.createElement("div");
+  levelsLine.style.fontSize = "0.8em";
+  levelsLine.style.marginTop = "6px";
+  levelsLine.textContent = ELEM_LEVELS_LABEL;
+  elemBlock.appendChild(levelsLine);
+
+  const elemStatus = document.createElement("div");
+  elemStatus.className = "ek-readout";
+  elemStatus.style.textAlign = "left";
+  elemStatus.style.minWidth = "0";
+  elemStatus.style.marginTop = "4px";
+  elemStatus.style.fontSize = "0.8em";
+  elemBlock.appendChild(elemStatus);
+
+  const elemNote = document.createElement("div");
+  elemNote.style.fontSize = "0.78em";
+  elemNote.style.marginTop = "6px";
+  elemNote.textContent = INJECTIVITY_NOTE;
+  elemBlock.appendChild(elemNote);
+
   // --- beta panel stub (user request 2026-10-02): the container exists so
   // the beta/chamber controls can be dropped in later; deliberately blank
   // for now.
@@ -293,13 +376,15 @@ function activate(container) {
   betaPanel.id = "ek-nakajima-beta-panel";
   ctrlCol.appendChild(betaPanel);
 
-  const coreView = makeCoreView(frame, { getPalette: palette });
+  const coreView = makeCoreView(coreFrame, { getPalette: palette });
   if (coreView && coreView.setHover) {
-    frame.addEventListener("pointerenter", function () { coreView.setHover(true); });
-    frame.addEventListener("pointerleave", function () { coreView.setHover(false); });
+    coreFrame.addEventListener("pointerenter", function () { coreView.setHover(true); });
+    coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
+  const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
   let lay = null;
   let lastState = null;
+  let prevLogGauge = undefined;
 
   // --- stratum stepping (user request 2026-10-02) -------------------------
   // t is local to ONE exterior sphere; the lim button moves the dot by
@@ -368,6 +453,10 @@ function activate(container) {
 
   // --- apply: read sliders -> flow -> view ------------------------------
   function apply(fromInput) {
+    if (viewMode === "element") {
+      applyElement();
+      return;
+    }
     if (!lay || !coreView) return;
     if (fromInput === "r") {
       const raw = parseFloat(rCtl.input.value);
@@ -420,6 +509,91 @@ function activate(container) {
     }
   }
 
+  // --- single-element apply: read (|z|, theta) -> solve -> render ---------
+  // On success feed the new view to the renderer and report the solve; on
+  // failure KEEP the last valid frame and say so (never present a stale solved
+  // rep as current). The warm start reuses the previous logGauge.
+  //
+  // A solve is expensive (multi-seed Levenberg-Marquardt), and the sliders emit
+  // an `input` event per pixel of drag, so requests are COALESCED: at most one
+  // solve runs per animation frame. Rapid drags therefore queue a single
+  // pending solve rather than one solve per event.
+  let elemPending = false;
+  function applyElement() {
+    if (elemPending) return;
+    elemPending = true;
+    const run = function () { elemPending = false; runElementSolve(); };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else setTimeout(run, 0);
+  }
+
+  function runElementSolve() {
+    if (!elementRenderer) return;
+    const z = parseFloat(zCtl.input.value);
+    const theta = parseFloat(elemThCtl.input.value);
+    zCtl.updateReadout();
+    elemThCtl.updateReadout();
+
+    const res = solveElement(z, theta, ELEM_LEVELS, { initialLogGauge: prevLogGauge });
+    if (res && res.success && res.view) {
+      prevLogGauge = res.logGauge;
+      elementRenderer.setData(res.view);
+      elementRenderer.setStatus("", "info");
+      const nfev = res.diagnostics ? res.diagnostics.nfev : "?";
+      elemStatus.textContent =
+        "solved  |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2) + "  (nfev " + nfev + ")";
+      elemNote.textContent = (res.view.notes && res.view.notes.injectivity) || INJECTIVITY_NOTE;
+    } else {
+      const msg = "solve failed at this (|z|,\u03b8) \u2014 showing last valid frame";
+      elementRenderer.setStatus(msg, "warn");
+      elemStatus.textContent = msg;
+    }
+  }
+
+  function coreCapText() {
+    return "ALE core of " + AFFINE_ADE[state.key].name + ": exceptional \u2119\u00b9's";
+  }
+
+  // The Single-element view is E6-only, so while it is active the E6/E7/E8 type
+  // tabs are pinned to E6 and disabled; switching back to ALE core re-enables
+  // them. This keeps the highlighted type tab consistent with the view shown.
+  function syncTypeTabs() {
+    const element = viewMode === "element";
+    if (element) state.key = "E6";
+    for (const key of Object.keys(tabButtons)) {
+      tabButtons[key].classList.toggle("ek-active", key === state.key);
+      tabButtons[key].disabled = element;
+    }
+  }
+
+  // --- view-mode switch ---------------------------------------------------
+  function setMode(m) {
+    viewMode = m;
+    for (const k of Object.keys(viewButtons)) {
+      viewButtons[k].classList.toggle("ek-active", k === viewMode);
+    }
+    syncTypeTabs();
+    if (viewMode === "element") {
+      coreFrame.style.display = "none";
+      elementFrame.style.display = "";
+      elemBlock.style.display = "";
+      modRowRT.style.display = "none";
+      modRowTG.style.display = "none";
+      cap.textContent = "Single element of E6: su(3) triangle + flag data";
+      if (elementRenderer) elementRenderer.resize();
+      applyElement();
+    } else {
+      coreFrame.style.display = "";
+      elementFrame.style.display = "none";
+      elemBlock.style.display = "none";
+      modRowRT.style.display = "";
+      modRowTG.style.display = "";
+      cap.textContent = coreCapText();
+      if (coreView) coreView.resize();
+      apply();
+    }
+  }
+
   function sync() {
     for (const key of Object.keys(tabButtons)) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
@@ -432,7 +606,7 @@ function activate(container) {
       coreView.setLayout(lay);
       coreView.refreshTheme();
     }
-    cap.textContent = "ALE core of " + q.name + ": exceptional \u2119\u00b9's";
+    if (viewMode === "core") cap.textContent = coreCapText();
     apply();
   }
 
@@ -440,21 +614,26 @@ function activate(container) {
   if (typeof ResizeObserver !== "undefined") {
     const ro = new ResizeObserver(function () {
       if (coreView && coreView.resize) coreView.resize();
+      if (elementRenderer) elementRenderer.resize();
     });
-    ro.observe(frame);
+    ro.observe(coreFrame);
+    ro.observe(elementFrame);
   } else {
     window.addEventListener("resize", function () {
       if (coreView && coreView.resize) coreView.resize();
+      if (elementRenderer) elementRenderer.resize();
     });
   }
 
   // theme repaint
   const themeObserver = new MutationObserver(function () {
     if (coreView) coreView.refreshTheme();
+    if (elementRenderer) elementRenderer.refreshTheme();
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   sync();
+  setMode("core");
 }
 
 const widget = document.getElementById("ek-nakajima-widget");
