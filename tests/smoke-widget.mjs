@@ -6,7 +6,7 @@
 // and a universal Proxy stub for a global `THREE` covering the pieces
 // widget.js / core-view.js touch. It then imports widget.js (copied to
 // ./widget.js by run.sh) and asserts the widget mounts, the view toggle
-// exists, switching to "Single element" builds the canvas view, and driving
+// exists, switching to "Flag incidence" builds the canvas view, and driving
 // the |z| / theta inputs does not throw and runs the solve path.
 //
 // Run from tests/ (see run.sh):  node smoke-widget.mjs
@@ -199,9 +199,9 @@ async function main() {
   const typeBtn = findByText(container, "E6");
   check("type tab 'E6' exists", !!typeBtn);
   const coreBtn = findByText(container, "ALE core");
-  const elemBtn = findByText(container, "Single element");
+  const elemBtn = findByText(container, "Flag incidence");
   check("view toggle 'ALE core' exists", !!coreBtn);
-  check("view toggle 'Single element' exists", !!elemBtn);
+  check("view toggle 'Flag incidence' exists", !!elemBtn);
   check("default view is ALE core (active class)", !!coreBtn && coreBtn.classList.contains("ek-active"));
 
   if (elemBtn) elemBtn._fire("click", { type: "click" });
@@ -210,13 +210,13 @@ async function main() {
   const allEls = walk(container, []);
   let canvas = null;
   for (let i = 0; i < allEls.length; i++) if (allEls[i].tagName === "CANVAS") { canvas = allEls[i]; break; }
-  check("switching to Single element builds a canvas view", !!canvas);
+  check("switching to Flag incidence builds a canvas view", !!canvas);
 
   const frames = allEls.filter(function (e) { return e.tagName === "DIV" && e.classList && e.classList.contains("ek-frame"); });
   const hiddenFrames = frames.filter(function (e) { return e.style.display === "none"; });
-  check("Single element shows one view frame and hides the other",
+  check("Flag incidence shows one view frame and hides the other",
     frames.length === 2 && hiddenFrames.length === 1, "frames=" + frames.length + " hidden=" + hiddenFrames.length);
-  check("view toggle active class moved to Single element",
+  check("view toggle active class moved to Flag incidence",
     !!elemBtn && elemBtn.classList.contains("ek-active") && !coreBtn.classList.contains("ek-active"));
 
   const ranges = allEls.filter(function (e) { return e.tagName === "INPUT" && e.type === "range"; });
@@ -224,13 +224,13 @@ async function main() {
 
   const ctx = canvas && canvas._ctx ? canvas._ctx : null;
   const before = ctx ? ctx.calls.length : 0;
-  check("element renderer drew on switch (solve path ran)", before > 0, "calls=" + before);
+  check("element renderer drew on switch (incidence path ran)", before > 0, "calls=" + before);
 
   // A status line reports the solve.
   const solved = allEls.some(function (e) {
-    return typeof e.textContent === "string" && e.textContent.indexOf("solved") >= 0;
+    return typeof e.textContent === "string" && e.textContent.indexOf("Incidence at") >= 0;
   });
-  check("solve-status readout reports a solve", solved);
+  check("incidence-status readout reports current chart", solved);
 
   // Drive every range input (|z|, theta included) and require no throw.
   let drove = false;
@@ -248,7 +248,24 @@ async function main() {
   flushRaf(); // run the coalesced solves queued by the input events
 
   const after = ctx ? ctx.calls.length : 0;
-  check("solver path re-ran and redrew after input", after > before, "before=" + before + " after=" + after);
+  check("incidence path re-ran and redrew after input", after > before, "before=" + before + " after=" + after);
+
+  const concurrent = findByText(container, "Concurrent lines");
+  concurrent._fire("click", { type: "click" });
+  flushRaf();
+  check("concurrent example identifies common intersection",
+    !!findByText(container, "The three lines meet at one point."));
+  const cross = findByText(container, "Cross-incidence");
+  cross._fire("click", { type: "click" });
+  flushRaf();
+  const yesCount = walk(container, []).filter(function (e) {
+    return e.tagName === "TD" && e.textContent === "Yes";
+  }).length;
+  check("z=0 displays cross-incidence without balancing solve", yesCount === 4);
+  findByText(container, "Generic")._fire("click", { type: "click" });
+  flushRaf();
+  check("generic example clears special cross-incidence",
+    walk(container, []).filter(function (e) { return e.tagName === "TD" && e.textContent === "Yes"; }).length === 3);
 
   console.log("smoke-widget: " + pass + "/" + (pass + fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);

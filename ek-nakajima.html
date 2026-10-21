@@ -87,16 +87,10 @@
       for E6, seven for E7, eight for E8 — meeting at points dual to the Dynkin
       edges. The widget below draws this core as an externally tangent sphere
       packing and lets you move a marker through its normal directions with the
-      same interaction as the hyperpolygon side view. The <em>Single element</em>
-      view solves the real moment maps live for the E6 chart and draws the
-      resulting closed triangle in \(\mathfrak{su}(3)\) together with projected
-      flag decorations.
+      same interaction as the hyperpolygon side view. The <em>Flag incidence</em> view shows three projective lines with marked points, extracted from the three flags of the candidate E6 chart. Use the examples to see generic flags, concurrent lines, and a cross-incidence.
     </p>
     <p class="note">
-      The core / space view and the E6 single-element solver are in place. The
-      single-element picture is a projection of the eight-dimensional
-      \(\mathfrak{su}(3)\) moment-map data and is <em>not</em> injective on the
-      moduli space. The type-D4 member of the family is the
+      The incidence drawing is a schematic of complex projective flags. It preserves point-on-line relations, but distances and angles have no metric meaning. Incidence alone does not encode stability, real moment-map balance, or all moduli data. The type-D4 member of the family is the
       <a href="https://aryayae.com/hyperpolygon-moduli-spaces/">hyperpolygon</a>.
     </p>
   </div>
@@ -4167,236 +4161,333 @@ function elementScreen(view, cam, size) {
 return { viewBasis, projectPoint, projectDepth, fitCamera, elementScreen };
 })();
 
+// ---- module: flag-incidence ----
+const __ek_mod_flag_incidence = (function () {
+// Numerical incidence of E6 flags L_i = im(A_i a_i) in P_i = im(A_i).
+// Points and dual lines are complex homogeneous vectors. The dual pairing is
+// BILINEAR (not Hermitian). This forgets gauge-dependent lengths and angles.
+// Unit-norm residuals <= tolerance are classified as zero; this is a numerical
+// diagnostic, not an exact certificate. Very ill-conditioned gauges can change
+// a tolerance-based classification.
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const cross = (a, b) => [
+  sub(mul(a[1], b[2]), mul(a[2], b[1])),
+  sub(mul(a[2], b[0]), mul(a[0], b[2])),
+  sub(mul(a[0], b[1]), mul(a[1], b[0])),
+];
+const dot = (a, b) => a.reduce((s, z, i) => add(s, mul(z, b[i])), [0, 0]);
+const norm = (v) => Math.hypot(...v.reduce((a, z) => a.concat(z), []));
+function unit(v) {
+  const scale = Math.max(...v.reduce((a, z) => a.concat(z.map(Math.abs)), []));
+  if (!(scale > 0) || !Number.isFinite(scale)) return null;
+  const w = v.map((z) => z.map((x) => x / scale));
+  const n = norm(w);
+  return w.map((z) => z.map((x) => x / n));
+}
+const matrix = (f) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => f(i, j)));
+
+function flagIncidence(rep, tolerance = 1e-8) {
+  const fail = (reason) => ({ valid: false, reason, tolerance, numerical: true });
+  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid incidence tolerance.");
+  const points = [], dualLines = [];
+  try {
+    for (let i = 0; i < 3; i++) {
+      const A = rep.A[i], a = rep.a[i];
+      if (A.length !== 3 || A.some((r) => r.length !== 2) ||
+          a.length !== 2 || a.some((r) => r.length !== 1)) {
+        return fail("Incidence requires three flags of dimensions 1 and 2 in C³.");
+      }
+      const u = unit(A.map((r) => r[0])), v = unit(A.map((r) => r[1]));
+      if (!u || !v) return fail(`Flag ${i + 1}: the plane map has rank below two.`);
+      const n = cross(u, v);
+      if (!(norm(n) > tolerance)) return fail(`Flag ${i + 1}: the plane map is numerically rank deficient.`);
+      // Scale the maps before multiplication to avoid overflow/underflow.
+      const flatA = unit(A.reduce((out, row) => out.concat(row), []));
+      const av = unit(a.map((r) => r[0]));
+      if (!flatA || !av) return fail(`Flag ${i + 1}: no projective point is defined.`);
+      const p = [0, 1, 2].map((r) => add(mul(flatA[2 * r], av[0]), mul(flatA[2 * r + 1], av[1])));
+      if (!(norm(p) > tolerance)) return fail(`Flag ${i + 1}: the point map is numerically zero.`);
+      points.push(unit(p));
+      dualLines.push(unit(n));
+    }
+  } catch (_) {
+    return fail("The representation does not supply three finite E6 flags.");
+  }
+  const residuals = matrix((i, j) => norm([dot(dualLines[j], points[i])]));
+  return {
+    valid: true, numerical: true, tolerance, points, dualLines, residuals,
+    incident: matrix((i, j) => residuals[i][j] <= tolerance),
+    pointEqual: matrix((i, j) => norm(cross(points[i], points[j])) <= tolerance),
+    lineEqual: matrix((i, j) => norm(cross(dualLines[i], dualLines[j])) <= tolerance),
+    concurrent: norm([dot(dualLines[0], cross(dualLines[1], dualLines[2]))]) <= tolerance,
+    collinear: norm([dot(points[0], cross(points[1], points[2]))]) <= tolerance,
+  };
+}
+
+// A combinatorial REAL diagram, not a real projection of CP² and not a complete
+// projective invariant. Preserves the nine incidences, equal points, equal lines,
+// and concurrency of the lines. Additional point collinearity is not encoded.
+// All coordinates are in [-1,1]. Inconsistent numerical classifications produce
+// an explicit unavailable result rather than an inaccurate drawing.
+function incidenceLayout(data) {
+  const fail = (reason) => ({ valid: false, reason });
+  if (!data || !data.valid) return fail(data && data.reason || "Flag incidence is unavailable.");
+  const ids = [], reps = [];
+  for (let i = 0; i < 3; i++) {
+    let k = reps.findIndex((j) => data.lineEqual[i][j]);
+    if (k < 0) { k = reps.length; reps.push(i); }
+    ids.push(k);
+  }
+  const equations = reps.length === 3 && !data.concurrent ?
+    [[0, 1, -0.45], [1.5, 1, 0.55], [-1.5, 1, 0.55]] :
+    [[0, 1, 0], [-1, 1, 0], [1, 1, 0]];
+  function segment(l) {
+    const hits = [];
+    [-0.92, 0.92].forEach((v) => {
+      if (l[1]) hits.push([v, -(l[0] * v + l[2]) / l[1]]);
+      if (l[0]) hits.push([-(l[1] * v + l[2]) / l[0], v]);
+    });
+    const inside = hits.filter((p, i) => p.every((v) => Math.abs(v) <= 0.9200001) &&
+      hits.slice(0, i).every((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-8));
+    return [inside[0], inside[1]];
+  }
+  const uniqueLines = equations.slice(0, reps.length);
+  const lines = ids.map((k) => segment(uniqueLines[k]));
+  const points = [];
+  const on = (p, l) => Math.abs(l[0] * p[0] + l[1] * p[1] + l[2]) < 1e-7;
+  const equal = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-7;
+  for (let i = 0; i < 3; i++) {
+    const same = points.findIndex((_, j) => data.pointEqual[i][j]);
+    if (same >= 0) { points.push(points[same].slice()); continue; }
+    const through = uniqueLines.filter((_, k) => data.incident[i][reps[k]]);
+    if (!through.length) return fail("The numerical incidence pattern has no containing flag line.");
+    let candidates;
+    if (through.length > 1) {
+      const a = through[0], b = through[1], det = a[0] * b[1] - a[1] * b[0];
+      if (Math.abs(det) < 1e-10) return fail("The numerical line classes are inconsistent.");
+      candidates = [[(a[1] * b[2] - a[2] * b[1]) / det,
+        (a[2] * b[0] - a[0] * b[2]) / det]];
+    } else {
+      const ends = segment(through[0]);
+      candidates = [0.28, 0.68, 0.42, 0.82, 0.15, 0.56].map((t) =>
+        ends[0].map((v, k) => v + t * (ends[1][k] - v)));
+    }
+    const p = candidates.find((p) =>
+      ids.every((k, j) => on(p, uniqueLines[k]) === data.incident[i][j]) &&
+      points.every((q, j) => equal(p, q) === data.pointEqual[i][j]));
+    if (!p) return fail("The numerical incidence pattern cannot be drawn consistently at this tolerance.");
+    points.push(p);
+  }
+  // Validate the entire realization, including equivalence-class transitivity.
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    if (on(points[i], uniqueLines[ids[j]]) !== data.incident[i][j] ||
+        equal(points[i], points[j]) !== data.pointEqual[i][j] ||
+        (ids[i] === ids[j]) !== data.lineEqual[i][j]) {
+      return fail("The numerical incidence classification is internally inconsistent.");
+    }
+  }
+  return { valid: true, points, lines, schematic: true };
+}
+
+return { flagIncidence, incidenceLayout };
+})();
+
 // ---- module: element-render ----
 const __ek_mod_element_render = (function () {
-const { elementScreen } = __ek_mod_element_screen;
-// element-render.js — browser-only canvas renderer for the single-element
-// view. Factory `makeElementView(host, { getPalette })` returns a small handle:
-//
-//   { setData(view), setStatus(text, kind), refreshTheme(), resize(), getCamera() }
-//
-// It draws the V2 "su(3) triangle + flag markers" display data (element-view.js)
-// with the pure orthographic camera/projection in element-screen.js: the three
-// branch-coloured triangle edges and vertices, plus the line (and plane) flag
-// markers as dots connected to their edge midpoints.
-//
-// The drawing is deliberately a DISPLAY view: it is a projection of the 8-D
-// su(3) data and is NOT claimed to be injective (see view.notes). It is not a
-// solver and holds no state beyond the last view and the camera.
-//
-// Browser only (needs document/canvas): it never throws on a null view (it
-// draws an empty frame) and the caller keeps the last good view.
-//
-// Style/palette conventions mirror the ALE-core widget (widget.js) and the
-// three.js factory in core-view.js: transparent background, theme-driven
-// colours read through getPalette() + document[data-theme].
+const { incidenceLayout } = __ek_mod_flag_incidence;
+﻿// Incidence-only projective schematic. The numerical table is authoritative;
+// distances and angles do not encode a metric, stability, or moment maps.
 
 
-
-// Branch palette: three distinguishable hues, readable on the light and dark
-// widget backgrounds. Kept in the same muted family as the core palette.
 const BRANCH = {
-  light: ["#c0504d", "#2f6fb0", "#c99a2e"],
+  light: ["#b5413b", "#2467aa", "#96700f"],
   dark: ["#ff8074", "#6cb6ff", "#e3b341"],
 };
-const MARK_LINE = { light: "#2b3440", dark: "#e8e8e8" };
-const MARK_PLANE = { light: "#8a93a0", dark: "#9aa4b2" };
-const VERTEX = { light: "#2b3440", dark: "#f0f0f0" };
-
-function isDarkRoot() {
-  return document.documentElement.getAttribute("data-theme") === "dark";
-}
+const POINT = ["p₁", "p₂", "p₃"];
+const LINE = ["ℓ₁", "ℓ₂", "ℓ₃"];
 
 function makeElementView(host, opts) {
   opts = opts || {};
-  const getPalette = opts.getPalette || function () { return {}; };
-
   const canvas = document.createElement("canvas");
   canvas.style.display = "block";
   canvas.style.width = "100%";
-  canvas.style.height = "100%";
-  canvas.style.touchAction = "none";
-  canvas.style.cursor = "grab";
+  canvas.style.height = "55%";
+  canvas.style.cursor = "default";
+  if (canvas.setAttribute) {
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "Schematic of three projective flags; incidence values are in the table below.");
+  }
   host.appendChild(canvas);
-
   const ctx = canvas.getContext ? canvas.getContext("2d") : null;
-
+  const details = document.createElement("div");
+  details.style.position = "absolute";
+  details.style.top = "55%";
+  details.style.bottom = "0";
+  details.style.left = "0";
+  details.style.right = "0";
+  details.style.overflow = "auto";
+  details.style.padding = "4px 12px 8px";
+  details.style.fontSize = "12px";
+  details.style.lineHeight = "1.35";
+  host.appendChild(details);
+  const legend = document.createElement("div");
+  legend.textContent = "Points pᵢ = ℙ(Lᵢ) · Lines ℓᵢ = ℙ(Pᵢ)";
+  details.appendChild(legend);
+  const table = document.createElement("table");
+  table.style.margin = "4px 0";
+  table.style.fontSize = "inherit";
+  table.style.width = "100%";
+  table.style.borderCollapse = "collapse";
+  const cap = document.createElement("caption");
+  cap.textContent = "Numerical incidence: does pᵢ lie on ℓⱼ?";
+  cap.style.textAlign = "left";
+  cap.style.padding = "0";
+  table.appendChild(cap);
+  const header = document.createElement("tr");
+  ["", LINE[0], LINE[1], LINE[2]].forEach(function (label) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    cell.scope = "col";
+    cell.style.padding = "1px 8px";
+    header.appendChild(cell);
+  });
+  table.appendChild(header);
+  const cells = [];
+  for (let i = 0; i < 3; i++) {
+    const row = document.createElement("tr");
+    const label = document.createElement("th");
+    label.scope = "row";
+    label.textContent = POINT[i];
+    row.appendChild(label);
+    cells[i] = [];
+    for (let j = 0; j < 3; j++) {
+      const cell = document.createElement("td");
+      cell.style.textAlign = "center";
+      cell.style.padding = "1px 8px";
+      cell.textContent = "—";
+      row.appendChild(cell);
+      cells[i].push(cell);
+    }
+    table.appendChild(row);
+  }
+  details.appendChild(table);
+  const relations = document.createElement("div");
+  details.appendChild(relations);
+  const caption = document.createElement("div");
+  details.appendChild(caption);
   const status = document.createElement("div");
   status.className = "ek-elem-status";
-  status.style.position = "absolute";
-  status.style.left = "8px";
-  status.style.bottom = "6px";
-  status.style.fontSize = "0.8em";
-  status.style.pointerEvents = "none";
   status.style.whiteSpace = "pre-line";
-  host.appendChild(status);
-
-  const cam = { azimuth: 0.6, elevation: 0.35, zoom: 1 };
-  let view = null;
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
+  details.appendChild(status);
+  let data = null;
+  let layout = null;
+  let statusKind = "";
 
   function palette() {
-    const dark = isDarkRoot();
-    const p = getPalette() || {};
-    return {
-      branch: BRANCH[dark ? "dark" : "light"],
-      markLine: MARK_LINE[dark ? "dark" : "light"],
-      markPlane: MARK_PLANE[dark ? "dark" : "light"],
-      vertex: p.sphere === 0xffffff ? "#f0f0f0" : VERTEX[dark ? "dark" : "light"],
-      text: p.caption || (dark ? "#a0a0a0" : "#666666"),
-    };
-  }
-
-  function sizeOf() {
-    const w = host.clientWidth || 0;
-    const h = host.clientHeight || 0;
-    return { width: w, height: h };
-  }
-
-  function drawDot(p, r, fill) {
-    ctx.beginPath();
-    ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.fill();
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    const p = opts.getPalette ? opts.getPalette() || {} : {};
+    return { branch: BRANCH[dark ? "dark" : "light"], text: p.caption || (dark ? "#c0c6cf" : "#505762"), background: dark ? "#20242b" : "#ffffff" };
   }
 
   function draw() {
+    const pal = palette();
+    details.style.color = pal.text;
+    status.style.color = statusKind === "error" ? "#d64545" : statusKind === "warn" ? "#b27c22" : pal.text;
     if (!ctx) return;
-    const { width: w, height: h } = sizeOf();
+    const w = host.clientWidth || 0;
+    const h = Math.round((host.clientHeight || 0) * 0.55);
     if (w <= 0 || h <= 0) return;
-    const dpr = window.devicePixelRatio || 1;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-    }
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    if (!view) return;
-
-    const pal = palette();
-    const scr = elementScreen(view, cam, { width: w, height: h });
-
-    // Edges.
-    ctx.lineWidth = 2;
+    if (!data || !data.valid || !layout || !layout.valid) {
+      ctx.fillStyle = pal.text;
+      ctx.font = "13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Incidence picture unavailable", w / 2, h / 2);
+      return;
+    }
+    const sx = Math.max(1, w / 2 - 36);
+    const sy = Math.max(1, h / 2 - 27);
+    function pixel(p) { return [w / 2 + p[0] * sx, h / 2 - p[1] * sy]; }
     ctx.lineCap = "round";
-    for (let i = 0; i < scr.edges.length; i++) {
-      const e = scr.edges[i];
-      ctx.strokeStyle = pal.branch[i % pal.branch.length];
-      ctx.beginPath();
-      ctx.moveTo(e[0][0], e[0][1]);
-      ctx.lineTo(e[1][0], e[1][1]);
+    ctx.font = "bold 13px sans-serif";
+    ctx.textAlign = "left";
+    for (let i = 0; i < 3; i++) {
+      const a = pixel(layout.lines[i][0]);
+      const b = pixel(layout.lines[i][1]);
+      // Different dash patterns keep coincident lines identifiable without
+      // moving them off their true incidence locus.
+      ctx.strokeStyle = pal.branch[i];
+      ctx.lineWidth = 2;
+      if (ctx.setLineDash) ctx.setLineDash(i === 0 ? [] : i === 1 ? [8, 5] : [2, 5]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      let coincidentBefore = 0;
+      for (let j = 0; j < i; j++) if (data.lineEqual[i][j]) coincidentBefore++;
+      const t = 0.05 + coincidentBefore * 0.1;
+      ctx.fillStyle = pal.branch[i];
+      ctx.fillText(LINE[i], a[0] + (b[0] - a[0]) * t + 5, a[1] + (b[1] - a[1]) * t - 6);
+    }
+    if (ctx.setLineDash) ctx.setLineDash([]);
+    for (let i = 0; i < 3; i++) {
+      const p = pixel(layout.points[i]);
+      let groupIndex = 0;
+      for (let j = 0; j < i; j++) {
+        if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
+      }
+      // Concentric rings and stacked labels retain every coincident flag.
+      ctx.beginPath(); ctx.arc(p[0], p[1], 4 + 3 * groupIndex, 0, Math.PI * 2);
+      ctx.strokeStyle = pal.branch[i]; ctx.lineWidth = 2;
+      if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
       ctx.stroke();
-    }
-
-    // Flag markers: connector from the edge midpoint to the projected marker,
-    // then the marker dot (line markers filled, plane markers hollow).
-    const n = Math.min(scr.midpoints.length, scr.markersLine.length);
-    for (let i = 0; i < n; i++) {
-      ctx.strokeStyle = pal.markLine;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(scr.midpoints[i][0], scr.midpoints[i][1]);
-      ctx.lineTo(scr.markersLine[i][0], scr.markersLine[i][1]);
-      ctx.stroke();
-      drawDot(scr.markersLine[i], 3.2, pal.markLine);
-    }
-    for (let i = 0; i < scr.markersPlane.length; i++) {
-      const p = scr.markersPlane[i];
-      ctx.beginPath();
-      ctx.arc(p[0], p[1], 2.4, 0, Math.PI * 2);
-      ctx.strokeStyle = pal.markPlane;
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-    }
-
-    // Vertices on top.
-    for (let i = 0; i < scr.vertices.length; i++) {
-      drawDot(scr.vertices[i], 4, pal.branch[i % pal.branch.length]);
-    }
-    for (let i = 0; i < scr.vertices.length; i++) {
-      drawDot(scr.vertices[i], 1.8, pal.vertex);
+      ctx.fillStyle = pal.branch[i];
+      ctx.fillText(POINT[i], p[0] + 12, p[1] - 9 + groupIndex * 15);
     }
   }
 
-  function resize() {
+  function setData(view) {
+    data = view && view.incidence ? view.incidence : null;
+    layout = data && data.valid ? incidenceLayout(data) : null;
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        cells[i][j].textContent = data && data.valid ? (data.incident[i][j] ? "Yes" : "No") : "—";
+      }
+    }
+    const reason = !data ? "No flag data." : !data.valid ? data.reason : layout && !layout.valid ? layout.reason : "";
+    const equalities = [];
+    if (data && data.valid) {
+      for (let i = 0; i < 3; i++) {
+        for (let j = i + 1; j < 3; j++) {
+          if (data.pointEqual[i][j]) equalities.push(POINT[i] + " = " + POINT[j]);
+          if (data.lineEqual[i][j]) equalities.push(LINE[i] + " = " + LINE[j]);
+        }
+      }
+    }
+    relations.textContent = equalities.length ? "Coincidences: " + equalities.join("; ") + "." :
+      data && data.valid && data.concurrent ? "The three lines meet at one point." : "";
+    caption.textContent = reason ? String(reason) : "Schematic only: lengths, angles and point collinearity are not encoded. Incidence tolerance: " + String(data.tolerance) + ".";
     draw();
   }
-
-  function setData(v) {
-    view = v || null;
-    draw();
-  }
-
   function setStatus(text, kind) {
-    const pal = palette();
     status.textContent = text == null ? "" : String(text);
-    status.style.color =
-      kind === "error" ? "#d64545" : kind === "warn" ? "#c98a2e" : pal.text;
-  }
-
-  function refreshTheme() {
+    statusKind = kind || "";
     draw();
   }
-
-  function getCamera() {
-    return cam;
-  }
-
-  function onDown(ev) {
-    dragging = true;
-    lastX = ev.clientX || 0;
-    lastY = ev.clientY || 0;
-    canvas.style.cursor = "grabbing";
-    if (canvas.setPointerCapture) {
-      try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
-    }
-  }
-  function onMove(ev) {
-    if (!dragging) return;
-    const x = ev.clientX || 0;
-    const y = ev.clientY || 0;
-    cam.azimuth -= (x - lastX) * 0.008;
-    cam.elevation += (y - lastY) * 0.008;
-    cam.elevation = Math.max(-1.5, Math.min(1.5, cam.elevation));
-    lastX = x;
-    lastY = y;
-    draw();
-  }
-  function onUp() {
-    dragging = false;
-    canvas.style.cursor = "grab";
-  }
-  function onWheel(ev) {
-    if (ev.preventDefault) ev.preventDefault();
-    cam.zoom *= Math.exp(-(ev.deltaY || 0) * 0.001);
-    cam.zoom = Math.max(0.2, Math.min(5, cam.zoom));
-    draw();
-  }
-
-  if (canvas.addEventListener) {
-    canvas.addEventListener("pointerdown", onDown);
-    canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("pointerup", onUp);
-    canvas.addEventListener("pointerleave", onUp);
-    canvas.addEventListener("wheel", onWheel);
-  }
-
   if (typeof ResizeObserver !== "undefined") {
-    const ro = new ResizeObserver(resize);
+    const ro = new ResizeObserver(draw);
     ro.observe(host);
   } else if (typeof window !== "undefined" && window.addEventListener) {
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", draw);
   }
-  resize();
-
+  setData(null);
   return {
-    setData: setData,
-    setStatus: setStatus,
-    refreshTheme: refreshTheme,
-    resize: resize,
-    getCamera: getCamera,
+    setData: setData, setStatus: setStatus, refreshTheme: draw, resize: draw,
+    // Retained for callers of the former camera API; this picture is fixed.
+    getCamera: function () { return { azimuth: 0, elevation: 0, zoom: 1 }; },
   };
 }
 
@@ -4407,9 +4498,9 @@ return { makeElementView };
 const __ek_mod_widget = (function () {
 const { AFFINE_ADE } = __ek_mod_quiver_data;
 const { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } = __ek_mod_core_view;
-const { solveElement } = __ek_mod_element_model;
+const { chartAt } = __ek_mod_chart;
+const { flagIncidence } = __ek_mod_flag_incidence;
 const { makeElementView } = __ek_mod_element_render;
-const { INJECTIVITY_NOTE } = __ek_mod_element_view;
 // E_k Nakajima quiver-varieties widget (2026-10-02 rework): the ALE core
 // side view for the 4-dimensional Nakajima quiver varieties of affine ADE
 // type E6/E7/E8.
@@ -4427,10 +4518,8 @@ const { INJECTIVITY_NOTE } = __ek_mod_element_view;
 // to the base of the next sphere outward, "lim t->0" at its base moves to
 // the tip of the previous one. See core-view.js.
 //
-// The single-element view (the real moment maps mu_R for r_star >= 3) is an
-// OPEN math question (agent_instructions/ek-nakajima.md, task 1); the dot's
-// motion here is a deliberate, editable placeholder built on the
-// hyperpolygon (r, theta, t, phi) interaction.
+// The E6 element panel shows projective flag incidence from the candidate
+// complex chart. Its schematic deliberately carries no balancing/stability data.
 //
 // Loaded as an ES module after the vendored three.min.js and OrbitControls
 // (global THREE), mirroring assets/js/hyperpolygon/widget.js.
@@ -4440,15 +4529,9 @@ const { INJECTIVITY_NOTE } = __ek_mod_element_view;
 
 
 
+const INCIDENCE_NOTE = "Incidence schematic of three complex flags: p_i = P(L_i), line i = P(P_i). Positions and angles have no metric meaning. This does not encode stability or real moment-map balance.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
-
-// Fixed certified levels for the E6 single-element view: alpha = (3,3,3),
-// gamma = (1,2,3) (Milestone 1 certified fixture).
-const ELEM_LEVELS = [[3, 1], [3, 2], [3, 3]];
-const ELEM_LEVELS_LABEL =
-  "levels: \u03b1 = (" + ELEM_LEVELS.map((L) => L[0]).join(",") + "), " +
-  "\u03b3 = (" + ELEM_LEVELS.map((L) => L[1]).join(",") + ")";
 
 // Same palette values as the hyperpolygon side view (user request: match the
 // coloring scheme there).
@@ -4598,7 +4681,7 @@ function activate(container) {
   container.appendChild(viewTabs);
   const VIEW_KEYS = [
     { id: "core", label: "ALE core" },
-    { id: "element", label: "Single element" },
+    { id: "element", label: "Flag incidence" },
   ];
   const viewButtons = {};
   VIEW_KEYS.forEach(function (v) {
@@ -4732,9 +4815,7 @@ function activate(container) {
   tCol.appendChild(limBtn);
   modRowTG.insertBefore(tCol, phCtl.box);
 
-  // --- single-element controls (shown only in "Single element" mode) ------
-  // A |z| slider (1..4, default 2) and a theta slider (-pi..pi, default 0),
-  // plus the fixed certified levels readout and a solve-status line.
+  // Incidence controls use the complex chart, including its special loci.
   const elemBlock = document.createElement("div");
   elemBlock.style.display = "none";
   elemBlock.style.marginTop = "10px";
@@ -4742,7 +4823,7 @@ function activate(container) {
 
   const elemSec = document.createElement("div");
   elemSec.className = "ek-sec";
-  elemSec.textContent = "Single element (E6, certified chart)";
+  elemSec.textContent = "Three flags (E6)";
   elemBlock.appendChild(elemSec);
 
   const elemRow = document.createElement("div");
@@ -4752,18 +4833,37 @@ function activate(container) {
   elemRow2.className = "ek-modrow";
   elemBlock.appendChild(elemRow2);
 
-  const zCtl = makeSlider("|z|", 1.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
-    "chart parameter |z| = r; the certified real moment map");
-  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, 0.01, 0, function (v) {
+  const zCtl = makeSlider("|z|", 0.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
+    "Magnitude of the candidate complex chart parameter");
+  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, "any", 0, function (v) {
     return v.toFixed(2);
   }, [], elemRow2, "phase of z = |z| exp(i theta)");
   zCtl.box._role = "elementZ";
   elemThCtl.box._role = "elementTheta";
 
+  const examples = document.createElement("div");
+  examples.style.display = "flex";
+  examples.style.flexWrap = "wrap";
+  examples.style.gap = "6px";
+  examples.style.marginTop = "10px";
+  [["Generic", 2], ["Concurrent lines", 1], ["Cross-incidence", 0]].forEach(function (entry) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ek-btn";
+    button.textContent = entry[0];
+    button.addEventListener("click", function () {
+      zCtl.input.value = String(entry[1]);
+      elemThCtl.input.value = "0";
+      applyElement();
+    });
+    examples.appendChild(button);
+  });
+  elemBlock.appendChild(examples);
+
   const levelsLine = document.createElement("div");
   levelsLine.style.fontSize = "0.8em";
   levelsLine.style.marginTop = "6px";
-  levelsLine.textContent = ELEM_LEVELS_LABEL;
+  levelsLine.textContent = "E6 candidate y = 0 chart; z = |z| exp(i\u03b8).";
   elemBlock.appendChild(levelsLine);
 
   const elemStatus = document.createElement("div");
@@ -4777,7 +4877,7 @@ function activate(container) {
   const elemNote = document.createElement("div");
   elemNote.style.fontSize = "0.78em";
   elemNote.style.marginTop = "6px";
-  elemNote.textContent = INJECTIVITY_NOTE;
+  elemNote.textContent = INCIDENCE_NOTE;
   elemBlock.appendChild(elemNote);
 
   // --- beta panel stub (user request 2026-10-02): the container exists so
@@ -4796,7 +4896,6 @@ function activate(container) {
   const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
   let lay = null;
   let lastState = null;
-  let prevLogGauge = undefined;
 
   // --- stratum stepping (user request 2026-10-02) -------------------------
   // t is local to ONE exterior sphere; the lim button moves the dot by
@@ -4934,29 +5033,27 @@ function activate(container) {
   function applyElement() {
     if (elemPending) return;
     elemPending = true;
-    const run = function () { elemPending = false; runElementSolve(); };
+    const run = function () { elemPending = false; updateIncidence(); };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
     else setTimeout(run, 0);
   }
 
-  function runElementSolve() {
+  function updateIncidence() {
     if (!elementRenderer) return;
     const z = parseFloat(zCtl.input.value);
     const theta = parseFloat(elemThCtl.input.value);
     zCtl.updateReadout();
     elemThCtl.updateReadout();
 
-    const res = solveElement(z, theta, ELEM_LEVELS, { initialLogGauge: prevLogGauge });
-    if (res && res.success && res.view) {
-      prevLogGauge = res.logGauge;
-      elementRenderer.setData(res.view);
+    try {
+      const incidence = flagIncidence(chartAt(z, theta));
+      elementRenderer.setData({ incidence: incidence });
       elementRenderer.setStatus("", "info");
-      const nfev = res.diagnostics ? res.diagnostics.nfev : "?";
       elemStatus.textContent =
-        "solved  |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2) + "  (nfev " + nfev + ")";
-      elemNote.textContent = (res.view.notes && res.view.notes.injectivity) || INJECTIVITY_NOTE;
-    } else {
-      const msg = "solve failed at this (|z|,\u03b8) \u2014 showing last valid frame";
+        "Incidence at |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2);
+    } catch (error) {
+      const msg = "Flags unavailable at this chart parameter.";
+      elementRenderer.setData(null);
       elementRenderer.setStatus(msg, "warn");
       elemStatus.textContent = msg;
     }
@@ -4991,7 +5088,7 @@ function activate(container) {
       elemBlock.style.display = "";
       modRowRT.style.display = "none";
       modRowTG.style.display = "none";
-      cap.textContent = "Single element of E6: su(3) triangle + flag data";
+      cap.textContent = "E6 flag incidence: three projective lines with marked points";
       if (elementRenderer) elementRenderer.resize();
       applyElement();
     } else {

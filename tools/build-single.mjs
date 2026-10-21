@@ -18,8 +18,9 @@
 
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, ".."); // ek-nakajima-quiver-varieties/
 const SRC_JS = path.join(ROOT, "assets", "js", "ek-nakajima");
 const SRC_SHARED = path.join(ROOT, "assets", "js", "hyperpolygon");
@@ -43,6 +44,7 @@ const MODULES = [
   "element-model",
   "element-screen",
   "element-render",
+  "flag-incidence",
   "widget",
 ];
 

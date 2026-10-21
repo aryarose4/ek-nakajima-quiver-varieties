@@ -20,17 +20,7 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** This is a work in progress. The settled geometry layers, the ALE
-> **core / space view**, and — newly — the **verified mathematics of the
-> single-element view** are in place: the E6 real moment-map solver, the
-> Milestone-0 core, and the projected su(3) "triangle + flag" element view all
-> exist as dependency-free ES modules with Node batteries (`core-math.js` 40,
-> `solver.js` 35, `element-view.js` 28 checks). What remains is the **widget
-> integration**: driving these modules live from the $(r,\theta)$ controls and
-> rendering the element panel — the analogue of the hyperpolygon's live polygon
-> view. The type-D4 member of the family is the
-> [hyperpolygon](https://github.com/aryarose4/hyperpolygon-moduli-spaces),
-> whose interaction is the template used here.
+> **Status.** The ALE core explorer and E6 flag-incidence view are integrated. The latter replaces the projected su(3) polygon with three projective lines and marked points, plus an incidence table. It reads the candidate complex chart directly; it does not require a real moment-map solve or claim stability. The solver and older projection utilities remain available for mathematical validation.
 
 ## Try it
 
@@ -64,6 +54,8 @@ lets you move a marker through the normal directions with the same
 $(r,\theta,t,\phi)$ interaction as the hyperpolygon side view. Tabs switch
 between E6, E7 and E8.
 
+The **Flag incidence** tab is E6-only. It projectivizes each flag `L_i = im(A_i a_i) ? P_i = im(A_i)` into a point on a line. The table records all nine point-on-line relations. The real schematic records incidence, not a real slice of the complex projective plane: distances, angles, and generic motion are not moduli coordinates. The chart presets include `z=1` (concurrent lines) and `z=0` (a cross-incidence). These are configurations of flags, without a stability claim. Numerical classification uses normalized complex homogeneous coordinates and a displayed tolerance; exact incidence is invariant under complex gauge, while near-degenerate numerical decisions can depend on conditioning.
+
 ## The mathematics
 
 The construction (Nakajima '94) is the quiver analogue of the Kronheimer
@@ -90,8 +82,9 @@ layer uses a vendored three.js only.
 | `assets/js/ek-nakajima/element-view.js` | V2: the weighted-flag geometry at `y=0` and its projected su(3) "triangle + flag marker" display data. |
 | `assets/js/ek-nakajima/chart.js` | The candidate `y=0` chart `z = r e^{iθ}` and its rep, ported from the Python reference. |
 | `assets/js/ek-nakajima/element-model.js` | Pure driver: `solveElement(r, θ, levels, {initialLogGauge})` = chart -> warm-started solve -> element view. |
-| `assets/js/ek-nakajima/element-screen.js` | Pure orthographic camera + projection (`elementScreen`) used by the browser renderer. |
-| `assets/js/ek-nakajima/element-render.js` | Browser canvas renderer for the single-element view (orbit, zoom, themes). |
+| `assets/js/ek-nakajima/element-screen.js` | Legacy orthographic projection utility, retained for validation. |
+| `assets/js/ek-nakajima/flag-incidence.js` | Complex flag extraction, numerical incidence classification, and real schematic layout. |
+| `assets/js/ek-nakajima/element-render.js` | Theme-aware projective incidence schematic and accessible incidence table. |
 | `assets/js/ek-nakajima/quiver-data.js` | Per-type affine ADE data: nodes, edges, marks $=\delta$, junction, framing nodes, the finite core tree, and `validateQuiver`. |
 | `assets/js/ek-nakajima/tree-embed.js` | Shared pure radial tidy-tree embedding used by both layout layers. |
 | `assets/js/ek-nakajima/core-layout.js` | Quiet core-tree layout: a non-overlapping externally-tangent radial packing of the finite Dynkin core. |

@@ -15,28 +15,20 @@
 // to the base of the next sphere outward, "lim t->0" at its base moves to
 // the tip of the previous one. See core-view.js.
 //
-// The single-element view (the real moment maps mu_R for r_star >= 3) is an
-// OPEN math question (agent_instructions/ek-nakajima.md, task 1); the dot's
-// motion here is a deliberate, editable placeholder built on the
-// hyperpolygon (r, theta, t, phi) interaction.
+// The E6 element panel shows projective flag incidence from the candidate
+// complex chart. Its schematic deliberately carries no balancing/stability data.
 //
 // Loaded as an ES module after the vendored three.min.js and OrbitControls
 // (global THREE), mirroring assets/js/hyperpolygon/widget.js.
 
 import { AFFINE_ADE } from "./quiver-data.js";
 import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
-import { solveElement } from "./element-model.js";
+import { chartAt } from "./chart.js";
+import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
-import { INJECTIVITY_NOTE } from "./element-view.js";
+const INCIDENCE_NOTE = "Incidence schematic of three complex flags: p_i = P(L_i), line i = P(P_i). Positions and angles have no metric meaning. This does not encode stability or real moment-map balance.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
-
-// Fixed certified levels for the E6 single-element view: alpha = (3,3,3),
-// gamma = (1,2,3) (Milestone 1 certified fixture).
-const ELEM_LEVELS = [[3, 1], [3, 2], [3, 3]];
-const ELEM_LEVELS_LABEL =
-  "levels: \u03b1 = (" + ELEM_LEVELS.map((L) => L[0]).join(",") + "), " +
-  "\u03b3 = (" + ELEM_LEVELS.map((L) => L[1]).join(",") + ")";
 
 // Same palette values as the hyperpolygon side view (user request: match the
 // coloring scheme there).
@@ -186,7 +178,7 @@ function activate(container) {
   container.appendChild(viewTabs);
   const VIEW_KEYS = [
     { id: "core", label: "ALE core" },
-    { id: "element", label: "Single element" },
+    { id: "element", label: "Flag incidence" },
   ];
   const viewButtons = {};
   VIEW_KEYS.forEach(function (v) {
@@ -320,9 +312,7 @@ function activate(container) {
   tCol.appendChild(limBtn);
   modRowTG.insertBefore(tCol, phCtl.box);
 
-  // --- single-element controls (shown only in "Single element" mode) ------
-  // A |z| slider (1..4, default 2) and a theta slider (-pi..pi, default 0),
-  // plus the fixed certified levels readout and a solve-status line.
+  // Incidence controls use the complex chart, including its special loci.
   const elemBlock = document.createElement("div");
   elemBlock.style.display = "none";
   elemBlock.style.marginTop = "10px";
@@ -330,7 +320,7 @@ function activate(container) {
 
   const elemSec = document.createElement("div");
   elemSec.className = "ek-sec";
-  elemSec.textContent = "Single element (E6, certified chart)";
+  elemSec.textContent = "Three flags (E6)";
   elemBlock.appendChild(elemSec);
 
   const elemRow = document.createElement("div");
@@ -340,18 +330,37 @@ function activate(container) {
   elemRow2.className = "ek-modrow";
   elemBlock.appendChild(elemRow2);
 
-  const zCtl = makeSlider("|z|", 1.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
-    "chart parameter |z| = r; the certified real moment map");
-  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, 0.01, 0, function (v) {
+  const zCtl = makeSlider("|z|", 0.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
+    "Magnitude of the candidate complex chart parameter");
+  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, "any", 0, function (v) {
     return v.toFixed(2);
   }, [], elemRow2, "phase of z = |z| exp(i theta)");
   zCtl.box._role = "elementZ";
   elemThCtl.box._role = "elementTheta";
 
+  const examples = document.createElement("div");
+  examples.style.display = "flex";
+  examples.style.flexWrap = "wrap";
+  examples.style.gap = "6px";
+  examples.style.marginTop = "10px";
+  [["Generic", 2], ["Concurrent lines", 1], ["Cross-incidence", 0]].forEach(function (entry) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ek-btn";
+    button.textContent = entry[0];
+    button.addEventListener("click", function () {
+      zCtl.input.value = String(entry[1]);
+      elemThCtl.input.value = "0";
+      applyElement();
+    });
+    examples.appendChild(button);
+  });
+  elemBlock.appendChild(examples);
+
   const levelsLine = document.createElement("div");
   levelsLine.style.fontSize = "0.8em";
   levelsLine.style.marginTop = "6px";
-  levelsLine.textContent = ELEM_LEVELS_LABEL;
+  levelsLine.textContent = "E6 candidate y = 0 chart; z = |z| exp(i\u03b8).";
   elemBlock.appendChild(levelsLine);
 
   const elemStatus = document.createElement("div");
@@ -365,7 +374,7 @@ function activate(container) {
   const elemNote = document.createElement("div");
   elemNote.style.fontSize = "0.78em";
   elemNote.style.marginTop = "6px";
-  elemNote.textContent = INJECTIVITY_NOTE;
+  elemNote.textContent = INCIDENCE_NOTE;
   elemBlock.appendChild(elemNote);
 
   // --- beta panel stub (user request 2026-10-02): the container exists so
@@ -384,7 +393,6 @@ function activate(container) {
   const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
   let lay = null;
   let lastState = null;
-  let prevLogGauge = undefined;
 
   // --- stratum stepping (user request 2026-10-02) -------------------------
   // t is local to ONE exterior sphere; the lim button moves the dot by
@@ -522,29 +530,27 @@ function activate(container) {
   function applyElement() {
     if (elemPending) return;
     elemPending = true;
-    const run = function () { elemPending = false; runElementSolve(); };
+    const run = function () { elemPending = false; updateIncidence(); };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
     else setTimeout(run, 0);
   }
 
-  function runElementSolve() {
+  function updateIncidence() {
     if (!elementRenderer) return;
     const z = parseFloat(zCtl.input.value);
     const theta = parseFloat(elemThCtl.input.value);
     zCtl.updateReadout();
     elemThCtl.updateReadout();
 
-    const res = solveElement(z, theta, ELEM_LEVELS, { initialLogGauge: prevLogGauge });
-    if (res && res.success && res.view) {
-      prevLogGauge = res.logGauge;
-      elementRenderer.setData(res.view);
+    try {
+      const incidence = flagIncidence(chartAt(z, theta));
+      elementRenderer.setData({ incidence: incidence });
       elementRenderer.setStatus("", "info");
-      const nfev = res.diagnostics ? res.diagnostics.nfev : "?";
       elemStatus.textContent =
-        "solved  |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2) + "  (nfev " + nfev + ")";
-      elemNote.textContent = (res.view.notes && res.view.notes.injectivity) || INJECTIVITY_NOTE;
-    } else {
-      const msg = "solve failed at this (|z|,\u03b8) \u2014 showing last valid frame";
+        "Incidence at |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2);
+    } catch (error) {
+      const msg = "Flags unavailable at this chart parameter.";
+      elementRenderer.setData(null);
       elementRenderer.setStatus(msg, "warn");
       elemStatus.textContent = msg;
     }
@@ -579,7 +585,7 @@ function activate(container) {
       elemBlock.style.display = "";
       modRowRT.style.display = "none";
       modRowTG.style.display = "none";
-      cap.textContent = "Single element of E6: su(3) triangle + flag data";
+      cap.textContent = "E6 flag incidence: three projective lines with marked points";
       if (elementRenderer) elementRenderer.resize();
       applyElement();
     } else {
