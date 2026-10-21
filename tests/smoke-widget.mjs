@@ -229,12 +229,6 @@ async function main() {
   const before = ctx ? ctx.calls.length : 0;
   check("element renderer drew on switch (incidence path ran)", before > 0, "calls=" + before);
 
-  // A status line reports the solve.
-  const solved = allEls.some(function (e) {
-    return typeof e.textContent === "string" && e.textContent.indexOf("Incidence at") >= 0;
-  });
-  check("incidence-status readout reports current chart", solved);
-
   // Drive every range input (|z|, theta included) and require no throw.
   let drove = false;
   try {

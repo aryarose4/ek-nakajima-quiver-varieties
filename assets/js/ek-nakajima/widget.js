@@ -26,7 +26,7 @@ import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from
 import { chartAt } from "./chart.js";
 import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
-const INCIDENCE_NOTE = "The diagram follows the E6 chart: three fixed points and two fixed lines; line 3 moves with |z| and carries the phase of z. Position plus attached phase determine the flag configuration in this chart.";
+const INCIDENCE_NOTE = "Line 3 uses |z|; its needle shows θ.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -361,7 +361,7 @@ function activate(container) {
   const levelsLine = document.createElement("div");
   levelsLine.style.fontSize = "0.8em";
   levelsLine.style.marginTop = "6px";
-  levelsLine.textContent = "E6 candidate y = 0 chart; z = |z| exp(i\u03b8).";
+  levelsLine.textContent = "z = |z| exp(iθ)";
   elemBlock.appendChild(levelsLine);
 
   const elemStatus = document.createElement("div");
@@ -539,8 +539,7 @@ function activate(container) {
       const incidence = flagIncidence(chartAt(z, theta));
       elementRenderer.setData({ incidence: incidence });
       elementRenderer.setStatus("", "info");
-      elemStatus.textContent =
-        "Incidence at |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2);
+      elemStatus.textContent = "";
     } catch (error) {
       const msg = "Flags unavailable at this chart parameter.";
       elementRenderer.setData(null);
@@ -578,7 +577,7 @@ function activate(container) {
       elemBlock.style.display = "";
       modRowRT.style.display = "none";
       modRowTG.style.display = "none";
-      cap.textContent = "E6 flag incidence: three projective lines with marked points";
+      cap.textContent = "E6 flags";
       if (elementRenderer) elementRenderer.resize();
       applyElement();
     } else {

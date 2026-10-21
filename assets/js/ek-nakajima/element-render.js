@@ -42,7 +42,7 @@ export function makeElementView(host, opts) {
   table.style.width = "100%";
   table.style.borderCollapse = "collapse";
   const cap = document.createElement("caption");
-  cap.textContent = "Numerical incidence: does pᵢ lie on ℓⱼ?";
+  cap.textContent = "pᵢ ∈ ℓⱼ?";
   cap.style.textAlign = "left";
   cap.style.padding = "0";
   table.appendChild(cap);
@@ -194,7 +194,8 @@ export function makeElementView(host, opts) {
     }
     relations.textContent = equalities.length ? "Coincidences: " + equalities.join("; ") + "." :
       data && data.valid && data.concurrent ? "The three lines meet at one point." : "";
-    caption.textContent = reason ? String(reason) : "Line position encodes |z|; its attached phase recovers z. Crossings of the modulus skeleton require compatible phases to represent complex concurrence. Incidence tolerance: " + String(data.tolerance) + ".";
+    caption.textContent = reason ? String(reason) : "Concurrency requires matching phases.";
+    table.title = data && data.valid ? "Incidence tolerance: " + String(data.tolerance) : "";
     draw();
   }
   function setStatus(text, kind) {

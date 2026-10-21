@@ -87,10 +87,10 @@
       for E6, seven for E7, eight for E8 — meeting at points dual to the Dynkin
       edges. The widget below draws this core as an externally tangent sphere
       packing and lets you move a marker through its normal directions with the
-      same interaction as the hyperpolygon side view. The <em>Flag incidence</em> view shows three projective lines with marked points, extracted from the three flags of the candidate E6 chart. The third line moves continuously with magnitude, and its attached needle shows the relative phase. Together they recover the complex chart parameter. Use the examples to see generic flags, concurrent lines, and a cross-incidence.
+      same interaction as the hyperpolygon side view. The <em>Flag incidence</em> view shows three marked projective lines for the E6 chart.
     </p>
     <p class="note">
-      The diagram uses a real modulus skeleton with phase data attached to the third line. Apparent crossings represent complex concurrence only when the phases match; the table gives the complex incidences. This view encodes the current E6 chart without imposing stability or real moment-map balance. The type-D4 member of the family is the
+      Line 3 uses \(|z|\); its needle shows \(\arg z\). The table records complex incidence. The type-D4 member of the family is the
       <a href="https://aryayae.com/hyperpolygon-moduli-spaces/">hyperpolygon</a>.
     </p>
   </div>
@@ -4315,7 +4315,7 @@ function makeElementView(host, opts) {
   table.style.width = "100%";
   table.style.borderCollapse = "collapse";
   const cap = document.createElement("caption");
-  cap.textContent = "Numerical incidence: does pᵢ lie on ℓⱼ?";
+  cap.textContent = "pᵢ ∈ ℓⱼ?";
   cap.style.textAlign = "left";
   cap.style.padding = "0";
   table.appendChild(cap);
@@ -4467,7 +4467,8 @@ function makeElementView(host, opts) {
     }
     relations.textContent = equalities.length ? "Coincidences: " + equalities.join("; ") + "." :
       data && data.valid && data.concurrent ? "The three lines meet at one point." : "";
-    caption.textContent = reason ? String(reason) : "Line position encodes |z|; its attached phase recovers z. Crossings of the modulus skeleton require compatible phases to represent complex concurrence. Incidence tolerance: " + String(data.tolerance) + ".";
+    caption.textContent = reason ? String(reason) : "Concurrency requires matching phases.";
+    table.title = data && data.valid ? "Incidence tolerance: " + String(data.tolerance) : "";
     draw();
   }
   function setStatus(text, kind) {
@@ -4696,7 +4697,7 @@ const { makeElementView } = __ek_mod_element_render;
 
 
 
-const INCIDENCE_NOTE = "The diagram follows the E6 chart: three fixed points and two fixed lines; line 3 moves with |z| and carries the phase of z. Position plus attached phase determine the flag configuration in this chart.";
+const INCIDENCE_NOTE = "Line 3 uses |z|; its needle shows θ.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -5031,7 +5032,7 @@ function activate(container) {
   const levelsLine = document.createElement("div");
   levelsLine.style.fontSize = "0.8em";
   levelsLine.style.marginTop = "6px";
-  levelsLine.textContent = "E6 candidate y = 0 chart; z = |z| exp(i\u03b8).";
+  levelsLine.textContent = "z = |z| exp(iθ)";
   elemBlock.appendChild(levelsLine);
 
   const elemStatus = document.createElement("div");
@@ -5209,8 +5210,7 @@ function activate(container) {
       const incidence = flagIncidence(chartAt(z, theta));
       elementRenderer.setData({ incidence: incidence });
       elementRenderer.setStatus("", "info");
-      elemStatus.textContent =
-        "Incidence at |z| = " + z.toFixed(2) + ",  \u03b8 = " + theta.toFixed(2);
+      elemStatus.textContent = "";
     } catch (error) {
       const msg = "Flags unavailable at this chart parameter.";
       elementRenderer.setData(null);
@@ -5248,7 +5248,7 @@ function activate(container) {
       elemBlock.style.display = "";
       modRowRT.style.display = "none";
       modRowTG.style.display = "none";
-      cap.textContent = "E6 flag incidence: three projective lines with marked points";
+      cap.textContent = "E6 flags";
       if (elementRenderer) elementRenderer.resize();
       applyElement();
     } else {
