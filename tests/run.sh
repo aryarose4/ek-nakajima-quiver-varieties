@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"
 
 SRC="../assets/js/ek-nakajima"
-for f in quiver-data.js core-layout.js diagram-layout.js tree-embed.js core-math.js solver.js element-view.js chart.js element-model.js element-screen.js element-render.js flag-incidence.js core-view.js widget.js; do
+for f in quiver-data.js core-layout.js diagram-layout.js tree-embed.js core-math.js solver.js element-view.js chart.js element-model.js element-screen.js element-render.js flag-incidence.js flag-diagram.js core-view.js widget.js; do
   cp "$SRC/$f" "./$f"
 done
 # core-view.js imports ../hyperpolygon/sideview-shared.js; flatten that one path
@@ -16,7 +16,7 @@ cp "$SRC/../hyperpolygon/sideview-shared.js" "./sideview-shared.js"
 sed -i 's#\.\./hyperpolygon/sideview-shared\.js#./sideview-shared.js#' core-view.js
 
 fail=0
-for f in validate-data.mjs validate-layout.mjs validate-diagram.mjs validate-math.mjs validate-solver.mjs validate-element.mjs validate-model.mjs validate-screen.mjs validate-incidence.mjs validate-triple-ratio.mjs smoke-widget.mjs; do
+for f in validate-data.mjs validate-layout.mjs validate-diagram.mjs validate-math.mjs validate-solver.mjs validate-element.mjs validate-model.mjs validate-screen.mjs validate-incidence.mjs validate-triple-ratio.mjs validate-flag-diagram.mjs smoke-widget.mjs; do
   echo "=== $f ==="
   if ! node "$f"; then
     fail=1

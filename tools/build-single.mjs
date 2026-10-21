@@ -45,6 +45,7 @@ const MODULES = [
   "element-screen",
   "element-render",
   "flag-incidence",
+  "flag-diagram",
   "widget",
 ];
 

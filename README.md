@@ -54,7 +54,12 @@ lets you move a marker through the normal directions with the same
 $(r,\theta,t,\phi)$ interaction as the hyperpolygon side view. Tabs switch
 between E6, E7 and E8.
 
-The **Flag incidence** tab is E6-only. It projectivizes each flag `L_i = im(A_i a_i) ? P_i = im(A_i)` into a point on a line. The table records all nine point-on-line relations. A live complex triple-ratio plot responds continuously to both sliders: its radius shows magnitude and its angle shows phase. For this chart `T = -z`, where `T = (n1(p2) n2(p3) n3(p1)) / (n1(p3) n2(p1) n3(p2))`. This ratio is unchanged by complex gauge or homogeneous rescaling. At zero its phase is undefined; a numerically zero denominator is reported as unavailable. The incidence schematic changes only when the incidence relations change. The real schematic records incidence, not a real slice of the complex projective plane: distances, angles, and generic motion are not moduli coordinates. The chart presets include `z=1` (concurrent lines) and `z=0` (a cross-incidence). These are configurations of flags, without a stability claim. Numerical classification uses normalized complex homogeneous coordinates and a displayed tolerance; exact incidence is invariant under complex gauge, while near-degenerate numerical decisions can depend on conditioning.
+The **Flag incidence** tab is E6-only. It projectivizes each flag `L_i = im(A_i a_i)` inside `P_i = im(A_i)` into a marked point on a line. Its decorated diagram varies continuously with the candidate complex chart, rather than depending only on discrete incidence tests.
+
+In the chosen projective frame the marked points are `e1,e2,e3` and the dual lines are `(0,-1,1), (1,0,-1), (-z,1,0)`. The first two lines and all three points therefore stay fixed. With `z = r exp(i theta)`, the third real skeleton line uses `r = |z|` and carries a needle for the relative coefficient phase `theta`. In the affine plane `x+y+w=1`, using coordinates `(y,w)`, that line is `(1+r)X+rY=r`. Its direction recovers `r`, and its attached phase recovers `z`. The needle shrinks continuously to zero when `r=0`. Thus the decorated diagram distinguishes the configurations in this chart; it is not an encoding of arbitrary flags or all points of the E6 variety.
+
+The table records all nine complex point-on-line relations. A crossing of the real modulus skeleton represents complex concurrence only when the phases match: `|z|=1` alone is insufficient, whereas `z=1` gives concurrent lines. The examples include `z=1` (concurrent lines) and `z=0` (a cross-incidence). Numerical incidence classification uses normalized complex homogeneous coordinates and a displayed tolerance. Stability and real moment-map balance are not encoded.
+
 
 ## The mathematics
 
@@ -84,7 +89,8 @@ layer uses a vendored three.js only.
 | `assets/js/ek-nakajima/element-model.js` | Pure driver: `solveElement(r, θ, levels, {initialLogGauge})` = chart -> warm-started solve -> element view. |
 | `assets/js/ek-nakajima/element-screen.js` | Legacy orthographic projection utility, retained for validation. |
 | `assets/js/ek-nakajima/flag-incidence.js` | Complex flag extraction, numerical incidence classification, and real schematic layout. |
-| `assets/js/ek-nakajima/element-render.js` | Theme-aware projective incidence schematic and accessible incidence table. |
+| `assets/js/ek-nakajima/flag-diagram.js` | Continuous chart geometry and relative line phase, with reconstruction of the complex parameter from the decorated diagram. |
+| `assets/js/ek-nakajima/element-render.js` | Theme-aware continuous flag diagram, attached line phase needle, and accessible complex incidence table. |
 | `assets/js/ek-nakajima/quiver-data.js` | Per-type affine ADE data: nodes, edges, marks $=\delta$, junction, framing nodes, the finite core tree, and `validateQuiver`. |
 | `assets/js/ek-nakajima/tree-embed.js` | Shared pure radial tidy-tree embedding used by both layout layers. |
 | `assets/js/ek-nakajima/core-layout.js` | Quiet core-tree layout: a non-overlapping externally-tangent radial packing of the finite Dynkin core. |

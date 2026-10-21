@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 function makeCtx() {
   const calls = [];
-  const ctx = { calls: calls, arcs: [] };
+  const ctx = { calls: calls, arcs: [], moves: [], lines: [] };
   const methods = [
     "clearRect", "setTransform", "scale", "translate", "rotate", "save", "restore",
     "beginPath", "closePath", "moveTo", "lineTo", "arc", "arcTo", "ellipse", "rect",
@@ -31,6 +31,8 @@ function makeCtx() {
     ctx[m] = function () {
       calls.push(m);
       if (m === "arc") ctx.arcs.push(Array.prototype.slice.call(arguments));
+      if (m === "moveTo") ctx.moves.push(Array.prototype.slice.call(arguments));
+      if (m === "lineTo") ctx.lines.push(Array.prototype.slice.call(arguments));
       if (m === "measureText") return { width: 0 };
       if (m === "createLinearGradient" || m === "createRadialGradient") return { addColorStop: function () {} };
     };
@@ -268,31 +270,30 @@ async function main() {
   check("generic example clears special cross-incidence",
     walk(container, []).filter(function (e) { return e.tagName === "TD" && e.textContent === "Yes"; }).length === 3);
 
-  const ratioPlot = walk(container, []).filter(function (e) { return e.tagName === "CANVAS"; })[1];
-  const ratioCtx = ratioPlot && ratioPlot._ctx;
-  const markerAt = function () { return ratioCtx.arcs[ratioCtx.arcs.length - 1]; };
-  const start = markerAt();
   const radius = ranges[ranges.length - 2];
   const phase = ranges[ranges.length - 1];
+  const beforeLine = ctx.lines.slice(-4)[2];
   radius.value = "3";
   radius._fire("input", { type: "input" });
   flushRaf();
-  const radial = markerAt();
-  check("magnitude slider visibly moves triple-ratio marker",
-    Math.abs(radial[0] - start[0]) > 10 && Math.abs(radial[1] - start[1]) < 1e-8);
+  const afterLine = ctx.lines.slice(-4)[2];
+  check("magnitude changes the third line in the incidence canvas",
+    Math.hypot(afterLine[0] - beforeLine[0], afterLine[1] - beforeLine[1]) > 1);
+  const beforeNeedle = ctx.lines[ctx.lines.length - 1];
   phase.value = String(Math.PI / 2);
   phase._fire("input", { type: "input" });
   flushRaf();
-  const angular = markerAt();
-  check("phase slider visibly rotates triple-ratio marker",
-    Math.abs(angular[0] - 80) < 1e-8 && angular[1] > 120);
-  const liveRatio = walk(container, []).find(function (e) { return e.className === "ek-triple-ratio-readout"; });
-  check("complex magnitude and phase match current sliders",
-    liveRatio.textContent.indexOf("− 3.0000i") >= 0 && liveRatio.textContent.indexOf("-1.5708 rad") >= 0);
+  const afterNeedle = ctx.lines[ctx.lines.length - 1];
+  check("phase rotates the decoration on line three in the same canvas",
+    Math.hypot(afterNeedle[0] - beforeNeedle[0], afterNeedle[1] - beforeNeedle[1]) > 10);
+  check("phase movement leaves the modulus skeleton fixed",
+    JSON.stringify(ctx.lines.slice(-4)[2]) === JSON.stringify(afterLine));
+  check("no separate triple-ratio plot substitutes for the flag diagram",
+    walk(container, []).filter(function (e) { return e.tagName === "CANVAS"; }).length === 1);
   cross._fire("click", { type: "click" });
   flushRaf();
-  check("zero triple ratio labels phase as undefined",
-    liveRatio.textContent.indexOf("undefined at T = 0") >= 0);
+  check("zero removes the line phase needle continuously",
+    JSON.stringify(ctx.moves[ctx.moves.length - 1]) === JSON.stringify(ctx.lines[ctx.lines.length - 1]));
 
   console.log("smoke-widget: " + pass + "/" + (pass + fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);

@@ -26,7 +26,7 @@ import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from
 import { chartAt } from "./chart.js";
 import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
-const INCIDENCE_NOTE = "Incidence schematic of three complex flags: p_i = P(L_i), line i = P(P_i). Positions and angles have no metric meaning. This does not encode stability or real moment-map balance.";
+const INCIDENCE_NOTE = "The diagram follows the E6 chart: three fixed points and two fixed lines; line 3 moves with |z| and carries the phase of z. Position plus attached phase determine the flag configuration in this chart.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -205,6 +205,7 @@ function activate(container) {
   viewCol.appendChild(coreFrame);
   const elementFrame = document.createElement("div");
   elementFrame.className = "ek-frame";
+  elementFrame.style.minHeight = "480px";
   elementFrame.style.display = "none";
   viewCol.appendChild(elementFrame);
   const cap = document.createElement("div");
@@ -390,7 +391,7 @@ function activate(container) {
     coreFrame.addEventListener("pointerenter", function () { coreView.setHover(true); });
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
-  const elementRenderer = makeElementView(elementFrame, { getPalette: palette, invariantHost: elemBlock });
+  const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
   let lay = null;
   let lastState = null;
 
