@@ -20,7 +20,7 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** The ALE core explorer and E6 flag-incidence view are integrated. The latter replaces the projected su(3) polygon with three projective lines and marked points, plus an incidence table. It reads the candidate complex chart directly; it does not require a real moment-map solve or claim stability. The solver and older projection utilities remain available for mathematical validation.
+> **Status.** The ALE core explorer and E6 flag-incidence view are integrated. The incidence view shows three marked projective lines, with hue for phase. Both views share their coordinates, with live complex x and y matrices above. It reads the candidate complex chart directly; it does not require a real moment-map solve or claim stability. The solver and older projection utilities remain available for mathematical validation.
 
 ## Try it
 
@@ -54,11 +54,14 @@ lets you move a marker through the normal directions with the same
 $(r,\theta,t,\phi)$ interaction as the hyperpolygon side view. Tabs switch
 between E6, E7 and E8.
 
-The **Flag incidence** tab is E6-only. It projectivizes each flag `L_i = im(A_i a_i)` inside `P_i = im(A_i)` into a marked point on a line. Its decorated diagram varies continuously with the candidate complex chart, rather than depending only on discrete incidence tests.
+The E6 incidence and moduli views appear together, with the complex arrow matrices above them. Shared controls use
 
-In the chosen projective frame the marked points are `e1,e2,e3` and the dual lines are `(0,-1,1), (1,0,-1), (-z,1,0)`. The first two lines and all three points therefore stay fixed. With `z = r exp(i theta)`, the third real skeleton line uses `r = |z|` and carries a needle for the relative coefficient phase `theta`. In the affine plane `x+y+w=1`, using coordinates `(y,w)`, that line is `(1+r)X+rY=r`. Its direction recovers `r`, and its attached phase recovers `z`. The needle shrinks continuously to zero when `r=0`. Thus the decorated diagram distinguishes the configurations in this chart; it is not an encoding of arbitrary flags or all points of the E6 variety.
+$$z=\frac{r}{1-r}e^{i\theta},\qquad 0\leq r\leq1.$$
 
-The table records all nine complex point-on-line relations. A crossing of the real modulus skeleton represents complex concurrence only when the phases match: `|z|=1` alone is insufficient, whereas `z=1` gives concurrent lines. The examples include `z=1` (concurrent lines) and `z=0` (a cross-incidence). Numerical incidence classification uses normalized complex homogeneous coordinates and a displayed tolerance. Stability and real moment-map balance are not encoded.
+Thus `r=1` is infinity, and concurrency occurs at `r=1/2, theta=0`. For the third branch,
+`A_3 = [e3, (1-r)e1 + r exp(i theta)e2]`; all reverse arrows are zero. These finite representatives satisfy the complex moment-map equations, without real balancing. The `t` and `phi` controls stay at zero.
+
+The chosen frame fixes the three marked points and first two lines. In affine coordinates the third real line is `X+rY=r`; its hue records the relative phase. Equal phases have equal colors. Saturation vanishes at `r=0,1`, where phase does not change the flag. Line position and hue recover the chart configuration. The E7/E8 tabs retain their moduli portraits; complex representatives are currently E6-only.
 
 
 ## The mathematics
@@ -90,13 +93,14 @@ layer uses a vendored three.js only.
 | `assets/js/ek-nakajima/element-screen.js` | Legacy orthographic projection utility, retained for validation. |
 | `assets/js/ek-nakajima/flag-incidence.js` | Complex flag extraction, numerical incidence classification, and real schematic layout. |
 | `assets/js/ek-nakajima/flag-diagram.js` | Continuous chart geometry and relative line phase, with reconstruction of the complex parameter from the decorated diagram. |
-| `assets/js/ek-nakajima/element-render.js` | Theme-aware continuous flag diagram, attached line phase needle, and accessible complex incidence table. |
+| `assets/js/ek-nakajima/element-render.js` | Continuous flag diagram with line hue for relative phase. |
 | `assets/js/ek-nakajima/quiver-data.js` | Per-type affine ADE data: nodes, edges, marks $=\delta$, junction, framing nodes, the finite core tree, and `validateQuiver`. |
 | `assets/js/ek-nakajima/tree-embed.js` | Shared pure radial tidy-tree embedding used by both layout layers. |
 | `assets/js/ek-nakajima/core-layout.js` | Quiet core-tree layout: a non-overlapping externally-tangent radial packing of the finite Dynkin core. |
 | `assets/js/ek-nakajima/diagram-layout.js` | Full affine-diagram layout (tree/cycle). Validated; not currently imported by the widget. |
 | `assets/js/ek-nakajima/core-view.js` | The generalized side view: `buildSideLayout`, the Node-safe `coreFlow`, and the browser `makeCoreView` three.js factory. |
-| `assets/js/ek-nakajima/widget.js` | DOM, the E6/E7/E8 tabs, the ALE-core / Single-element view toggle, the $(r,\theta,t,\phi)$ and $(|z|,\theta)$ sliders. |
+| `assets/js/ek-nakajima/representation-readout.js` | Live complex x and y arrow matrices for all three branches. |
+| `assets/js/ek-nakajima/widget.js` | Simultaneous incidence and moduli views with shared compact coordinates. |
 | `assets/js/hyperpolygon/sideview-shared.js` | The flow constants and vector helpers shared with the hyperpolygon side view (imported unchanged). |
 | `assets/js/ek-nakajima/lib/` | Vendored `three.min.js` and `OrbitControls.js`. |
 

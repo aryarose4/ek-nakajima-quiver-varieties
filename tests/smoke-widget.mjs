@@ -1,25 +1,13 @@
-// smoke-widget.mjs — headless smoke test for assets/js/ek-nakajima/widget.js.
-//
-// Hand-made stubs only (NO new dependencies, matching the earlier ek-core
-// scratch-stub approach): a fake `document`/`window`, `ResizeObserver`,
-// `MutationObserver`, `requestAnimationFrame`, a recording 2D canvas context,
-// and a universal Proxy stub for a global `THREE` covering the pieces
-// widget.js / core-view.js touch. It then imports widget.js (copied to
-// ./widget.js by run.sh) and asserts the widget mounts, the view toggle
-// exists, switching to "Flag incidence" builds the canvas view, and driving
-// the |z| / theta inputs does not throw and runs the solve path.
-//
-// Run from tests/ (see run.sh):  node smoke-widget.mjs
-//
-// This is a FULL widget-init smoke, not a reduced one: makeCoreView and
-// makeElementView both run against the stubs.
+// Headless integration smoke: simultaneous flag/moduli views, shared compact
+// coordinates, live complex x/y matrices, phase hue and projective endpoints.
+// DOM/canvas/THREE stubs only; tests/run.sh copies the live modules here.
 
 // ---------------------------------------------------------------------------
 // recording 2D context
 // ---------------------------------------------------------------------------
 function makeCtx() {
   const calls = [];
-  const ctx = { calls: calls, arcs: [], moves: [], lines: [] };
+  const ctx = { calls: calls, arcs: [], moves: [], lines: [], strokes: [] };
   const methods = [
     "clearRect", "setTransform", "scale", "translate", "rotate", "save", "restore",
     "beginPath", "closePath", "moveTo", "lineTo", "arc", "arcTo", "ellipse", "rect",
@@ -30,6 +18,7 @@ function makeCtx() {
   methods.forEach(function (m) {
     ctx[m] = function () {
       calls.push(m);
+      if (m === "stroke") ctx.strokes.push(ctx.strokeStyle);
       if (m === "arc") ctx.arcs.push(Array.prototype.slice.call(arguments));
       if (m === "moveTo") ctx.moves.push(Array.prototype.slice.call(arguments));
       if (m === "lineTo") ctx.lines.push(Array.prototype.slice.call(arguments));
@@ -189,108 +178,57 @@ const container = makeEl("div");
 registry["ek-nakajima-widget"] = container;
 
 async function main() {
-  let importError = null;
-  try {
-    await import("./widget.js");
-  } catch (e) {
-    importError = e;
-  }
-  check("widget.js imports without throwing", importError === null, importError && String(importError));
-
-  check("widget mounts (container has children)", container.children.length > 0);
-
-  const typeBtn = findByText(container, "E6");
-  check("type tab 'E6' exists", !!typeBtn);
-  const coreBtn = findByText(container, "ALE core");
-  const elemBtn = findByText(container, "Flag incidence");
-  check("view toggle 'ALE core' exists", !!coreBtn);
-  check("view toggle 'Flag incidence' exists", !!elemBtn);
-  check("default view is ALE core (active class)", !!coreBtn && coreBtn.classList.contains("ek-active"));
-
-  if (elemBtn) elemBtn._fire("click", { type: "click" });
-  flushRaf(); // run the coalesced first element solve
-
-  const allEls = walk(container, []);
-  let canvas = null;
-  for (let i = 0; i < allEls.length; i++) if (allEls[i].tagName === "CANVAS") { canvas = allEls[i]; break; }
-  check("switching to Flag incidence builds a canvas view", !!canvas);
-
-  const frames = allEls.filter(function (e) { return e.tagName === "DIV" && e.classList && e.classList.contains("ek-frame"); });
-  const hiddenFrames = frames.filter(function (e) { return e.style.display === "none"; });
-  check("Flag incidence shows one view frame and hides the other",
-    frames.length === 2 && hiddenFrames.length === 1, "frames=" + frames.length + " hidden=" + hiddenFrames.length);
-  check("view toggle active class moved to Flag incidence",
-    !!elemBtn && elemBtn.classList.contains("ek-active") && !coreBtn.classList.contains("ek-active"));
-
-  const ranges = allEls.filter(function (e) { return e.tagName === "INPUT" && e.type === "range"; });
-  check("element controls present (range inputs)", ranges.length >= 6, "n=" + ranges.length);
-
-  const ctx = canvas && canvas._ctx ? canvas._ctx : null;
-  const before = ctx ? ctx.calls.length : 0;
-  check("element renderer drew on switch (incidence path ran)", before > 0, "calls=" + before);
-
-  // Drive every range input (|z|, theta included) and require no throw.
-  let drove = false;
-  try {
-    for (let i = 0; i < ranges.length; i++) {
-      ranges[i].value = i === ranges.length - 1 ? "0.5" : "2.5";
-      ranges[i]._fire("input", { type: "input" });
-      drove = true;
-    }
-  } catch (e) {
-    check("driving |z| / theta inputs does not throw", false, String(e));
-  }
-  check("driving |z| / theta inputs does not throw", drove);
-
-  flushRaf(); // run the coalesced solves queued by the input events
-
-  const after = ctx ? ctx.calls.length : 0;
-  check("incidence path re-ran and redrew after input", after > before, "before=" + before + " after=" + after);
-
-  const concurrent = findByText(container, "Concurrent lines");
-  concurrent._fire("click", { type: "click" });
+  try { await import("./widget.js"); }
+  catch (error) { check("widget imports", false, String(error)); console.log(error.stack); process.exit(1); }
   flushRaf();
-  check("concurrent example identifies common intersection",
-    !!findByText(container, "The three lines meet at one point."));
-  const cross = findByText(container, "Cross-incidence");
-  cross._fire("click", { type: "click" });
-  flushRaf();
-  const yesCount = walk(container, []).filter(function (e) {
-    return e.tagName === "TD" && e.textContent === "Yes";
-  }).length;
-  check("z=0 displays cross-incidence without balancing solve", yesCount === 4);
-  findByText(container, "Generic")._fire("click", { type: "click" });
-  flushRaf();
-  check("generic example clears special cross-incidence",
-    walk(container, []).filter(function (e) { return e.tagName === "TD" && e.textContent === "Yes"; }).length === 3);
-
-  const radius = ranges[ranges.length - 2];
-  const phase = ranges[ranges.length - 1];
-  const beforeLine = ctx.lines.slice(-4)[2];
-  radius.value = "3";
-  radius._fire("input", { type: "input" });
-  flushRaf();
-  const afterLine = ctx.lines.slice(-4)[2];
-  check("magnitude changes the third line in the incidence canvas",
-    Math.hypot(afterLine[0] - beforeLine[0], afterLine[1] - beforeLine[1]) > 1);
-  const beforeNeedle = ctx.lines[ctx.lines.length - 1];
-  phase.value = String(Math.PI / 2);
-  phase._fire("input", { type: "input" });
-  flushRaf();
-  const afterNeedle = ctx.lines[ctx.lines.length - 1];
-  check("phase rotates the decoration on line three in the same canvas",
-    Math.hypot(afterNeedle[0] - beforeNeedle[0], afterNeedle[1] - beforeNeedle[1]) > 10);
-  check("phase movement leaves the modulus skeleton fixed",
-    JSON.stringify(ctx.lines.slice(-4)[2]) === JSON.stringify(afterLine));
-  check("no separate triple-ratio plot substitutes for the flag diagram",
-    walk(container, []).filter(function (e) { return e.tagName === "CANVAS"; }).length === 1);
-  cross._fire("click", { type: "click" });
-  flushRaf();
-  check("zero removes the line phase needle continuously",
-    JSON.stringify(ctx.moves[ctx.moves.length - 1]) === JSON.stringify(ctx.lines[ctx.lines.length - 1]));
-
-  console.log("smoke-widget: " + pass + "/" + (pass + fail) + " checks passed");
+  check("widget mounts", container.children.length > 0);
+  const all = walk(container, []);
+  const incidence = all.find(function(e) { return e.id === "ek-incidence-view"; });
+  const moduli = all.find(function(e) { return e.id === "ek-moduli-view"; });
+  check("incidence and moduli views are simultaneously visible", !!incidence && !!moduli && incidence.style.display !== "none" && moduli.style.display !== "none");
+  check("view toggles removed", !findByText(container, "ALE core"));
+  check("example presets removed", !findByText(container, "Generic") && !findByText(container, "Concurrent lines"));
+  check("incidence table removed", !all.some(function(e) { return e.tagName === "TABLE"; }));
+  const radius = all.find(function(e) { return e.id === "ek-r"; });
+  const theta = all.find(function(e) { return e.id === "ek-theta"; });
+  check("one compact radius slider", radius && radius.min === "0" && radius.max === "1");
+  check("one theta slider", !!theta);
+  const ranges = all.filter(function(e) { return e.tagName === "INPUT" && e.type === "range"; });
+  check("shared coordinates with t and phi fixed", ranges.length === 4 && ranges.filter(function(e) { return !e.disabled; }).length === 2);
+  const matrices = all.filter(function(e) { return e.className === "ek-rep-matrix"; });
+  const cells = all.filter(function(e) { return e.className === "ek-rep-cell"; });
+  check("all x and y arrows displayed", matrices.length === 12 && cells.length === 48);
+  const a3 = walk(matrices[9], []).filter(function(e) { return e.className === "ek-rep-cell"; });
+  check("initial A3 uses finite homogeneous representative", a3.map(function(e) { return e.textContent; }).join(",") === "0,0.5,0,0.5,1,0");
+  const yCells = matrices.filter(function(_, i) { return i % 4 >= 2; }).reduce(function(out, el) {
+    return out.concat(walk(el, []).filter(function(e) { return e.className === "ek-rep-cell"; }));
+  }, []);
+  check("all reverse arrows vanish at t=0", yCells.length === 24 && yCells.every(function(e) { return e.textContent === "0"; }));
+  const canvas = walk(incidence, []).find(function(e) { return e.tagName === "CANVAS"; });
+  const ctx = canvas._ctx;
+  const lineColors = function() { return ctx.strokes.slice(-6, -3); };
+  check("concurrent lines have the same hue", new Set(lineColors()).size === 1);
+  const beforeLine = ctx.lines[ctx.lines.length - 1];
+  radius.value = "0.75"; radius._fire("input", { type: "input" }); flushRaf();
+  const afterLine = ctx.lines[ctx.lines.length - 1];
+  check("radial slider moves the flag line", Math.hypot(afterLine[0]-beforeLine[0], afterLine[1]-beforeLine[1]) > 1);
+  check("radial slider updates x readout", a3[1].textContent === "0.25" && a3[3].textContent === "0.75");
+  theta.value = String(Math.PI/2); theta._fire("input", { type: "input" }); flushRaf();
+  check("phase updates the complex representative", a3[3].textContent === "0.75i");
+  check("phase changes line hue", lineColors()[0] === lineColors()[1] && lineColors()[1] !== lineColors()[2]);
+  check("phase leaves modulus geometry fixed", JSON.stringify(ctx.lines[ctx.lines.length - 1]) === JSON.stringify(afterLine));
+  check("phase circle removed", ctx.arcs.slice(-3).every(function(a) { return a[2] === 4; }));
+  radius.value = "1"; radius._fire("input", { type: "input" }); flushRaf();
+  check("infinity has finite x readout", a3[1].textContent === "0" && a3[3].textContent === "i");
+  check("infinity has phase-independent gray lines", new Set(lineColors()).size === 1 && lineColors()[0].indexOf("0%,") >= 0);
+  check("infinity diagram remains finite", ctx.lines.slice(-3).every(function(p) { return p.every(Number.isFinite); }));
+  radius.value = "0"; radius._fire("input", { type: "input" }); flushRaf();
+  check("zero has finite x readout", a3[1].textContent === "1" && a3[3].textContent === "0");
+  findByText(container, "E7")._fire("click", {type:"click"}); flushRaf();
+  check("unsupported type clears stale representative", cells.every(function(e) { return e.textContent === "\u2014"; }));
+  findByText(container, "E6")._fire("click", {type:"click"}); flushRaf();
+  check("returning to E6 restores representative", a3[1].textContent === "1");
+  console.log("smoke-widget: " + pass + "/" + (pass+fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);
 }
-
 main();

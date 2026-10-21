@@ -1,32 +1,12 @@
-// E_k Nakajima quiver-varieties widget (2026-10-02 rework): the ALE core
-// side view for the 4-dimensional Nakajima quiver varieties of affine ADE
-// type E6/E7/E8.
-//
-// The D4 and A_n type tabs are gone (user request 2026-10-02): D4 is the
-// hyperpolygon member already on the site and A_n is not one of the E_k
-// targets. The Display and Invariants panels are gone too; the controls are
-// the hyperpolygon "Moduli Coordinates" panel (same slider look and layout)
-// plus an empty beta panel stub.
-//
-// Interaction (user request 2026-10-02): when an arm of the core tree is a
-// chain of several exterior spheres, each sphere is its own stratum. The
-// t slider climbs the CURRENT sphere only (base -> tip); the lim buttons
-// step the dot by exactly ONE sphere: "lim t->inf" at a sphere's tip moves
-// to the base of the next sphere outward, "lim t->0" at its base moves to
-// the tip of the previous one. See core-view.js.
-//
-// The E6 element panel shows projective flag incidence from the candidate
-// complex chart. Its schematic deliberately carries no balancing/stability data.
-//
-// Loaded as an ES module after the vendored three.min.js and OrbitControls
-// (global THREE), mirroring assets/js/hyperpolygon/widget.js.
+// E6 complex representatives and simultaneous flag/moduli views.
+// Both views share compact coordinates r,theta; t and phi are fixed at zero.
 
 import { AFFINE_ADE } from "./quiver-data.js";
-import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
-import { chartAt } from "./chart.js";
+import { buildSideLayout, makeCoreView } from "./core-view.js";
+import { compactChart } from "./chart.js";
+import { makeRepresentationReadout } from "./representation-readout.js";
 import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
-const INCIDENCE_NOTE = "Line 3 uses |z|; its needle shows θ.";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -147,491 +127,174 @@ function ensureStyles() {
 // ---------------------------------------------------------------------------
 function activate(container) {
   ensureStyles();
-  container.style.position = "relative";
-
+  const state = { key: "E6" };
   const tabs = document.createElement("div");
   tabs.className = "ek-tabs";
   container.appendChild(tabs);
-
-  const state = { key: "E6", sphere: 0, arm: -1 };
-
   const tabButtons = {};
   TYPE_KEYS.forEach(function (key) {
-    const btn = document.createElement("button");
-    btn.className = "ek-tab";
-    btn.type = "button";
-    btn.textContent = key;
-    btn.addEventListener("click", function () {
-      state.key = key;
-      state.arm = -1;
-      state.sphere = 0;
-      sync();
-    });
-    tabs.appendChild(btn);
-    tabButtons[key] = btn;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ek-tab";
+    button.textContent = key;
+    button.addEventListener("click", function () { state.key = key; sync(); });
+    tabs.appendChild(button);
+    tabButtons[key] = button;
   });
 
-  // --- view toggle (user request): "ALE core" (default) / "Single element".
-  // Two .ek-tab buttons; the ALE-core path below is unchanged.
-  const viewTabs = document.createElement("div");
-  viewTabs.className = "ek-tabs";
-  container.appendChild(viewTabs);
-  const VIEW_KEYS = [
-    { id: "core", label: "ALE core" },
-    { id: "element", label: "Flag incidence" },
-  ];
-  const viewButtons = {};
-  VIEW_KEYS.forEach(function (v) {
-    const btn = document.createElement("button");
-    btn.className = "ek-tab";
-    btn.type = "button";
-    btn.textContent = v.label;
-    btn.addEventListener("click", function () { setMode(v.id); });
-    viewTabs.appendChild(btn);
-    viewButtons[v.id] = btn;
-  });
-  let viewMode = "core";
+  const matrixHost = document.createElement("div");
+  matrixHost.className = "ek-panel";
+  matrixHost.style.marginBottom = "12px";
+  container.appendChild(matrixHost);
+  const matrixLabel = document.createElement("div");
+  matrixLabel.className = "ek-sec";
+  matrixLabel.textContent = "Complex representative";
+  matrixHost.appendChild(matrixLabel);
+  const matrices = makeRepresentationReadout(matrixHost);
 
   const row = document.createElement("div");
   row.className = "ek-row";
   container.appendChild(row);
-
-  // --- left column: the viewport (ALE core + single-element frames) -------
-  const viewCol = document.createElement("div");
-  viewCol.className = "ek-col";
-  row.appendChild(viewCol);
-  const coreFrame = document.createElement("div");
-  coreFrame.className = "ek-frame";
-  viewCol.appendChild(coreFrame);
-  const elementFrame = document.createElement("div");
-  elementFrame.className = "ek-frame";
-  elementFrame.style.minHeight = "480px";
-  elementFrame.style.display = "none";
-  viewCol.appendChild(elementFrame);
-  const cap = document.createElement("div");
-  cap.className = "ek-cap";
-  cap.textContent = "ALE core of E6: exceptional \u2119\u00b9's";
-  viewCol.appendChild(cap);
-
-  // --- right column: controls -------------------------------------------
-  const ctrlCol = document.createElement("div");
-  ctrlCol.className = "ek-col";
-  ctrlCol.style.minWidth = "280px";
-  row.appendChild(ctrlCol);
-
+  function column() {
+    const col = document.createElement("div");
+    col.className = "ek-col";
+    row.appendChild(col);
+    return col;
+  }
+  const left = column();
+  const right = column();
+  function frame(col, id, caption) {
+    const box = document.createElement("div");
+    box.id = id;
+    box.className = "ek-frame";
+    col.appendChild(box);
+    const label = document.createElement("div");
+    label.className = "ek-cap";
+    label.textContent = caption;
+    col.appendChild(label);
+    return box;
+  }
+  const incidenceFrame = frame(left, "ek-incidence-view", "Flag incidence");
+  const coreFrame = frame(right, "ek-moduli-view", "Moduli space");
   const modPanel = document.createElement("div");
   modPanel.className = "ek-panel";
-  const modSec = document.createElement("div");
-  modSec.className = "ek-sec";
-  modSec.textContent = "Moduli Coordinates";
-  modPanel.appendChild(modSec);
-  ctrlCol.appendChild(modPanel);
+  left.appendChild(modPanel);
+  const heading = document.createElement("div");
+  heading.className = "ek-sec";
+  heading.textContent = "Moduli Coordinates";
+  modPanel.appendChild(heading);
+  const firstRow = document.createElement("div");
+  firstRow.className = "ek-modrow";
+  modPanel.appendChild(firstRow);
+  const secondRow = document.createElement("div");
+  secondRow.className = "ek-modrow";
+  secondRow.style.marginTop = "6px";
+  modPanel.appendChild(secondRow);
 
-  const modRowRT = document.createElement("div");
-  modRowRT.className = "ek-modrow";
-  modPanel.appendChild(modRowRT);
-  const modRowTG = document.createElement("div");
-  modRowTG.className = "ek-modrow";
-  modRowTG.style.marginTop = "6px";
-  modPanel.appendChild(modRowTG);
-
-  // One moduli-slider row: label + range input + readout. Magnetic snaps
-  // ({ value, tol }) are applied on input; returns the pieces the widget
-  // needs. Appended to `row` (default the (r, theta) row).
-  function makeSlider(label, min, max, step, value, format, snaps, row, tooltip) {
+  function slider(host, id, label, min, max, step, value, format, title, disabled) {
     const box = document.createElement("div");
     box.className = "ek-mod";
-    const lab = document.createElement("span");
+    const lab = document.createElement("label");
     lab.textContent = label;
+    lab.htmlFor = id;
     const input = document.createElement("input");
+    input.id = id;
     input.type = "range";
     input.className = "ek-slider";
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
     input.value = String(value);
-    if (tooltip) input.title = tooltip;
+    input.disabled = !!disabled;
+    input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
-    const updateReadout = function () {
-      readout.textContent = format(parseFloat(input.value));
-    };
-    updateReadout();
+    function refresh() { readout.textContent = format(Number(input.value)); }
     input.addEventListener("input", function () {
-      let v = parseFloat(input.value);
-      for (const snap of snaps) {
-        if (Math.abs(v - snap.value) <= snap.tol) {
-          input.value = String(snap.value);
-          v = snap.value;
-          break;
-        }
-      }
-      updateReadout();
-      apply(box._role);
+      if (input.disabled) return;
+      refresh();
+      apply();
     });
     box.appendChild(lab);
     box.appendChild(input);
     box.appendChild(readout);
-    (row || modRowRT).appendChild(box);
-    return { box: box, input: input, readout: readout, updateReadout: updateReadout };
+    host.appendChild(box);
+    refresh();
+    return { input: input, refresh: refresh };
   }
-
-  const rCtl = makeSlider("r", 0, 1, 0.005, 0.25, function (v) { return v.toFixed(2); }, [
-    { value: 0, tol: 0.02 },
-    { value: 0.5, tol: 0.02 },
-    { value: 1, tol: 0.02 },
-  ], modRowRT);
-  const thCtl = makeSlider("\u03b8", -1, 1, 0.005, 0, function (v) {
-    if (v >= 1) return "\u03c0";
-    if (v <= -1) return "-\u03c0";
-    return (v * Math.PI).toFixed(2);
-  }, [{ value: 0, tol: 0.03 }], modRowRT);
-  rCtl.box._role = "r";
-  thCtl.box._role = "theta";
-  const tCtl = makeSlider("t", 0, 1, 0.01, 0, function (v) {
-    if (v >= 1) return "\u221e";
-    return (v / (1 - v)).toFixed(2);
-  }, [], modRowTG,
-    "climbs the current exterior sphere from its base to its tip (readout t/(1-t))");
-  const phCtl = makeSlider("\u03c6", -1, 1, 0.005, 0, function (v) {
-    if (v >= 1) return "\u03c0";
-    if (v <= -1) return "-\u03c0";
-    return (v * Math.PI).toFixed(2);
-  }, [{ value: 0, tol: 0.03 }], modRowTG);
-
-  // Stack the lim button BELOW the t slider, hyperpolygon-style.
-  const tCol = document.createElement("div");
-  tCol.className = "ek-tcol";
-  tCol.appendChild(tCtl.box);
-  tCtl.box.style.flex = "1 1 auto";
-  const limBtn = document.createElement("button");
-  limBtn.type = "button";
-  limBtn.className = "ek-btn";
-  limBtn.textContent = "lim t\u2192\u221e";
-  limBtn.style.display = "none";
-  limBtn.style.alignSelf = "flex-start";
-  tCol.appendChild(limBtn);
-  modRowTG.insertBefore(tCol, phCtl.box);
-
-  // Incidence controls use the complex chart, including its special loci.
-  const elemBlock = document.createElement("div");
-  elemBlock.style.display = "none";
-  elemBlock.style.marginTop = "10px";
-  modPanel.appendChild(elemBlock);
-
-  const elemSec = document.createElement("div");
-  elemSec.className = "ek-sec";
-  elemSec.textContent = "Three flags (E6)";
-  elemBlock.appendChild(elemSec);
-
-  const elemRow = document.createElement("div");
-  elemRow.className = "ek-modrow";
-  elemBlock.appendChild(elemRow);
-  const elemRow2 = document.createElement("div");
-  elemRow2.className = "ek-modrow";
-  elemBlock.appendChild(elemRow2);
-
-  const zCtl = makeSlider("|z|", 0.0, 4.0, 0.01, 2.0, function (v) { return v.toFixed(2); }, [], elemRow,
-    "Magnitude of the candidate complex chart parameter");
-  const elemThCtl = makeSlider("\u03b8", -Math.PI, Math.PI, "any", 0, function (v) {
-    return v.toFixed(2);
-  }, [], elemRow2, "phase of z = |z| exp(i theta)");
-  zCtl.box._role = "elementZ";
-  elemThCtl.box._role = "elementTheta";
-
-  const examples = document.createElement("div");
-  examples.style.display = "flex";
-  examples.style.flexWrap = "wrap";
-  examples.style.gap = "6px";
-  examples.style.marginTop = "10px";
-  [["Generic", 2], ["Concurrent lines", 1], ["Cross-incidence", 0]].forEach(function (entry) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ek-btn";
-    button.textContent = entry[0];
-    button.addEventListener("click", function () {
-      zCtl.input.value = String(entry[1]);
-      elemThCtl.input.value = "0";
-      applyElement();
-    });
-    examples.appendChild(button);
-  });
-  elemBlock.appendChild(examples);
-
-  const levelsLine = document.createElement("div");
-  levelsLine.style.fontSize = "0.8em";
-  levelsLine.style.marginTop = "6px";
-  levelsLine.textContent = "z = |z| exp(iθ)";
-  elemBlock.appendChild(levelsLine);
-
-  const elemStatus = document.createElement("div");
-  elemStatus.className = "ek-readout";
-  elemStatus.style.textAlign = "left";
-  elemStatus.style.minWidth = "0";
-  elemStatus.style.marginTop = "4px";
-  elemStatus.style.fontSize = "0.8em";
-  elemBlock.appendChild(elemStatus);
-
-  const elemNote = document.createElement("div");
-  elemNote.style.fontSize = "0.78em";
-  elemNote.style.marginTop = "6px";
-  elemNote.textContent = INCIDENCE_NOTE;
-  elemBlock.appendChild(elemNote);
-
-  // --- beta panel stub (user request 2026-10-02): the container exists so
-  // the beta/chamber controls can be dropped in later; deliberately blank
-  // for now.
-  const betaPanel = document.createElement("div");
-  betaPanel.className = "ek-panel";
-  betaPanel.id = "ek-nakajima-beta-panel";
-  ctrlCol.appendChild(betaPanel);
+  const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
+    function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity", false);
+  const thetaControl = slider(firstRow, "ek-theta", "\u03b8", -Math.PI, Math.PI, "any", 0,
+    function (v) { return v.toFixed(3); }, "Phase in radians", false);
+  slider(secondRow, "ek-t", "t", 0, 1, 0.001, 0,
+    function () { return "0"; }, "Only t = 0 is implemented", true);
+  slider(secondRow, "ek-phi", "\u03c6", -Math.PI, Math.PI, "any", 0,
+    function () { return "0"; }, "Inactive when y = 0", true);
 
   const coreView = makeCoreView(coreFrame, { getPalette: palette });
+  const incidenceView = makeElementView(incidenceFrame, { getPalette: palette });
   if (coreView && coreView.setHover) {
     coreFrame.addEventListener("pointerenter", function () { coreView.setHover(true); });
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
-  const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
-  let lay = null;
-  let lastState = null;
-
-  // --- stratum stepping (user request 2026-10-02) -------------------------
-  // t is local to ONE exterior sphere; the lim button moves the dot by
-  // exactly one sphere. At a sphere's tip the outward step lands on the
-  // base of the next sphere (t = 0); at its base the inward step lands on
-  // the tip of the previous one (t = 1). No whole-chain jump.
-  const LIM_T0_BAND = 0.1;
-
-  function limMode(t) {
-    if (!lastState) return null;
-    if (lastState.kind === "arm") {
-      if (state.sphere < lastState.sphereCount - 1 && t >= T_NEAR_INF) return "up";
-      if (state.sphere > 0 && t <= LIM_T0_BAND) return "down";
-      return null;
-    }
-    // Captured central branch (r inside an arm's capture band but not
-    // exactly on its attachment): the dot is blended onto that arm's FIRST
-    // sphere near its tip, so offer the outward step when a next sphere
-    // exists (user request 2026-10-02; restores the pre-rework handover).
-    if (
-      lastState.kind === "central" &&
-      lastState.capture &&
-      lastState.capture.w >= CAP_NEAR_INF_W &&
-      t >= T_NEAR_INF &&
-      lay.arms[lastState.capture.k] &&
-      lay.arms[lastState.capture.k].nodes.length > 1
-    ) {
-      return "enter";
-    }
-    return null;
-  }
-
-  limBtn.addEventListener("click", function () {
-    const t = parseFloat(tCtl.input.value);
-    const mode = limMode(t);
-    if (mode === "up") {
-      state.sphere += 1;
-      tCtl.input.value = "0";
-    } else if (mode === "down") {
-      state.sphere -= 1;
-      tCtl.input.value = "1";
-    } else if (mode === "enter") {
-      // step off the capture blend onto the captured arm, one sphere out
-      state.arm = lastState.capture.k;
-      state.sphere = 1;
-      rCtl.input.value = String(lay.arms[state.arm].param);
-      thCtl.input.value = "0";
-      tCtl.input.value = "0";
-    } else {
-      return;
-    }
-    apply();
-  });
-
-  // --- readouts / snapping ----------------------------------------------
-  function snapR(v) {
-    if (!lay) return v;
-    for (const arm of lay.arms) {
-      if (Math.abs(v - arm.param) <= 0.02) return arm.param;
-    }
-    return v;
-  }
-  function snapTheta(s) {
-    return Math.abs(s) <= 0.03 ? 0 : s;
-  }
-
-  // --- apply: read sliders -> flow -> view ------------------------------
-  function apply(fromInput) {
-    if (viewMode === "element") {
-      applyElement();
-      return;
-    }
-    if (!lay || !coreView) return;
-    if (fromInput === "r") {
-      const raw = parseFloat(rCtl.input.value);
-      const snapped = snapR(raw);
-      if (snapped !== raw) rCtl.input.value = String(snapped);
-    }
-    if (fromInput === "theta") {
-      const raw = parseFloat(thCtl.input.value);
-      const snapped = snapTheta(raw);
-      if (snapped !== raw) thCtl.input.value = String(snapped);
-    }
-
-    const r = parseFloat(rCtl.input.value);
-    const theta = parseFloat(thCtl.input.value) * Math.PI;
-    const t = parseFloat(tCtl.input.value);
-    const phi = parseFloat(phCtl.input.value) * Math.PI;
-
-    // Re-select the arm (and reset the sphere index when it changes) before
-    // the flow call so the first frame on a new arm is already sphere 0.
-    // `armAt` is shared with coreFlow so the two cannot disagree.
-    const arm = armAt(lay, r, theta);
-    if (arm !== state.arm) {
-      state.arm = arm;
-      state.sphere = 0;
-    }
-
-    lastState = coreView.update(lay, { r: r, theta: theta, t: t, phi: phi, sphere: state.sphere }, true);
-
-    // readouts
-    rCtl.updateReadout();
-    thCtl.updateReadout();
-    tCtl.updateReadout();
-    phCtl.updateReadout();
-
-    // lim button gate
-    const mode = limMode(t);
-    if (mode === "up" || mode === "enter") {
-      limBtn.style.display = "inline-block";
-      limBtn.textContent = "lim t\u2192\u221e";
-      limBtn.title =
-        mode === "enter"
-          ? "enter the captured sphere and step outward one sphere"
-          : "move outward one sphere (to the base of the next sphere)";
-    } else if (mode === "down") {
-      limBtn.style.display = "inline-block";
-      limBtn.textContent = "lim t\u21920";
-      limBtn.title = "move inward one sphere (to the tip of the previous sphere)";
-    } else {
-      limBtn.style.display = "none";
-    }
-  }
-
-  // Coalesce chart updates to one per animation frame during slider drags.
-  let elemPending = false;
-  function applyElement() {
-    if (elemPending) return;
-    elemPending = true;
-    const run = function () { elemPending = false; updateIncidence(); };
+  let layout = null;
+  let pending = false;
+  function apply() {
+    if (pending) return;
+    pending = true;
+    const run = function () { pending = false; update(); };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
     else setTimeout(run, 0);
   }
-
-  function updateIncidence() {
-    if (!elementRenderer) return;
-    const z = parseFloat(zCtl.input.value);
-    const theta = parseFloat(elemThCtl.input.value);
-    zCtl.updateReadout();
-    elemThCtl.updateReadout();
-
+  function update() {
+    const r = Number(rControl.input.value);
+    const theta = Number(thetaControl.input.value);
+    rControl.refresh();
+    thetaControl.refresh();
+    if (coreView) coreView.update(layout, { r: r, theta: theta, t: 0, phi: 0, sphere: 0 }, false);
+    if (state.key !== "E6") {
+      matrices.setData(null);
+      incidenceView.setData(null);
+      incidenceView.setStatus("E6 only", "warn");
+      return;
+    }
     try {
-      const incidence = flagIncidence(chartAt(z, theta));
-      elementRenderer.setData({ incidence: incidence });
-      elementRenderer.setStatus("", "info");
-      elemStatus.textContent = "";
+      const rep = compactChart(r, theta);
+      matrices.setData(rep);
+      incidenceView.setData({ incidence: flagIncidence(rep) });
+      incidenceView.setStatus("", "info");
     } catch (error) {
-      const msg = "Flags unavailable at this chart parameter.";
-      elementRenderer.setData(null);
-      elementRenderer.setStatus(msg, "warn");
-      elemStatus.textContent = msg;
+      matrices.setData(null);
+      incidenceView.setData(null);
+      incidenceView.setStatus("Representation unavailable", "error");
     }
   }
-
-  function coreCapText() {
-    return "ALE core of " + AFFINE_ADE[state.key].name + ": exceptional \u2119\u00b9's";
-  }
-
-  // The Single-element view is E6-only, so while it is active the E6/E7/E8 type
-  // tabs are pinned to E6 and disabled; switching back to ALE core re-enables
-  // them. This keeps the highlighted type tab consistent with the view shown.
-  function syncTypeTabs() {
-    const element = viewMode === "element";
-    if (element) state.key = "E6";
-    for (const key of Object.keys(tabButtons)) {
-      tabButtons[key].classList.toggle("ek-active", key === state.key);
-      tabButtons[key].disabled = element;
-    }
-  }
-
-  // --- view-mode switch ---------------------------------------------------
-  function setMode(m) {
-    viewMode = m;
-    for (const k of Object.keys(viewButtons)) {
-      viewButtons[k].classList.toggle("ek-active", k === viewMode);
-    }
-    syncTypeTabs();
-    if (viewMode === "element") {
-      coreFrame.style.display = "none";
-      elementFrame.style.display = "";
-      elemBlock.style.display = "";
-      modRowRT.style.display = "none";
-      modRowTG.style.display = "none";
-      cap.textContent = "E6 flags";
-      if (elementRenderer) elementRenderer.resize();
-      applyElement();
-    } else {
-      coreFrame.style.display = "";
-      elementFrame.style.display = "none";
-      elemBlock.style.display = "none";
-      modRowRT.style.display = "";
-      modRowTG.style.display = "";
-      cap.textContent = coreCapText();
-      if (coreView) coreView.resize();
-      apply();
-    }
-  }
-
   function sync() {
-    for (const key of Object.keys(tabButtons)) {
+    Object.keys(tabButtons).forEach(function (key) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
-    }
-    const q = AFFINE_ADE[state.key];
-    lay = buildSideLayout(q);
-    state.arm = -1;
-    state.sphere = 0;
-    if (coreView) {
-      coreView.setLayout(lay);
-      coreView.refreshTheme();
-    }
-    if (viewMode === "core") cap.textContent = coreCapText();
+    });
+    layout = buildSideLayout(AFFINE_ADE[state.key]);
+    if (coreView) coreView.setLayout(layout);
     apply();
   }
-
-  // resize handling
-  if (typeof ResizeObserver !== "undefined") {
-    const ro = new ResizeObserver(function () {
-      if (coreView && coreView.resize) coreView.resize();
-      if (elementRenderer) elementRenderer.resize();
-    });
-    ro.observe(coreFrame);
-    ro.observe(elementFrame);
-  } else {
-    window.addEventListener("resize", function () {
-      if (coreView && coreView.resize) coreView.resize();
-      if (elementRenderer) elementRenderer.resize();
-    });
+  function resize() {
+    if (coreView) coreView.resize();
+    incidenceView.resize();
   }
-
-  // theme repaint
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(resize);
+    observer.observe(incidenceFrame);
+    observer.observe(coreFrame);
+  } else if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("resize", resize);
+  }
   const themeObserver = new MutationObserver(function () {
     if (coreView) coreView.refreshTheme();
-    if (elementRenderer) elementRenderer.refreshTheme();
+    incidenceView.refreshTheme();
+    if (matrices.refreshTheme) matrices.refreshTheme();
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-
   sync();
-  setMode("core");
 }
 
 const widget = document.getElementById("ek-nakajima-widget");

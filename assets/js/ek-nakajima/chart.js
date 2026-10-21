@@ -59,3 +59,16 @@ export function chartZ(r, theta) {
 export function chartAt(r, theta) {
   return candidateY0Chart(chartZ(r, theta));
 }
+
+// Compact radial coordinate: z = r exp(i theta)/(1-r), 0 <= r <= 1.
+// Scale the second column of A_3 by 1-r before taking the endpoint. The
+// resulting map stays finite and rank two even at z=infinity. For r<1 this
+// is a change of basis in the third C^2, preserving its first basis vector.
+export function compactChart(r, theta) {
+  if (!Number.isFinite(r) || r < 0 || r > 1 || !Number.isFinite(theta)) {
+    throw new RangeError("Expected 0 <= r <= 1 and finite theta.");
+  }
+  const rep = candidateY0Chart(0);
+  rep.A[2] = Z([[0, 1 - r], [0, chartZ(r, theta)], [1, 0]]);
+  return rep;
+}
