@@ -1,6 +1,6 @@
 ﻿// Incidence-only projective schematic. The numerical table is authoritative;
 // distances and angles do not encode a metric, stability, or moment maps.
-import { incidenceLayout } from "./flag-incidence.js";
+import { incidenceLayout, flagTripleRatio } from "./flag-incidence.js";
 
 const BRANCH = {
   light: ["#b5413b", "#2467aa", "#96700f"],
@@ -82,9 +82,78 @@ export function makeElementView(host, opts) {
   status.className = "ek-elem-status";
   status.style.whiteSpace = "pre-line";
   details.appendChild(status);
+  const ratioBox = document.createElement("div");
+  ratioBox.className = "ek-triple-ratio";
+  ratioBox.style.marginTop = "12px";
+  ratioBox.style.borderTop = "1px solid var(--ek-box-bd)";
+  ratioBox.style.paddingTop = "10px";
+  const ratioTitle = document.createElement("div");
+  ratioTitle.className = "ek-sec";
+  ratioTitle.textContent = "Complex triple ratio";
+  ratioBox.appendChild(ratioTitle);
+  const ratioRow = document.createElement("div");
+  ratioRow.style.display = "flex";
+  ratioRow.style.alignItems = "center";
+  ratioRow.style.gap = "12px";
+  ratioRow.style.flexWrap = "wrap";
+  ratioBox.appendChild(ratioRow);
+  const ratioCanvas = document.createElement("canvas");
+  ratioCanvas.width = 160;
+  ratioCanvas.height = 160;
+  ratioCanvas.style.width = "160px";
+  ratioCanvas.style.height = "160px";
+  if (ratioCanvas.setAttribute) {
+    ratioCanvas.setAttribute("role", "img");
+    ratioCanvas.setAttribute("aria-label", "Live complex triple ratio: horizontal real axis, vertical imaginary axis, fixed scale from minus four to four.");
+  }
+  ratioRow.appendChild(ratioCanvas);
+  const ratioCtx = ratioCanvas.getContext ? ratioCanvas.getContext("2d") : null;
+  const ratioReadout = document.createElement("div");
+  ratioReadout.className = "ek-triple-ratio-readout";
+  ratioReadout.style.fontSize = "0.85em";
+  ratioReadout.style.whiteSpace = "pre-line";
+  ratioReadout.style.fontVariantNumeric = "tabular-nums";
+  ratioRow.appendChild(ratioReadout);
+  const ratioHelp = document.createElement("div");
+  ratioHelp.style.fontSize = "0.78em";
+  ratioHelp.style.marginTop = "6px";
+  ratioHelp.textContent = "T = −z in this chart. Magnitude sets the radius; phase sets the angle. The incidence picture stays fixed until its incidence relations change.";
+  ratioBox.appendChild(ratioHelp);
+  (opts.invariantHost || details).appendChild(ratioBox);
   let data = null;
   let layout = null;
+  let ratio = null;
   let statusKind = "";
+
+  function drawRatio(pal) {
+    ratioBox.style.color = pal.text;
+    if (!ratioCtx) return;
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    ratioCanvas.width = Math.round(160 * dpr);
+    ratioCanvas.height = Math.round(160 * dpr);
+    const c = ratioCtx;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, 160, 160);
+    c.strokeStyle = pal.text;
+    c.fillStyle = pal.text;
+    c.lineWidth = 1;
+    c.font = "11px sans-serif";
+    c.beginPath(); c.moveTo(10, 80); c.lineTo(150, 80);
+    c.moveTo(80, 10); c.lineTo(80, 150); c.stroke();
+    c.fillText("Re", 141, 73); c.fillText("Im", 86, 14);
+    c.fillText("−4", 8, 95); c.fillText("4", 141, 95);
+    c.globalAlpha = 0.35;
+    c.beginPath(); c.arc(80, 80, 60, 0, Math.PI * 2); c.stroke();
+    c.globalAlpha = 1;
+    if (!ratio || !ratio.valid) return;
+    // Fixed scale: changing |z| must visibly move the marker radially.
+    const x = 80 + 15 * ratio.value[0];
+    const y = 80 - 15 * ratio.value[1];
+    c.strokeStyle = pal.branch[1];
+    c.beginPath(); c.moveTo(80, 80); c.lineTo(x, y); c.stroke();
+    c.fillStyle = pal.branch[1];
+    c.beginPath(); c.arc(x, y, 4.5, 0, Math.PI * 2); c.fill();
+  }
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -94,6 +163,7 @@ export function makeElementView(host, opts) {
 
   function draw() {
     const pal = palette();
+    drawRatio(pal);
     details.style.color = pal.text;
     status.style.color = statusKind === "error" ? "#d64545" : statusKind === "warn" ? "#b27c22" : pal.text;
     if (!ctx) return;
@@ -153,6 +223,16 @@ export function makeElementView(host, opts) {
   function setData(view) {
     data = view && view.incidence ? view.incidence : null;
     layout = data && data.valid ? incidenceLayout(data) : null;
+    ratio = flagTripleRatio(data);
+    if (ratio.valid) {
+      const re = Math.abs(ratio.value[0]) < 0.00005 ? 0 : ratio.value[0];
+      const im = Math.abs(ratio.value[1]) < 0.00005 ? 0 : ratio.value[1];
+      ratioReadout.textContent = "T = " + re.toFixed(4) + (im < 0 ? " − " : " + ") + Math.abs(im).toFixed(4) + "i\n" +
+        "|T| = " + ratio.magnitude.toFixed(4) + "\n" +
+        "arg(T) = " + (ratio.phase === null ? "undefined at T = 0" : ratio.phase.toFixed(4) + " rad");
+    } else {
+      ratioReadout.textContent = ratio.reason || "Triple ratio unavailable.";
+    }
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) {
         cells[i][j].textContent = data && data.valid ? (data.incident[i][j] ? "Yes" : "No") : "—";

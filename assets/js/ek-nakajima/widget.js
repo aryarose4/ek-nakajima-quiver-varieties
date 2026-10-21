@@ -390,7 +390,7 @@ function activate(container) {
     coreFrame.addEventListener("pointerenter", function () { coreView.setHover(true); });
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
-  const elementRenderer = makeElementView(elementFrame, { getPalette: palette });
+  const elementRenderer = makeElementView(elementFrame, { getPalette: palette, invariantHost: elemBlock });
   let lay = null;
   let lastState = null;
 
@@ -517,15 +517,7 @@ function activate(container) {
     }
   }
 
-  // --- single-element apply: read (|z|, theta) -> solve -> render ---------
-  // On success feed the new view to the renderer and report the solve; on
-  // failure KEEP the last valid frame and say so (never present a stale solved
-  // rep as current). The warm start reuses the previous logGauge.
-  //
-  // A solve is expensive (multi-seed Levenberg-Marquardt), and the sliders emit
-  // an `input` event per pixel of drag, so requests are COALESCED: at most one
-  // solve runs per animation frame. Rapid drags therefore queue a single
-  // pending solve rather than one solve per event.
+  // Coalesce chart updates to one per animation frame during slider drags.
   let elemPending = false;
   function applyElement() {
     if (elemPending) return;

@@ -61,6 +61,42 @@ export function flagIncidence(rep, tolerance = 1e-8) {
   };
 }
 
+// Cyclic triple ratio of three complex flags. Each point/dual-line scale and
+// the central complex gauge cancel between numerator and denominator.
+// Near-zero denominator pairings are undefined at the incidence tolerance;
+// numerator pairings are retained, including an exactly zero ratio.
+export function flagTripleRatio(data) {
+  const tolerance = data && data.tolerance;
+  const fail = (reason) => ({ valid: false, numerical: true, tolerance,
+    reason, value: null, magnitude: null, phase: null });
+  if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
+  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid triple-ratio tolerance.");
+  try {
+    const p = data.points.map(unit), n = data.dualLines.map(unit);
+    if (p.length !== 3 || n.length !== 3 || p.concat(n).some((v) => !v || v.length !== 3)) {
+      return fail("The triple ratio requires three finite flags.");
+    }
+    const numerator = [dot(n[0], p[1]), dot(n[1], p[2]), dot(n[2], p[0])];
+    const denominator = [dot(n[0], p[2]), dot(n[2], p[1]), dot(n[1], p[0])];
+    if (numerator.concat(denominator).some((z) => !z.every(Number.isFinite))) {
+      return fail("The triple ratio requires finite pairings.");
+    }
+    if (denominator.some((z) => Math.hypot(...z) <= tolerance)) {
+      return fail("The triple ratio is undefined: a denominator pairing is zero or below the incidence tolerance.");
+    }
+    const num = numerator.reduce(mul, [1, 0]), den = denominator.reduce(mul, [1, 0]);
+    const denNorm2 = den[0] * den[0] + den[1] * den[1];
+    const value = [(num[0] * den[0] + num[1] * den[1]) / denNorm2,
+      (num[1] * den[0] - num[0] * den[1]) / denNorm2];
+    const magnitude = Math.hypot(...value);
+    if (!Number.isFinite(magnitude)) return fail("The numerical triple ratio is not finite.");
+    return { valid: true, numerical: true, tolerance, value, magnitude,
+      phase: magnitude === 0 ? null : Math.atan2(value[1], value[0]) };
+  } catch (_) {
+    return fail("The triple ratio requires three finite flags.");
+  }
+}
+
 // A combinatorial REAL diagram, not a real projection of CP² and not a complete
 // projective invariant. Preserves the nine incidences, equal points, equal lines,
 // and concurrency of the lines. Additional point collinearity is not encoded.

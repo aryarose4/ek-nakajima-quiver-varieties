@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 function makeCtx() {
   const calls = [];
-  const ctx = { calls: calls };
+  const ctx = { calls: calls, arcs: [] };
   const methods = [
     "clearRect", "setTransform", "scale", "translate", "rotate", "save", "restore",
     "beginPath", "closePath", "moveTo", "lineTo", "arc", "arcTo", "ellipse", "rect",
@@ -30,6 +30,7 @@ function makeCtx() {
   methods.forEach(function (m) {
     ctx[m] = function () {
       calls.push(m);
+      if (m === "arc") ctx.arcs.push(Array.prototype.slice.call(arguments));
       if (m === "measureText") return { width: 0 };
       if (m === "createLinearGradient" || m === "createRadialGradient") return { addColorStop: function () {} };
     };
@@ -266,6 +267,32 @@ async function main() {
   flushRaf();
   check("generic example clears special cross-incidence",
     walk(container, []).filter(function (e) { return e.tagName === "TD" && e.textContent === "Yes"; }).length === 3);
+
+  const ratioPlot = walk(container, []).filter(function (e) { return e.tagName === "CANVAS"; })[1];
+  const ratioCtx = ratioPlot && ratioPlot._ctx;
+  const markerAt = function () { return ratioCtx.arcs[ratioCtx.arcs.length - 1]; };
+  const start = markerAt();
+  const radius = ranges[ranges.length - 2];
+  const phase = ranges[ranges.length - 1];
+  radius.value = "3";
+  radius._fire("input", { type: "input" });
+  flushRaf();
+  const radial = markerAt();
+  check("magnitude slider visibly moves triple-ratio marker",
+    Math.abs(radial[0] - start[0]) > 10 && Math.abs(radial[1] - start[1]) < 1e-8);
+  phase.value = String(Math.PI / 2);
+  phase._fire("input", { type: "input" });
+  flushRaf();
+  const angular = markerAt();
+  check("phase slider visibly rotates triple-ratio marker",
+    Math.abs(angular[0] - 80) < 1e-8 && angular[1] > 120);
+  const liveRatio = walk(container, []).find(function (e) { return e.className === "ek-triple-ratio-readout"; });
+  check("complex magnitude and phase match current sliders",
+    liveRatio.textContent.indexOf("− 3.0000i") >= 0 && liveRatio.textContent.indexOf("-1.5708 rad") >= 0);
+  cross._fire("click", { type: "click" });
+  flushRaf();
+  check("zero triple ratio labels phase as undefined",
+    liveRatio.textContent.indexOf("undefined at T = 0") >= 0);
 
   console.log("smoke-widget: " + pass + "/" + (pass + fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);

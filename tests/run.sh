@@ -16,7 +16,7 @@ cp "$SRC/../hyperpolygon/sideview-shared.js" "./sideview-shared.js"
 sed -i 's#\.\./hyperpolygon/sideview-shared\.js#./sideview-shared.js#' core-view.js
 
 fail=0
-for f in validate-data.mjs validate-layout.mjs validate-diagram.mjs validate-math.mjs validate-solver.mjs validate-element.mjs validate-model.mjs validate-screen.mjs validate-incidence.mjs smoke-widget.mjs; do
+for f in validate-data.mjs validate-layout.mjs validate-diagram.mjs validate-math.mjs validate-solver.mjs validate-element.mjs validate-model.mjs validate-screen.mjs validate-incidence.mjs validate-triple-ratio.mjs smoke-widget.mjs; do
   echo "=== $f ==="
   if ! node "$f"; then
     fail=1
