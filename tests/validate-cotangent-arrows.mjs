@@ -15,9 +15,10 @@ for(const line of [[[0,0],[100,0]],[[0,0],[60,80]]]) {
 }
 assert.strictEqual(cotangentArrowColor([0,0],false),null);
 assert.strictEqual(cotangentArrowOpacity([0,0]),0);
-assert.ok(cotangentArrowOpacity([.01,0])<.005,'tiny arrows fade almost completely');
-assert.ok(cotangentArrowOpacity([.1,0])<.31,'small arrows fade rapidly');
-assert.ok(cotangentArrowOpacity([1,0])>.97,'normal arrows remain visible');
+assert.ok(cotangentArrowOpacity([.001,0])<.002,'tiny arrows still fade almost completely');
+assert.strictEqual(cotangentArrowOpacity([.025,0]),.5,'fade is concentrated near zero');
+assert.strictEqual(cotangentArrowOpacity([.05,0]),1,'small nonzero arrows reach full opacity');
+assert.strictEqual(cotangentArrowOpacity([1,0]),1,'larger arrows stay fully opaque');
 assert.strictEqual(cotangentArrowOpacity([.1,0]),cotangentArrowOpacity([0,.1]));
 assert.ok(cotangentArrowColor([1,0],false).includes('28%)'),'light-theme arrows are darker');
 assert.notStrictEqual(cotangentArrowColor([1,0],false),cotangentArrowColor([0,1],false));

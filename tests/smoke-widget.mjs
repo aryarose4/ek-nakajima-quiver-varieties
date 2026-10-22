@@ -213,11 +213,11 @@ async function main() {
   check('reverse arrows vanish on the zero section', yCells.length === 24 && yCells.every(e => e.textContent === '0'));
   const canvas = walk(incidence, []).find(e => e.tagName === 'CANVAS'), ctx = canvas._ctx;
   const yToggle=all.find(e=>e.id==='ek-y-data');
-  check('y data toggle starts unchecked',!!yToggle&&!yToggle.checked&&canvas.getAttribute('data-y-data')==='false');
+  check('y data toggle starts checked',!!yToggle&&yToggle.checked&&canvas.getAttribute('data-y-data')==='true');
   const displayedBeforeToggle=incidence.getAttribute('data-displayed-parameters');
-  yToggle.checked=true;yToggle._fire('change');
-  check('y data toggle redraws without another solve',canvas.getAttribute('data-y-data')==='true'&&incidence.getAttribute('data-displayed-parameters')===displayedBeforeToggle);
   yToggle.checked=false;yToggle._fire('change');
+  check('y data toggle redraws without another solve',canvas.getAttribute('data-y-data')==='false'&&incidence.getAttribute('data-displayed-parameters')===displayedBeforeToggle);
+  yToggle.checked=true;yToggle._fire('change');
   const beforeLines = JSON.stringify(ctx.lines.slice(-3));
   set(radius, .75);
   check('radial slider updates balanced matrices', balanced() && matrixText() !== initialMatrices);

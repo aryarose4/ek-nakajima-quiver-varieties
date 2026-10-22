@@ -44,10 +44,11 @@ export function cotangentArrowColor(z, dark) {
   return 'hsl('+hue+', '+85*magnitude/(1+magnitude)+'%, '+(dark?55:28)+'%)';
 }
 
-// Quadratic extinction near zero; normal-sized coefficients remain legible.
+// A short smooth fade reaches full opacity at magnitude .05.
 export function cotangentArrowOpacity(z) {
   const magnitude=Math.hypot(z[0],z[1]);
-  return magnitude*magnitude/(magnitude*magnitude+.15*.15);
+  const u=Math.min(1,magnitude/.05);
+  return u*u*(3-2*u);
 }
 
 // Shared by the canvas and the atlas integration checks.
@@ -101,7 +102,7 @@ export function makeElementView(host, opts) {
     canvas.setAttribute("aria-label", "Flag incidence. A dot matching another line's hue indicates numerical incidence. A dot incident to both other lines is neutral. Own-line hue need not match. Boundary arrows mark points outside the projective viewport. Cotangent arrows encode three matrix components; hue shows phase and saturation shows magnitude.");
   }
   host.appendChild(canvas);
-  let showYData = false;
+  let showYData = true;
   const yToggleLabel = document.createElement('label');
   yToggleLabel.style.position = 'absolute';
   yToggleLabel.style.top = '10px';
@@ -114,7 +115,7 @@ export function makeElementView(host, opts) {
   const yToggle = document.createElement('input');
   yToggle.id = 'ek-y-data';
   yToggle.type = 'checkbox';
-  yToggle.checked = false;
+  yToggle.checked = true;
   yToggle.addEventListener('change', function () { showYData = yToggle.checked; draw(); });
   yToggleLabel.appendChild(yToggle);
   const yToggleText = document.createElement('span');

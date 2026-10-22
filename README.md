@@ -91,7 +91,7 @@ witnesses. Sphere radii, angles and the rendered motion remain schematic;
 the implementation does not claim a global stable atlas. Unsupported charts clear
 the matrix readout instead of leaving matrices from a different point visible.
 The flag panel records the forward-arrow flags, with plane labels P1/P2/P3
-and unlabelled marked points. Its top-left "y data" toggle starts unchecked.
+and unlabelled marked points. Its top-left "y data" toggle starts checked.
 When enabled, three fixed-length 16px arrows
 encode the upper-triangular coefficients of `K_i=A_i B_i` in an orthonormal
 flag basis: hue encodes phase and saturation encodes magnitude. The `c12`
@@ -288,4 +288,5 @@ here.
 Released under the [MIT License](LICENSE). The bundled `three.js` is under its
 own MIT license (see `assets/js/ek-nakajima/lib/`).
 
-The y arrows use darker strokes and quadratic opacity fall-off near zero magnitude (half opacity at magnitude 0.15).
+The y arrows use darker strokes and a short smooth opacity fade near zero
+magnitude: half opacity at .025 and full opacity from .05 onward.
