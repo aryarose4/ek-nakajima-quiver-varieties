@@ -558,7 +558,7 @@ export function makeCoreView(host, opts) {
     lastLay = lay;
     homeCenter = lay.center ? lay.center.slice() : [0, 0, 0];
     const ext = lay.extent || 1;
-    const dist = (ext / Math.sin(Math.atan(Math.tan((camera.fov * Math.PI) / 360) * Math.min(1, camera.aspect)))) * 1.15;
+    const dist = (ext / Math.tan((camera.fov * Math.PI) / 360)) * 1.25 / Math.min(1, camera.aspect);
     const dir = unit3([0.5, 0.35, 0.9]) || [0, 0, 1];
     if (sameTopology) {
       // Keep the user's orbit and zoom as beta moves; rescale the current
@@ -575,8 +575,11 @@ export function makeCoreView(host, opts) {
       camera.position.set(homeCenter[0] + dir[0] * dist, homeCenter[1] + dir[1] * dist, homeCenter[2] + dir[2] * dist);
       controls.target.set(homeCenter[0], homeCenter[1], homeCenter[2]);
     }
-    camera.near = Math.max(0.02, dist - ext * 3);
-    camera.far = dist + ext * 6;
+    const cameraDistance = Math.hypot(camera.position.x-homeCenter[0], camera.position.y-homeCenter[1], camera.position.z-homeCenter[2]);
+    const rhoMax = PARAB_FOCAL * Math.tan(PHI_CAP);
+    const wingExtent = Math.hypot(rhoMax, rhoMax*rhoMax/(2*PARAB_FOCAL));
+    camera.near = Math.max(1e-6, Math.min(0.02, ext*1e-4));
+    camera.far = cameraDistance + ext*6 + wingExtent*2;
     camera.lookAt(controls.target.x, controls.target.y, controls.target.z);
     camera.updateProjectionMatrix();
     controls.update();
