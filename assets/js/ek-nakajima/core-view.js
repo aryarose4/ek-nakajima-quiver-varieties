@@ -125,9 +125,10 @@ export function buildSideLayout(q, opts) {
   const tree = oriented.tree;
   const n = tree.nodes;
   const r0 = opts.r0 === undefined ? 1 : opts.r0;
-  const radii = opts.sizeByMark ? tree.marks.slice() : new Array(n).fill(r0);
+  const radii = opts.radii ? opts.radii.slice() : (opts.sizeByMark ? tree.marks.slice() : new Array(n).fill(r0));
+  if (radii.length !== n) throw new RangeError("buildSideLayout: radii length mismatch");
   for (let i = 0; i < n; i++) {
-    if (!(radii[i] > 0)) radii[i] = r0;
+    if (!Number.isFinite(radii[i]) || radii[i] <= 0) throw new RangeError("buildSideLayout: radius " + i + " must be positive");
   }
 
   const root = oriented.root;
@@ -552,23 +553,45 @@ export function makeCoreView(host, opts) {
 
   // Rebuild the sphere meshes for a new layout (type / radius toggle).
   function setLayout(lay) {
+    const previous = lastLay;
+    const sameTopology = previous && previous.q.name === lay.q.name && previous.tree.nodes === lay.tree.nodes;
     lastLay = lay;
     homeCenter = lay.center ? lay.center.slice() : [0, 0, 0];
     const ext = lay.extent || 1;
-    const dist = (ext / Math.tan((camera.fov * Math.PI) / 360)) * 1.25;
+    const dist = (ext / Math.sin(Math.atan(Math.tan((camera.fov * Math.PI) / 360) * Math.min(1, camera.aspect)))) * 1.15;
     const dir = unit3([0.5, 0.35, 0.9]) || [0, 0, 1];
-    camera.position.set(homeCenter[0] + dir[0] * dist, homeCenter[1] + dir[1] * dist, homeCenter[2] + dir[2] * dist);
+    if (sameTopology) {
+      // Keep the user's orbit and zoom as beta moves; rescale the current
+      // camera/target offsets with the packing rather than resetting them.
+      const ratio = ext / previous.extent;
+      const oldCenter = previous.center || [0, 0, 0];
+      camera.position.set(homeCenter[0] + (camera.position.x-oldCenter[0])*ratio,
+        homeCenter[1] + (camera.position.y-oldCenter[1])*ratio,
+        homeCenter[2] + (camera.position.z-oldCenter[2])*ratio);
+      controls.target.set(homeCenter[0] + (controls.target.x-oldCenter[0])*ratio,
+        homeCenter[1] + (controls.target.y-oldCenter[1])*ratio,
+        homeCenter[2] + (controls.target.z-oldCenter[2])*ratio);
+    } else {
+      camera.position.set(homeCenter[0] + dir[0] * dist, homeCenter[1] + dir[1] * dist, homeCenter[2] + dir[2] * dist);
+      controls.target.set(homeCenter[0], homeCenter[1], homeCenter[2]);
+    }
     camera.near = Math.max(0.02, dist - ext * 3);
     camera.far = dist + ext * 6;
-    controls.target.set(homeCenter[0], homeCenter[1], homeCenter[2]);
-    camera.lookAt(homeCenter[0], homeCenter[1], homeCenter[2]);
+    camera.lookAt(controls.target.x, controls.target.y, controls.target.z);
     camera.updateProjectionMatrix();
     controls.update();
     rootMesh.scale.setScalar(lay.nodes[lay.root].radius);
     rootMesh.position.set(lay.nodes[lay.root].center[0], lay.nodes[lay.root].center[1], lay.nodes[lay.root].center[2]);
+    if (sameTopology) {
+      armMeshes.forEach(function (entry) {
+        const nd = lay.nodes[entry.node];
+        entry.mesh.position.set(nd.center[0], nd.center[1], nd.center[2]);
+        entry.mesh.scale.setScalar(nd.radius);
+      });
+      return;
+    }
     while (armGroup.children.length) {
-      const c = armGroup.children.pop();
-      armGroup.remove(c);
+      armGroup.remove(armGroup.children[armGroup.children.length - 1]);
     }
     for (let i = 0; i < armMeshes.length; i++) armMeshes[i].mat.dispose();
     armMeshes = [];
@@ -757,6 +780,17 @@ export function makeCoreView(host, opts) {
     disposed = true;
     ro.disconnect();
     controls.dispose();
+    unitSphere.dispose();
+    rootMat.dispose();
+    armMeshes.forEach(function (entry) { entry.mat.dispose(); });
+    dot.geometry.dispose();
+    dotMat.dispose();
+    arcGeom.dispose();
+    arcMat.dispose();
+    para.geom.dispose();
+    paraMat.dispose();
+    strat.geom.dispose();
+    stratMat.dispose();
     renderer.dispose();
     if (renderer.domElement.parentNode === host) host.removeChild(renderer.domElement);
   }
