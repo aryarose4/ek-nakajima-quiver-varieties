@@ -63,6 +63,8 @@ function makeEl(tag) {
     },
     getContext: function (kind) { if (kind === "2d") return el._ctx || (el._ctx = makeCtx()); return null; },
     setPointerCapture: function () {}, releasePointerCapture: function () {},
+    setAttribute: function (key, value) { el[key] = value; },
+    getAttribute: function (key) { return el[key] === undefined ? null : el[key]; },
   };
   Object.defineProperty(el, "className", {
     get: function () { return el._classes.join(" "); },
@@ -194,12 +196,19 @@ async function main() {
   check("one compact radius slider", radius && radius.min === "0" && radius.max === "1");
   check("one theta slider", !!theta);
   const ranges = all.filter(function(e) { return e.tagName === "INPUT" && e.type === "range"; });
-  check("shared coordinates with t and phi fixed", ranges.length === 4 && ranges.filter(function(e) { return !e.disabled; }).length === 2);
+  check("all four coordinate sliders are enabled", ranges.length === 4 && ranges.every(function(e) { return !e.disabled; }));
+  const t = all.find(function(e) { return e.id === "ek-t"; });
+  const phi = all.find(function(e) { return e.id === "ek-phi"; });
+  const limit = all.find(function(e) { return e.id === "ek-limit"; });
+  check("no extra flow-status text", !all.some(function(e) { return e.id === "ek-flow-status"; }));
+  function set(input, value) { input.value = String(value); input._fire("input", { type: "input" }); flushRaf(); }
   const matrices = all.filter(function(e) { return e.className === "ek-rep-matrix"; });
   const cells = all.filter(function(e) { return e.className === "ek-rep-cell"; });
   check("all x and y arrows displayed", matrices.length === 12 && cells.length === 48);
+  const a1 = walk(matrices[1], []).filter(function(e) { return e.className === "ek-rep-cell"; });
   const a3 = walk(matrices[9], []).filter(function(e) { return e.className === "ek-rep-cell"; });
-  check("initial A3 uses finite homogeneous representative", a3.map(function(e) { return e.textContent; }).join(",") === "0,0.5,0,0.5,1,0");
+  check("initial A1 uses finite homogeneous representative", a1.map(function(e) { return e.textContent; }).join(",") === "1,0,0,0.5,0,0.5");
+  const anchoredLines = [5,9].map(function(index) { return walk(matrices[index], []).filter(function(e) { return e.className === "ek-rep-cell"; }).map(function(e) { return e.textContent; }).join(","); }).join(";");
   const yCells = matrices.filter(function(_, i) { return i % 4 >= 2; }).reduce(function(out, el) {
     return out.concat(walk(el, []).filter(function(e) { return e.className === "ek-rep-cell"; }));
   }, []);
@@ -208,26 +217,115 @@ async function main() {
   const ctx = canvas._ctx;
   const lineColors = function() { return ctx.strokes.slice(-6, -3); };
   check("concurrent lines have the same hue", new Set(lineColors()).size === 1);
-  const beforeLine = ctx.lines[ctx.lines.length - 1];
+  const beforeLine = ctx.lines[ctx.lines.length - 3];
   radius.value = "0.75"; radius._fire("input", { type: "input" }); flushRaf();
-  const afterLine = ctx.lines[ctx.lines.length - 1];
+  const afterLine = ctx.lines[ctx.lines.length - 3];
   check("radial slider moves the flag line", Math.hypot(afterLine[0]-beforeLine[0], afterLine[1]-beforeLine[1]) > 1);
-  check("radial slider updates x readout", a3[1].textContent === "0.25" && a3[3].textContent === "0.75");
+  check("radial slider updates x readout", a1[3].textContent === "0.25" && a1[5].textContent === "0.75");
   theta.value = String(Math.PI/2); theta._fire("input", { type: "input" }); flushRaf();
-  check("phase updates the complex representative", a3[3].textContent === "0.75i");
-  check("phase changes line hue", lineColors()[0] === lineColors()[1] && lineColors()[1] !== lineColors()[2]);
-  check("phase leaves modulus geometry fixed", JSON.stringify(ctx.lines[ctx.lines.length - 1]) === JSON.stringify(afterLine));
+  check("phase updates the complex representative", a1[5].textContent === "0.75i");
+  check("r and theta leave A2 and A3 anchored", anchoredLines === [5,9].map(function(index) { return walk(matrices[index], []).filter(function(e) { return e.className === "ek-rep-cell"; }).map(function(e) { return e.textContent; }).join(","); }).join(";"));
+  check("phase changes line hue", lineColors()[0] !== lineColors()[1] && lineColors()[1] === lineColors()[2]);
+  check("phase leaves modulus geometry fixed", JSON.stringify(ctx.lines[ctx.lines.length - 3]) === JSON.stringify(afterLine));
   check("phase circle removed", ctx.arcs.slice(-3).every(function(a) { return a[2] === 4; }));
   radius.value = "1"; radius._fire("input", { type: "input" }); flushRaf();
-  check("infinity has finite x readout", a3[1].textContent === "0" && a3[3].textContent === "i");
+  check("infinity uses the stable endpoint representative", a1.map(function(e) { return e.textContent; }).join(",") === "1,0,0,0,0,i");
   check("infinity has phase-independent gray lines", new Set(lineColors()).size === 1 && lineColors()[0].indexOf("0%,") >= 0);
   check("infinity diagram remains finite", ctx.lines.slice(-3).every(function(p) { return p.every(Number.isFinite); }));
   radius.value = "0"; radius._fire("input", { type: "input" }); flushRaf();
-  check("zero has finite x readout", a3[1].textContent === "1" && a3[3].textContent === "0");
+  check("zero uses the stable endpoint representative", a1.map(function(e) { return e.textContent; }).join(",") === "1,0,0,1,0,0");
+  set(radius, 0.015); check("radius snaps to zero", Number(radius.value) === 0);
+  set(radius, 0.49); check("radius snaps to one half", Number(radius.value) === 0.5);
+  set(radius, 0.985); check("radius snaps to one", Number(radius.value) === 1);
+  set(radius, 0.47); check("radius outside magnet remains free", Number(radius.value) === 0.47);
+  set(theta, 0.08); check("theta snaps to zero", Number(theta.value) === 0);
+  set(phi, -0.08); check("phi snaps to zero", Number(phi.value) === 0);
+  set(radius, 0.25);
+  set(t, 0.4);
+  check("finite transverse coordinate produces nonzero reverse arrows", yCells.some(function(e) { return e.textContent !== "0" && e.textContent !== "\u2014"; }));
+  const beforePhase = yCells.map(function(e) { return e.textContent; }).join(",");
+  set(phi, Math.PI / 2);
+  check("phi changes the transverse representative", beforePhase !== yCells.map(function(e) { return e.textContent; }).join(","));
+  set(radius, 0); set(theta, 0); set(t, 1);
+  check("first long-arm infinity has certified fixed matrices", cells.every(function(e) { return e.textContent !== "\u2014"; }) && moduli.getAttribute("data-fixed") === "true");
+  check("outward limit available at first sphere tip", limit.style.display !== "none" && limit.textContent === "lim t\u2192\u221e");
+  limit._fire("click", { type: "click" }); flushRaf();
+  check("outward limit steps exactly one sphere", Number(t.value) === 0 && moduli["data-sphere"] === "1");
+  check("second long-arm sphere starts at certified fixed matrices", cells.every(function(e) { return e.textContent !== "\u2014"; }) && moduli.getAttribute("data-fixed") === "true");
+  check("inward limit available at higher sphere base", limit.style.display !== "none" && limit.textContent === "lim t\u21920");
+  limit._fire("click", { type: "click" }); flushRaf();
+  check("inward limit returns to previous sphere tip", Number(t.value) === 1 && moduli["data-sphere"] === "0");
+  limit._fire("click", { type: "click" }); flushRaf();
+  set(radius, 0.25);
+  check("leaving an arm resets sphere selection and restores finite chart", a1[3].textContent === "0.75");
+  set(radius, 0); set(t, 1); limit._fire("click", { type: "click" }); flushRaf();
   findByText(container, "E7")._fire("click", {type:"click"}); flushRaf();
   check("unsupported type clears stale representative", cells.every(function(e) { return e.textContent === "\u2014"; }));
   findByText(container, "E6")._fire("click", {type:"click"}); flushRaf();
   check("returning to E6 restores representative", a3[1].textContent === "1");
+  set(radius, 0.03); set(t, 0.95);
+  check("captured central branch offers outward transition", limit.style.display !== "none");
+  limit._fire("click", { type: "click" }); flushRaf();
+  check("capture handover parks on the arm one sphere outward", Number(radius.value) === 0 && Number(t.value) === 0 && moduli["data-sphere"] === "1");
+  set(radius, 0.5); set(theta, 0); set(t, 1);
+  check("concurrency infinity has a finite representative", cells.every(function(e) { return e.textContent !== "\u2014"; }));
+  check("concurrency infinity retains nonzero reverse arrows", yCells.some(function(e) { return e.textContent !== "0" && e.textContent !== "\u2014"; }));
+  const limitCells = cells.map(function(e) { return e.textContent; }).join(",");
+  limit._fire("click", { type: "click" }); flushRaf();
+  check("concurrency limit persists at outgoing wing base", Number(t.value) === 0 && moduli["data-flow"] === "outgoing" && limitCells === cells.map(function(e) { return e.textContent; }).join(","));
+  set(t, 0.2);
+  check("higher concurrency chart has finite moving matrices", cells.every(function(e) { return e.textContent !== "\u2014"; }) && limitCells !== cells.map(function(e) { return e.textContent; }).join(","));
+  const higherCells = cells.map(function(e) { return e.textContent; }).join(",");
+  set(phi, 0.7);
+  check("higher concurrency chart phase changes matrices", higherCells !== cells.map(function(e) { return e.textContent; }).join(","));
+  set(phi, 0);
+  const weightTwoCells = cells.map(function(e) { return e.textContent; }).join(",");
+  set(phi, Math.PI);
+  check("outgoing coordinate has weight two under phase", weightTwoCells === cells.map(function(e) { return e.textContent; }).join(","));
+  set(t, 1);
+  check("infinity of higher chart clears unsupported representative", cells.every(function(e) { return e.textContent === "\u2014"; }));
+  set(t, 0); limit._fire("click", { type: "click" }); flushRaf();
+  check("return to concurrency tip restores same limit", Number(t.value) === 1 && limitCells === cells.map(function(e) { return e.textContent; }).join(","));
+  set(radius, 0.53); set(t, 0.95);
+  check("captured concurrency offers short-arm transition", limit.style.display !== "none");
+  limit._fire("click", {type:"click"}); flushRaf();
+  check("captured concurrency enters wing without another sphere", Number(radius.value) === 0.5 && Number(t.value) === 0 && moduli["data-flow"] === "outgoing" && moduli["data-sphere"] === "0");
+  set(radius, 0.25);
+  check("leaving concurrency resets outgoing chart", moduli["data-flow"] === "central" && a1[3].textContent === "0.75");
+  const data = await import("./quiver-data.js");
+  const core = await import("./core-view.js");
+  ["E6", "E7", "E8"].forEach(function(key) {
+    findByText(container, key)._fire("click", { type: "click" }); flushRaf();
+    const layout = core.buildSideLayout(data.AFFINE_ADE[key]);
+    layout.arms.forEach(function(arm, index) {
+      set(radius, arm.param); set(theta, 0);
+      for (let i = 0; i < arm.nodes.length; i++) {
+        set(t, 1);
+        check(key + " arm " + index + " reaches sphere " + (i + 1), moduli["data-flow"] === "arm" && Number(moduli["data-sphere"]) === i);
+        check(key + " arm " + index + " limit bounded at sphere " + (i + 1), (limit.style.display !== "none") === (i < arm.nodes.length - 1 || key === "E6"));
+        if (key === "E6") check("E6 visible junction/tip is fixed", moduli.getAttribute("data-fixed") === "true");
+        if (i < arm.nodes.length - 1) { limit._fire("click", { type: "click" }); flushRaf(); }
+      }
+      if (key === "E6") {
+        const tipCells = cells.map(function(e) { return e.textContent; }).join(",");
+        limit._fire("click", { type: "click" }); flushRaf();
+        check("E6 outgoing chart starts at same fixed tip", moduli.getAttribute("data-flow") === "outgoing" && tipCells === cells.map(function(e) { return e.textContent; }).join(","));
+        set(t, 0.4);
+        check("E6 outgoing chart moves off fixed point", moduli.getAttribute("data-fixed") === "false" && cells.every(function(e) { return e.textContent !== "\u2014"; }));
+      }
+    });
+  });
+  const layout = core.buildSideLayout(data.AFFINE_ADE.E6);
+  check("E6 chart attachments have long-short-long arms", layout.arms.map(function(a) { return a.nodes.length; }).join(",") === "2,1,2");
+  const tip = core.coreFlow(layout, {r:0.5,theta:0,t:1,phi:0,sphere:0});
+  [-2,0,2].forEach(function(phase) {
+    const base = core.coreFlow(layout, {r:0.5,theta:0,t:0,phi:phase,sphere:0,outgoing:true});
+    check("outgoing base is continuous at phase " + phase, base.kind === "outgoing" && Math.hypot.apply(Math,base.dot.map(function(x,i){return x-tip.dot[i];})) < 1e-12);
+    [0.2,0.7,1].forEach(function(t) {
+      const flow = core.coreFlow(layout, {r:0.5,theta:0,t:t,phi:phase,outgoing:true});
+      check("outgoing wing finite " + phase + "/" + t, flow.dot.every(Number.isFinite) && flow.dot[0] > tip.dot[0]);
+    });
+  });
   console.log("smoke-widget: " + pass + "/" + (pass+fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);
 }

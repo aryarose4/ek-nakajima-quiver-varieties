@@ -131,7 +131,13 @@ export function buildSideLayout(q, opts) {
   }
 
   const root = oriented.root;
-  const rootChildren = oriented.children[root];
+  const rootChildren = oriented.children[root].slice();
+  // E6's concurrency attachment z=1 is the short arm. Preserve node IDs
+  // and edges; traversal order alone does not specify chart attachments.
+  if (q.name === "E6" && rootChildren.length === 3) {
+    const short = rootChildren.findIndex(function (node) { return oriented.children[node].length === 0; });
+    if (short >= 0) rootChildren.splice(1, 0, rootChildren.splice(short, 1)[0]);
+  }
   const K = rootChildren.length;
   const nodes = new Array(n).fill(null);
   const arms = [];
@@ -202,15 +208,18 @@ export function armAt(lay, r, theta) {
   return -1;
 }
 
-// prm = { r, theta, t, phi, sphere }.
+// prm = { r, theta, t, phi, sphere, outgoing }.
+// outgoing selects the E6 short-arm tip's noncompact chart, with weight-2
+// phase, rather than assigning that chart to a nonexistent second sphere.
 // Returns null on any non-finite input; never throws for finite input.
 export function coreFlow(lay, prm) {
   const r = prm.r;
   const theta = prm.theta;
   const t = prm.t;
   if (!Number.isFinite(r) || !Number.isFinite(theta) || !Number.isFinite(t)) return null;
-  const g = Number.isFinite(prm.phi) ? prm.phi : 0;
   const sphereIn = Number.isFinite(prm.sphere) ? Math.floor(prm.sphere) : 0;
+  const phaseWeight = lay.q.name === "E6" ? (prm.outgoing ? (r === 0.5 ? 2 : 3) : sphereIn + 1) : 1;
+  const g = (Number.isFinite(prm.phi) ? prm.phi : 0) * phaseWeight;
 
   const rootNode = lay.nodes[lay.root];
   const R = rootNode.radius;
@@ -266,6 +275,19 @@ export function coreFlow(lay, prm) {
     const nd = lay.nodes[curNode];
     const base = add3(nd.center, scale3(fr.arm.dir, -nd.radius));
     const tip = add3(nd.center, scale3(fr.arm.dir, nd.radius));
+    if (prm.outgoing && lay.q.name === "E6" && si === N - 1) {
+      const wing = parabFrame(tip, fr.arm.dir, scale3(fr.side, -1));
+      const angle = tl >= 1 ? PHI_CAP : Math.min(PHI_CAP, Math.atan(PHI_K_STRAT * tl / (1 - tl)));
+      const climb = function (a) {
+        const rho = wing.f * Math.tan(a);
+        return add3(tip, add3(scale3(wing.u, rho), scale3(wing.n, rho * rho / (2 * wing.f))));
+      };
+      const arc = [];
+      for (let i = 0; i < ARC_N; i++) arc.push(climb(angle * i / (ARC_N - 1)));
+      return { kind: "outgoing", att: att, node: curNode, sphereCount: N,
+        dot: climb(angle), arc: arc, exterior: null, paraboloid: wing,
+        stratum: null, capture: null, nearInfinity: false };
+    }
     // Guide arc: the meridian of THIS sphere only, base -> tip.
     const armArc = [];
     for (let i = 0; i < ARC_N; i++) armArc.push(ride(fr, si + i / (ARC_N - 1)));

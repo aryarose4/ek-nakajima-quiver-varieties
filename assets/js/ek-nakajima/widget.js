@@ -1,9 +1,11 @@
 // E6 complex representatives and simultaneous flag/moduli views.
-// Both views share compact coordinates r,theta; t and phi are fixed at zero.
+// Compact representatives and the schematic core flow share coordinate controls.
 
 import { AFFINE_ADE } from "./quiver-data.js";
-import { buildSideLayout, makeCoreView } from "./core-view.js";
-import { compactChart } from "./chart.js";
+import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
+import { e6AtlasPoint } from "./e6-atlas.js";
+import { E6_REGULAR_LEVELS } from "./e6-levels.js";
+import { matMul } from "./core-math.js";
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
@@ -127,7 +129,8 @@ function ensureStyles() {
 // ---------------------------------------------------------------------------
 function activate(container) {
   ensureStyles();
-  const state = { key: "E6" };
+  container.setAttribute("data-e6-levels", JSON.stringify(E6_REGULAR_LEVELS));
+  const state = { key: "E6", sphere: 0, arm: -1, outgoing: false };
   const tabs = document.createElement("div");
   tabs.className = "ek-tabs";
   container.appendChild(tabs);
@@ -191,7 +194,7 @@ function activate(container) {
   secondRow.style.marginTop = "6px";
   modPanel.appendChild(secondRow);
 
-  function slider(host, id, label, min, max, step, value, format, title, disabled) {
+  function slider(host, id, label, min, max, step, value, format, title, snaps) {
     const box = document.createElement("div");
     box.className = "ek-mod";
     const lab = document.createElement("label");
@@ -205,13 +208,17 @@ function activate(container) {
     input.max = String(max);
     input.step = String(step);
     input.value = String(value);
-    input.disabled = !!disabled;
+    input.disabled = false;
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
     function refresh() { readout.textContent = format(Number(input.value)); }
     input.addEventListener("input", function () {
-      if (input.disabled) return;
+      (snaps || []).some(function (snap) {
+        if (Math.abs(Number(input.value) - snap.value) > snap.tol) return false;
+        input.value = String(snap.value);
+        return true;
+      });
       refresh();
       apply();
     });
@@ -223,13 +230,26 @@ function activate(container) {
     return { input: input, refresh: refresh };
   }
   const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
-    function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity", false);
+    function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity",
+    [0, 0.5, 1].map(function (v) { return { value: v, tol: 0.02 }; }));
   const thetaControl = slider(firstRow, "ek-theta", "\u03b8", -Math.PI, Math.PI, "any", 0,
-    function (v) { return v.toFixed(3); }, "Phase in radians", false);
-  slider(secondRow, "ek-t", "t", 0, 1, 0.001, 0,
-    function () { return "0"; }, "Only t = 0 is implemented", true);
-  slider(secondRow, "ek-phi", "\u03c6", -Math.PI, Math.PI, "any", 0,
-    function () { return "0"; }, "Inactive when y = 0", true);
+    function (v) { return v.toFixed(3); }, "Phase in radians", [{ value: 0, tol: 0.03 * Math.PI }]);
+  const tCol = document.createElement("div");
+  tCol.className = "ek-tcol";
+  secondRow.appendChild(tCol);
+  const tControl = slider(tCol, "ek-t", "t", 0, 1, 0.001, 0,
+    function (v) { return v >= 1 ? "\u221e" : (v / (1 - v)).toFixed(2); },
+    "Local flow on the current sphere; readout t/(1-t)", []);
+  tControl.input.parentNode.style.flex = "1 1 auto";
+  const limBtn = document.createElement("button");
+  limBtn.id = "ek-limit";
+  limBtn.type = "button";
+  limBtn.className = "ek-btn";
+  limBtn.style.display = "none";
+  limBtn.style.alignSelf = "flex-start";
+  tCol.appendChild(limBtn);
+  const phiControl = slider(secondRow, "ek-phi", "\u03c6", -Math.PI, Math.PI, "any", 0,
+    function (v) { return v.toFixed(3); }, "Flow phase in radians", [{ value: 0, tol: 0.03 * Math.PI }]);
 
   const coreView = makeCoreView(coreFrame, { getPalette: palette });
   const incidenceView = makeElementView(incidenceFrame, { getPalette: palette });
@@ -238,6 +258,37 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
+  let lastFlow = null;
+  function limitMode(t) {
+    if (!lastFlow) return null;
+    if (state.outgoing) return t <= 0.1 ? "return" : null;
+    if (lastFlow.kind === "arm") {
+      if (state.key === "E6" && state.sphere === lastFlow.sphereCount - 1 && t >= T_NEAR_INF) return "outgoing";
+      if (state.sphere < lastFlow.sphereCount - 1 && t >= T_NEAR_INF) return "up";
+      if (state.sphere > 0 && t <= 0.1) return "down";
+    } else if (lastFlow.capture && lastFlow.capture.w >= CAP_NEAR_INF_W && t >= T_NEAR_INF &&
+        (layout.arms[lastFlow.capture.k].nodes.length > 1 ||
+         (state.key === "E6" && lastFlow.capture.k === 1))) return "enter";
+    return null;
+  }
+  limBtn.addEventListener("click", function () {
+    // Flush current slider values before resolving a transition (RAF may be pending).
+    update();
+    const mode = limitMode(Number(tControl.input.value));
+    if (mode === "outgoing") { state.outgoing = true; tControl.input.value = "0"; }
+    else if (mode === "return") { state.outgoing = false; tControl.input.value = "1"; }
+    else if (mode === "up") { state.sphere++; tControl.input.value = "0"; }
+    else if (mode === "down") { state.sphere--; tControl.input.value = "1"; }
+    else if (mode === "enter") {
+      state.arm = lastFlow.capture.k;
+      state.outgoing = state.key === "E6" && state.arm === 1;
+      state.sphere = state.outgoing ? 0 : 1;
+      rControl.input.value = String(layout.arms[state.arm].param);
+      thetaControl.input.value = "0";
+      tControl.input.value = "0";
+    } else return;
+    apply();
+  });
   let pending = false;
   function apply() {
     if (pending) return;
@@ -249,21 +300,39 @@ function activate(container) {
   function update() {
     const r = Number(rControl.input.value);
     const theta = Number(thetaControl.input.value);
+    const t = Number(tControl.input.value);
+    const phi = Number(phiControl.input.value);
+    const arm = armAt(layout, r, theta);
+    if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
     rControl.refresh();
     thetaControl.refresh();
-    if (coreView) coreView.update(layout, { r: r, theta: theta, t: 0, phi: 0, sphere: 0 }, false);
+    tControl.refresh();
+    phiControl.refresh();
+    lastFlow = coreView ? coreView.update(layout, { r: r, theta: theta, t: t, phi: phi, sphere: state.sphere, outgoing: state.outgoing }, true) : null;
+    const mode = limitMode(t);
+    limBtn.style.display = mode ? "inline-block" : "none";
+    limBtn.textContent = mode === "down" || mode === "return" ? "lim t\u21920" : "lim t\u2192\u221e";
+    limBtn.title = mode === "down" || mode === "return" ? "Move inward" : "Move outward";
+    coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
+    coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
+      coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
       incidenceView.setStatus("E6 only", "warn");
       return;
     }
     try {
-      const rep = compactChart(r, theta);
+      const point = e6AtlasPoint({ r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing });
+      const rep = point.rep;
+      coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
       matrices.setData(rep);
-      incidenceView.setData({ incidence: flagIncidence(rep) });
+      const viewData = Object.assign({ incidence: flagIncidence(rep),
+        cotangentOperators: rep.A.map(function (A, i) { return matMul(A, rep.B[i]); }) }, point.view);
+      incidenceView.setData(viewData);
       incidenceView.setStatus("", "info");
     } catch (error) {
+      coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
       incidenceView.setStatus("Representation unavailable", "error");
@@ -274,6 +343,9 @@ function activate(container) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
     });
     layout = buildSideLayout(AFFINE_ADE[state.key]);
+    state.arm = -1;
+    state.sphere = 0;
+    state.outgoing = false;
     if (coreView) coreView.setLayout(layout);
     apply();
   }
