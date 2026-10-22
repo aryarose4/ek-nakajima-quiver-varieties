@@ -6,6 +6,7 @@ import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from
 import { e6AtlasPoint, e6HasInfinityLimit } from "./e6-atlas.js";
 import { createBalancedClient } from './balanced-client.js';
 import { E6_REGULAR_LEVELS } from "./e6-levels.js";
+import { createParametersPanel } from "./parameters-panel.js";
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
 
@@ -115,6 +116,8 @@ function ensureStyles() {
     "#ek-nakajima-widget .ek-slider::-moz-range-thumb { width: 13px; height: 13px;",
     "  border: none; border-radius: 50%; background: var(--ek-thumb); }",
     "#ek-nakajima-widget .ek-slider:disabled { opacity: 0.4; }",
+    "#ek-nakajima-widget .ek-beta-slider::-webkit-slider-runnable-track { background: linear-gradient(to right, rgba(190,65,65,.22) 0%, rgba(190,65,65,.22) var(--ek-beta-lo), #c84a4a var(--ek-beta-lo), #c84a4a calc(var(--ek-beta-lo) + 2px), var(--ek-track) calc(var(--ek-beta-lo) + 2px), var(--ek-track) calc(var(--ek-beta-hi) - 2px), #c84a4a calc(var(--ek-beta-hi) - 2px), #c84a4a var(--ek-beta-hi), rgba(190,65,65,.22) var(--ek-beta-hi), rgba(190,65,65,.22) 100%); }",
+    "#ek-nakajima-widget .ek-beta-slider::-moz-range-track { background: linear-gradient(to right, rgba(190,65,65,.22) 0%, rgba(190,65,65,.22) var(--ek-beta-lo), #c84a4a var(--ek-beta-lo), #c84a4a calc(var(--ek-beta-lo) + 2px), var(--ek-track) calc(var(--ek-beta-lo) + 2px), var(--ek-track) calc(var(--ek-beta-hi) - 2px), #c84a4a calc(var(--ek-beta-hi) - 2px), #c84a4a var(--ek-beta-hi), rgba(190,65,65,.22) var(--ek-beta-hi), rgba(190,65,65,.22) 100%); }",
     "#ek-nakajima-widget .ek-btn { padding: 2px 10px; border: 1px solid var(--ek-btn-bd);",
     "  border-radius: 6px; background: transparent; color: var(--ek-btn-tx);",
     "  font-size: 0.85em; cursor: pointer; font-family: inherit; }",
@@ -265,6 +268,12 @@ function activate(container) {
   } });
   let balancedFrame = null;
   let lastBalancedKey = null;
+  const parametersPanel = createParametersPanel(right, { onChange: function (beta, levels) {
+    balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+    container.setAttribute('data-e6-levels', JSON.stringify(levels));
+    matrices.setData(null); incidenceView.setData(null);
+    apply();
+  } });
   function displayBalanced(result, parameters) {
     matrices.setData(result.solvedRep);
     const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
@@ -347,7 +356,8 @@ function activate(container) {
       const parameters = { r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing };
       const point = e6AtlasPoint(parameters);
       coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
-      const key = JSON.stringify(parameters);
+      const levels = parametersPanel.getLevels();
+      const key = JSON.stringify({ parameters, levels });
       if (key === lastBalancedKey) return;
       lastBalancedKey = key;
       incidenceFrame.setAttribute('aria-busy', 'true');
@@ -363,7 +373,7 @@ function activate(container) {
         }
         displayBalanced(result, parameters);
         incidenceFrame.setAttribute('data-balanced', 'true');
-      });
+      }, levels);
     } catch (error) {
       balancedClient.invalidate(); lastBalancedKey = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
@@ -375,6 +385,7 @@ function activate(container) {
     }
   }
   function sync() {
+    parametersPanel.setEnabled(state.key === "E6");
     Object.keys(tabButtons).forEach(function (key) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
     });
