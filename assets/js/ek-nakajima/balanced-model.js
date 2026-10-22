@@ -34,7 +34,7 @@ function boundedConcurrency(s) {
 }
 
 // A previous successful result is an optional continuation token. Seeds are
-// accepted only within the same chart family and at identical real levels.
+// accepted within the same chart family, including changes in real levels.
 // Failed attempts never expose a previous representation as the current solve.
 export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, options = {}) {
   let atlas;
@@ -60,7 +60,7 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   const solverOptions=Object.assign(defaults,options.solverOptions||{});
   const previous=options.previous && (options.previous.continuation || options.previous);
   let warm=options.initialLogGauge;
-  if (!warm && previous && previous.family===chartFamily && previous.levelKey===levelKey) warm=previous.logGauge;
+  if (!warm && previous && previous.family===chartFamily) warm=previous.logGauge;
   if (!finiteGauge(warm)) warm=null;
   let result, attempts=0, totalNfev=0;
   try {
@@ -72,6 +72,17 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
       const cold=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:null}));
       totalNfev+=cold.diagnostics.nfev;
       if(cold.success || cold.residuals.real_norm<result.residuals.real_norm) result=cold;
+    }
+    if (!result.success && !options.solverOptions) {
+      // Keep ordinary slider solves on the fast path. At ill-conditioned
+      // chamber edges recover with an analytic Jacobian and QR, while retaining
+      // the same direct residual, positivity and determinant acceptance checks.
+      attempts++;
+      const recovery=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{
+        initialLogGauge:result.logGauge,centered:true,analytic:true,maxIter:220,max_nfev:14000
+      }));
+      totalNfev+=recovery.diagnostics.nfev;
+      if(recovery.success || recovery.residuals.real_norm<result.residuals.real_norm) result=recovery;
     }
   } catch(e) { return failed(atlas,'solver_exception',String(e)); }
   const success=!!result.success;

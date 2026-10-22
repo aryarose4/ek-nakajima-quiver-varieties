@@ -36,11 +36,15 @@ import {
   zerosZ,
   eyeZ,
   matMul,
+  matAdd,
+  matSub,
   matScale,
   matAdj,
   frob2,
   frobNorm,
   unpackHermitian,
+  packHermitian,
+  traceless,
   packRealResidual,
   complexResidualNorm,
   realResidual,
@@ -150,6 +154,43 @@ export function expmHermitian(H) {
   return matMul(matMul(U, E), matAdj(U));
 }
 
+function expmSmooth(H) {
+  const n = H.length;
+  const size = Math.max(...H.map(row=>row.reduce((s,z)=>s+sAbs(z),0)));
+  if(!Number.isFinite(size)) throw new RangeError('Nonfinite exponential argument');
+  const squarings = Math.max(0, Math.ceil(Math.log2(Math.max(1,size/.5))));
+  const small = matScale(H, Math.pow(2,-squarings));
+  let E = eyeZ(n), term = eyeZ(n);
+  for(let k=1;k<=18;k++) {
+    term = matScale(matMul(term,small),1/k);
+    E = E.map((row,i)=>row.map((z,j)=>[z[0]+term[i][j][0],z[1]+term[i][j][1]]));
+  }
+  for(let k=0;k<squarings;k++) E=matMul(E,E);
+  return E;
+}
+
+// Differentiate the same scaled Taylor polynomial used above. Keeping the
+// exponential and its derivative on one algorithm avoids eigenvector phases
+// and subtractive finite-difference noise close to chamber walls.
+function expmTangent(H, direction) {
+  const n=H.length;
+  const size=Math.max(...H.map(row=>row.reduce((s,z)=>s+sAbs(z),0)));
+  if(!Number.isFinite(size)) throw new RangeError('Nonfinite exponential argument');
+  const squarings=Math.max(0,Math.ceil(Math.log2(Math.max(1,size/.5))));
+  const small=matScale(H,Math.pow(2,-squarings));
+  const dsmall=matScale(direction,Math.pow(2,-squarings));
+  let E=eyeZ(n),dE=zerosZ(n,n),term=eyeZ(n),dterm=zerosZ(n,n);
+  for(let k=1;k<=18;k++) {
+    dterm=matScale(matAdd(matMul(dterm,small),matMul(term,dsmall)),1/k);
+    term=matScale(matMul(term,small),1/k);
+    E=matAdd(E,term);dE=matAdd(dE,dterm);
+  }
+  for(let k=0;k<squarings;k++) {
+    dE=matAdd(matMul(dE,E),matMul(E,dE));E=matMul(E,E);
+  }
+  return dE;
+}
+
 // Eigenvalues of a Hermitian matrix (real, ascending not guaranteed).
 export function hermitianEigenvalues(H) {
   return jacobiHermitian(H).vals.slice();
@@ -239,18 +280,18 @@ function rawFromCoords(x) {
 }
 
 // positive gauge (g, h, q): g = exp(S/2), h_i = exp(S_i/2), q_i = exp(s_i/2)
-function positiveGauge(raw) {
-  const g = expmHermitian(matScale(raw.center, 0.5));
-  const h = raw.middle.map((S) => expmHermitian(matScale(S, 0.5)));
+function positiveGauge(raw, exponential = expmHermitian) {
+  const g = exponential(matScale(raw.center, 0.5));
+  const h = raw.middle.map((S) => exponential(matScale(S, 0.5)));
   const q = raw.outer.map((s) => Math.exp(0.5 * s));
   return { g, h, q };
 }
 
 // H_v = g_v^* g_v = exp(S_v)
-function HMatrices(raw) {
+function HMatrices(raw, exponential = expmHermitian) {
   return {
-    center: expmHermitian(raw.center),
-    middle: raw.middle.map((S) => expmHermitian(S)),
+    center: exponential(raw.center),
+    middle: raw.middle.map((S) => exponential(S)),
     outer: raw.outer.map((s) => Math.exp(s)),
   };
 }
@@ -298,7 +339,7 @@ function allFiniteRep(rep) {
 // ---------------------------------------------------------------------------
 // residual
 // ---------------------------------------------------------------------------
-function makePackedResidual(rep, levels) {
+function makePackedResidual(rep, levels, options = {}) {
   // A finite-difference column changes only one log-gauge block. Reuse the
   // other exponentials and inverses, with exact keys and solve-local lifetime.
   const cache = new Array(4);
@@ -306,13 +347,13 @@ function makePackedResidual(rep, levels) {
     const old = cache[slot];
     if (old && old.coords.every((v, i) => v === x[start + i])) return old;
     const coords = x.slice(start, start + count);
-    const gauge = expmHermitian(matScale(unpackHermitian(coords, basis), .5));
+    const gauge = (options.analytic ? expmSmooth : expmHermitian)(matScale(unpackHermitian(coords, basis), .5));
     const inverse = matInv(gauge);
     const entry = { coords, gauge, inverse };
     cache[slot] = entry;
     return entry;
   }
-  return function (x) {
+  const residual = function (x) {
     try {
       const center = block(x, 0, 0, 8, CENTER_BASIS);
       const middle = [0, 1, 2].map(i => block(x, i + 1, MIDDLE_START + 4 * i, 4, MIDDLE_BASIS));
@@ -326,6 +367,40 @@ function makePackedResidual(rep, levels) {
       return new Array(N_GAUGE_REAL).fill(1e8);
     }
   };
+  residual.jacobian = function(x) {
+    const center=block(x,0,0,8,CENTER_BASIS);
+    const middle=[0,1,2].map(i=>block(x,i+1,MIDDLE_START+4*i,4,MIDDLE_BASIS));
+    const q=[0,1,2].map(i=>Math.exp(.5*x[OUTER_START+i]));
+    const gauged=applyGaugeWithInverses(rep,center.gauge,middle.map(b=>b.gauge),q,center.inverse,middle.map(b=>b.inverse));
+    const productTangent=(X,dX,left)=>left ? matAdd(matMul(matAdj(dX),X),matMul(matAdj(X),dX)) : matAdd(matMul(dX,matAdj(X)),matMul(X,matAdj(dX)));
+    const columns=[];
+    for(let j=0;j<N_GAUGE_REAL;j++) {
+      let Lg=zerosZ(3,3), Lh=[0,1,2].map(()=>zerosZ(2,2)), lq=[0,0,0];
+      if(j<8) Lg=matMul(expmTangent(matScale(unpackHermitian(center.coords,CENTER_BASIS),.5),matScale(CENTER_BASIS[j],.5)),center.inverse);
+      else if(j<OUTER_START) {
+        const i=Math.floor((j-MIDDLE_START)/4),k=(j-MIDDLE_START)%4;
+        Lh[i]=matMul(expmTangent(matScale(unpackHermitian(middle[i].coords,MIDDLE_BASIS),.5),matScale(MIDDLE_BASIS[k],.5)),middle[i].inverse);
+      } else lq[j-OUTER_START]=.5;
+      const outer=[],mid=[];let central=zerosZ(3,3);
+      for(let i=0;i<NB;i++) {
+        const a=gauged.a[i],A=gauged.A[i],b=gauged.b[i],B=gauged.B[i];
+        const da=matSub(matMul(Lh[i],a),matScale(a,lq[i]));
+        const dA=matSub(matMul(Lg,A),matMul(A,Lh[i]));
+        const db=matSub(matScale(b,lq[i]),matMul(b,Lh[i]));
+        const dB=matSub(matMul(Lh[i],B),matMul(B,Lg));
+        outer.push(productTangent(a,da,true));
+        outer[i]=matSub(outer[i],productTangent(b,db,false));
+        mid.push(matAdd(matSub(productTangent(A,dA,true),productTangent(B,dB,false)),matSub(productTangent(b,db,true),productTangent(a,da,false))));
+        central=matAdd(central,matSub(productTangent(B,dB,true),productTangent(A,dA,false)));
+      }
+      const packed=[];
+      outer.forEach(M=>packed.push(...packHermitian(M,OUTER_BASIS)));
+      mid.forEach(M=>packed.push(...packHermitian(M,MIDDLE_BASIS)));
+      packed.push(...packHermitian(traceless(central),CENTER_BASIS));columns.push(packed);
+    }
+    return columns[0].map((_,i)=>columns.map(col=>col[i]));
+  };
+  return residual;
 }
 
 function levelScale(rep, levels) {
@@ -351,7 +426,7 @@ function sumsq(v) {
   return s;
 }
 
-function fdJacobian(f, x, r, baseStep) {
+function fdJacobian(f, x, r, baseStep, centered) {
   const n = x.length;
   const m = r.length;
   const J = Array.from({ length: m }, () => new Array(n).fill(0));
@@ -360,7 +435,9 @@ function fdJacobian(f, x, r, baseStep) {
     const xp = x.slice();
     xp[j] += h;
     const rp = f(xp);
-    for (let i = 0; i < m; i++) J[i][j] = (rp[i] - r[i]) / h;
+    let rm = r;
+    if(centered) { const xm=x.slice();xm[j]-=h;rm=f(xm); }
+    for (let i = 0; i < m; i++) J[i][j] = (rp[i] - rm[i]) / (centered ? 2 * h : h);
   }
   return J;
 }
@@ -400,6 +477,32 @@ function solveLinear(A, b) {
 // ---------------------------------------------------------------------------
 // Levenberg-Marquardt least squares (finite-difference Jacobian)
 // ---------------------------------------------------------------------------
+// Householder QR of the augmented damped system avoids squaring the condition
+// number of the Jacobian in recovery near a chamber wall.
+function leastSquaresStep(J, r, lambda, N, floor) {
+  const n = N.length;
+  const A = J.map((row,i) => row.slice().concat([-r[i]]));
+  for(let j=0;j<n;j++) A.push(Array.from({length:n+1},(_,k)=>k===j?Math.sqrt(lambda*Math.max(N[j][j],floor)):0));
+  const m=A.length;
+  for(let j=0;j<n;j++) {
+    const length=Math.hypot(...A.slice(j).map(row=>row[j]));
+    if(!(length>1e-300)) return null;
+    const alpha=A[j][j]>=0?-length:length;
+    const v=A.slice(j).map(row=>row[j]);v[0]-=alpha;
+    const scale=Math.hypot(...v);for(let i=0;i<v.length;i++)v[i]/=scale;
+    for(let k=j;k<=n;k++) {
+      let dot=0;for(let i=j;i<m;i++)dot+=v[i-j]*A[i][k];
+      for(let i=j;i<m;i++)A[i][k]-=2*v[i-j]*dot;
+    }
+  }
+  const x=new Array(n).fill(0);
+  for(let j=n-1;j>=0;j--) {
+    let rhs=A[j][n];for(let k=j+1;k<n;k++)rhs-=A[j][k]*x[k];
+    x[j]=rhs/A[j][j];
+  }
+  return x;
+}
+
 function levMar(f, x0, opts) {
   const n = x0.length;
   let x = x0.slice();
@@ -416,8 +519,8 @@ function levMar(f, x0, opts) {
     // Reuse the accepted residual before paying for another full Jacobian.
     // buildResult still checks complex equations and positivity independently.
     if (cost <= opts.residualCost) { status = "residual_tol"; break; }
-    const J = fdJacobian(f, x, r, opts.fdStep);
-    nfev += n;
+    const J = opts.analytic ? f.jacobian(x) : fdJacobian(f, x, r, opts.fdStep, opts.centered);
+    nfev += opts.analytic ? 0 : (opts.centered ? 2 : 1) * n;
     const g = new Array(n).fill(0);
     const N = Array.from({ length: n }, () => new Array(n).fill(0));
     for (let i = 0; i < r.length; i++) {
@@ -444,7 +547,7 @@ function levMar(f, x0, opts) {
       const Nl = N.map((row, a) =>
         row.map((v, b) => (a === b ? v + lambda * Math.max(N[a][a], floor) : v))
       );
-      let dx = solveLinear(Nl, g.map((v) => -v));
+      let dx = (opts.centered || opts.analytic) ? leastSquaresStep(J, r, lambda, N, floor) : solveLinear(Nl, g.map((v) => -v));
       if (!dx || !dx.every((v) => isFinite(v))) {
         lambda *= 10;
         if (lambda > 1e16) break;
@@ -467,7 +570,9 @@ function levMar(f, x0, opts) {
         x = xn;
         r = rn;
         cost = cn;
-        lambda = Math.max(lambda * 0.3, 1e-16);
+        // Wall-near directions can be much weaker than 1e-16 relative to the
+        // strongest normal-equation entry. QR can safely reduce damping further.
+        lambda = Math.max(lambda * 0.3, opts.analytic ? 1e-28 : 1e-16);
         trust = Math.min(trust * 1.5, 5.0);
         accepted = true;
         if (relStep < opts.xtol || relCost < opts.ftol) {
@@ -540,7 +645,7 @@ export function solveRealMomentMap(rep, levels, options = {}) {
     });
   }
 
-  const f = makePackedResidual(rep, levelsArr);
+  const f = makePackedResidual(rep, levelsArr, opts);
   const seeds = opts.multistart ? multiStartSeeds() : [new Array(N_GAUGE_REAL).fill(0)];
 
   // Warm start, when supplied, is the FIRST seed; the existing multi-start
@@ -565,6 +670,8 @@ export function solveRealMomentMap(rep, levels, options = {}) {
       gtol: opts.gtol,
       fdStep: opts.fdStep,
       residualCost: successCost,
+      centered: opts.centered,
+      analytic: opts.analytic,
     });
     totalNfev += res.nfev;
     if (best === null || res.cost < best.cost) best = res;
@@ -591,9 +698,10 @@ function buildResult(rep, levels, x, opts, meta) {
 
   try {
     raw = rawFromCoords(x);
-    const { g, h, q } = positiveGauge(raw);
+    const exponential=opts.analytic ? expmSmooth : expmHermitian;
+    const { g, h, q } = positiveGauge(raw, exponential);
     solvedRep = applyComplexGauge(rep, g, h, q);
-    H = HMatrices(raw);
+    H = HMatrices(raw, exponential);
     realPacked = packRealResidual(solvedRep, levels);
     complexNorm = complexResidualNorm(solvedRep);
     perVertex = perVertexResiduals(solvedRep, levels);
