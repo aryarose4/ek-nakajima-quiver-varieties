@@ -52,6 +52,18 @@ Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
 
 ## Data contract (frozen)
 
+Browser atlas update (2026-10-21): the explorer now uses separate regular
+levels `alpha=(3,3,3), gamma=(1,21/10,3)`; the Python fixture above is unchanged.
+The frozen levels lie on two root hyperplanes. `assets/js/ek-nakajima/branch-charts.js`
+provides a compact moving-line-1 chart, stable on the whole central sphere,
+and two overlapping charts on each long arm.
+`fixed-point.js`, `stability-certificates.js`, and the Node batteries verify
+integer C* gradings and exact rational King certificates for all eight
+canonical E6 attachment/intersection/tip configurations. This does not claim
+global atlas coverage or certify arbitrary nonzero-y matrices. The original
+compact endpoint representatives remain unstable; the new endpoints are
+limits of differently gauged families, not gauges of those unstable orbits.
+
 See `e6sim/conventions.py`, `representation.py`, `moment_maps.py`. Key points:
 levels are 0-based (`level[i,0]` outer, `level[i,1]` middle); the level/beta
 factor of two lives only in `conventions.beta_to_level`; the real residual packs

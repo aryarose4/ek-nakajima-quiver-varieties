@@ -58,10 +58,100 @@ The E6 incidence and moduli views appear together, with the complex arrow matric
 
 $$z=\frac{r}{1-r}e^{i\theta},\qquad 0\leq r\leq1.$$
 
-Thus `r=1` is infinity, and concurrency occurs at `r=1/2, theta=0`. For the third branch,
-`A_3 = [e3, (1-r)e1 + r exp(i theta)e2]`; all reverse arrows are zero. These finite representatives satisfy the complex moment-map equations, without real balancing. The `t` and `phi` controls stay at zero.
+Thus `r=1` is infinity, and concurrency occurs at `r=1/2, theta=0`. Away from
+the two endpoint attachments, the third branch uses
+`A_3 = [e3, (1-r)e1 + r exp(i theta)e2]`. The restored `t` and `phi` controls set
+`eta = t/(1-t) exp(i phi)`. Reverse arrows come from the exact M5 transverse
+kernel: in the affine chart, `y = w Y(z)` with `w = (1-r)^2 eta`, transported
+to the compact gauge. These representatives satisfy the complex moment-map
+equations without real balancing and remain finite at both radial endpoints
+for `t < 1`. At `t = 0` this is the previous zero-reverse-arrow chart.
+The exact endpoint attachments use the stable replacement charts below.
 
-The chosen frame fixes the three marked points and first two lines. In affine coordinates the third real line is `X+rY=r`; its hue records the relative phase. Equal phases have equal colors. Saturation vanishes at `r=0,1`, where phase does not change the flag. Line position and hue recover the chart configuration. The E7/E8 tabs retain their moduli portraits; complex representatives are currently E6-only.
+The sliders snap to the three radial attachments and zero phase. The limit
+buttons give one-sphere outward/inward navigation in the core portrait.
+All E6 sphere intersections and exterior tips carry explicit C* grading
+witnesses. Sphere radii, angles and the rendered motion remain schematic;
+the implementation does not claim a global stable atlas. Unsupported charts clear
+the matrix readout instead of leaving matrices from a different point visible.
+The flag panel records the forward-arrow flags. Small nested rings beside each
+point encode the three upper-triangular coefficients of `K_i=A_i B_i` in an
+orthonormal flag basis: opacity encodes magnitude, and ticks encode complex
+phase. These are display-basis coefficients, not complex-gauge invariants;
+the canonical gauge reset at the limit may reset their phases. The full reverse
+arrows remain visible in the matrix readout.
+
+At the concurrency attachment (`r=1/2`, `theta=0`), the first outward limit
+has a concrete E6 representation. Its next chart is obtained from the coupled
+limit `z=1+v/lambda^2`, `w=lambda`, after a complex gauge change. Writing
+`L=(1,1,1)`, `p_i=e_i-L/3`, and
+`ell_1=(0,-1,1)`, `ell_2=(1,0,-1)`, `ell_3=(-1,1,0)`, its arrows are
+`a_i=e1`, `A_i=[p_i,L]`, `b_i=(0,v)`, `B_i=[v L^T/3; ell_i]`.
+The point `v=0` is the fixed-point limit; finite complex `v` extends beyond
+that point. The E6 portrait places the single-sphere arm at this concurrency
+attachment, with two spheres on each endpoint arm. The limit button enters
+the outgoing paraboloid at the short arm's tip, rather than a second sphere.
+The new chart satisfies the complex equations; stability throughout the chart
+and the metric interpretation of its portrait coordinates are not certified.
+
+The concurrency animation uses a projective change of display frame: its
+marked points approach `p_i=e_i-L/3`, so all three become collinear while the
+flag lines remain concurrent. A faint transversal marks this alignment.
+Edge markers handle points outside the affine viewport. This is a gauge change
+of the displayed flags, not additional motion in the moduli space. The outgoing
+chart retains these flags while its reverse-arrow decorations change. No new
+on-page announcements accompany the transition.
+The outgoing coordinate has weight two under reverse-arrow scaling:
+`v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
+meaning of the controls; the outgoing circle action has a half-turn stabilizer.
+
+These charts do not yet represent every complex-gauge class. In particular,
+generic fixed `z` does not have a finite `w -> infinity` limit: the invariant
+`trace((A_1 B_1)^2 A_2 B_2) = -w^3 z^2 (z-1)^2` diverges away from
+`z=0,1`. Additional exceptional charts and their stability/overlap checks
+are needed before claiming complete coverage. E7/E8 remain portrait-only.
+At the frozen levels `alpha=(3,3,3)`, `gamma=(1,2,3)`, the old compact endpoint
+families are unstable for every reverse-arrow amplitude: the central plane
+`P_3` defines a subrepresentation with middle dimensions `(1,1,2)` and outer
+dimensions `(1,0,1)` at zero or `(0,1,1)` at infinity. Its King weight is
+`6+1+2+6-(2/3)*21=1`. The reverse arrows preserve this subrepresentation.
+Those old endpoint representatives are not used for further limits. The widget uses the nearby regular levels `gamma=(1,21/10,3)`;
+the frozen solver fixture is unchanged. The full bounded-real-root audit finds
+four zero-weight roots (two complementary pairs) at the frozen levels and none
+at the display levels. The smallest absolute root weight there is `1/15`.
+
+For the zero-side long arm, the replacement chart has
+`A1=[e1,e2+z e3]`, `A2=[e2,e1+e3]`, `A3=[e3,e1+e2]` and `a_i=e1`.
+Its reverse arrows and the full overlap gauges are in `branch-charts.js`.
+The successive coordinates are `(z,w)`, `(s,v)=(1/w,z w^2)`, and
+`(h,p)=(1/v,s v^2)`. Their C* weights are `(0,1)`, `(-1,2)`, `(-2,3)`.
+The other arm swaps branches 2/3 and central coordinates 2/3, with signed fiber coordinates as specified in `branch-charts.js`. At the infinity pole its local phase is `phi+2 theta`. The second
+sphere uses `v=(t/(1-t))^2 exp(2i phi)` and the outgoing tip chart uses
+`p=(t/(1-t))^3 exp(3i phi)`. The limit buttons identify precisely equal
+canonical matrices at each tip/base. The first climb adds a point-line
+incidence; the second completes the coordinate triangle of flag lines.
+
+Fixedness is tested on all arrows: in a supplied integer grading, each
+forward arrow has target weight minus source weight zero, and each reverse
+arrow has difference one. Hence the grading gauge sends `(x,y)` to
+`(x,lambda*y)` for every nonzero complex `lambda`. Zero-section points use
+the trivial grading. Stability is a separate King-weight check; fixedness
+alone does not establish a valid moduli point.
+`stability-certificates.js` independently checks all eight canonical
+attachment/intersection/tip configurations using exact integer minors and
+rational King weights. Every maximal weight is strictly negative at the
+display levels. The old fixture's semistable points are detected by exact
+zero weights. This endpoint certification does not claim complete coverage
+or stability of every point in every two-dimensional chart.
+
+The central chart now fixes the three marked points and lines 2/3, while line 1
+moves with `A1=[e1,(1-r)e2+r exp(i theta)e3]`. The same polynomial representative
+is used at both radial endpoints. Exact incidence-stratum certificates verify
+stability of the entire central sphere in the display chamber. A continuous
+diagonal display gauge also matches the long-arm frames at finite transverse
+amplitude; line hue records phase and fades at the poles. The separate
+concurrency animation still selects a special display frame at its attachment.
+The E7/E8 tabs retain their moduli portraits; complex representatives are currently E6-only.
 
 
 ## The mathematics
@@ -88,7 +178,13 @@ layer uses a vendored three.js only.
 | `assets/js/ek-nakajima/core-math.js` | Frozen Milestone-0 core ported to JS: dimensions, Hermitian bases, complex/unitary gauge, complex/real moment maps, the 23-coordinate packing, and the V0/V5 geometry. |
 | `assets/js/ek-nakajima/solver.js` | The Milestone-2 positive-Hermitian-gauge real-moment-map solver (trust-region LM, Hermitian `expm`), ported from the Python reference. |
 | `assets/js/ek-nakajima/element-view.js` | V2: the weighted-flag geometry at `y=0` and its projected su(3) "triangle + flag marker" display data. |
-| `assets/js/ek-nakajima/chart.js` | The candidate `y=0` chart `z = r e^{iθ}` and its rep, ported from the Python reference. |
+| `assets/js/ek-nakajima/chart.js` | Candidate affine/compact charts and the exact M5 reverse-arrow extension controlled by t and phi. |
+| `assets/js/ek-nakajima/limit-chart.js` | Gauge-renormalized concurrency limit and its complex one-parameter family. |
+| `assets/js/ek-nakajima/branch-charts.js` | Stable endpoint replacements and two exact overlap charts on each long E6 arm. |
+| `assets/js/ek-nakajima/fixed-point.js` | Integer grading witnesses and infinitesimal obstructions to C* fixedness. |
+| `assets/js/ek-nakajima/e6-levels.js` | Separate display/fixture levels and the full bounded-real-root wall audit. |
+| `assets/js/ek-nakajima/e6-atlas.js` | Pure control-to-chart dispatch, including fixedness guards at intersections and tips. |
+| `assets/js/ek-nakajima/stability-certificates.js` | Exact rational King certificates for all eight canonical attachment/intersection/tip fixtures. |
 | `assets/js/ek-nakajima/element-model.js` | Pure driver: `solveElement(r, θ, levels, {initialLogGauge})` = chart -> warm-started solve -> element view. |
 | `assets/js/ek-nakajima/element-screen.js` | Legacy orthographic projection utility, retained for validation. |
 | `assets/js/ek-nakajima/flag-incidence.js` | Complex flag extraction, numerical incidence classification, and real schematic layout. |

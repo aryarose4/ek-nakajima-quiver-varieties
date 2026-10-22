@@ -6,7 +6,7 @@ top-level await, no dependencies. There is no build step.
 
 ## What it validates
 
-The three batteries cover the settled, solver-free geometry layers:
+The batteries cover the geometry layers, E6 complex charts, solver, and widget integration:
 
 - `validate-data.mjs` — the per-type affine ADE table
   (`quiver-data.js`): the affine Cartan condition `2 delta_i =
@@ -24,17 +24,28 @@ The three batteries cover the settled, solver-free geometry layers:
 
 ## Running
 
+The E6 atlas batteries additionally check exact chart overlaps, all endpoint
+gradings, the necessary infinitesimal fixedness equations, rational King
+certificates for eight canonical fixtures, the full E6 root-wall arrangement,
+and the widget's actual chart dispatch at each sphere intersection and tip.
+`validate-fixed-stability.mjs` detects the frozen fixture's semistable points;
+the live explorer uses the separate nearby regular levels.
+
 ```bash
 bash tests/run.sh          # from the repo root
 bash run.sh                # from tests/
 ```
 
-`run.sh` copies the four live modules next to the batteries, then runs
+`run.sh` copies the live modules next to the batteries, then runs
 every battery; the script exits non-zero if any battery fails. This is
 the gate to run after any change to the geometry layers.
 
 ## Not covered
 
-The 3D display layer (`core-view.js`, `widget.js`) needs a browser
-(`THREE`) and is not exercised here; the single-element / moment-map view
-is an open mathematical question and has no solver to test.
+`smoke-widget.mjs` exercises the controls and view wiring using DOM/canvas/THREE
+stubs. It does not test real WebGL rendering. Complex-chart residual tests
+verify the equations and coordinate transformations, not stability or global
+coverage of the moduli space. The real moment-map solver has its own numerical
+battery; the widget's complex representatives do not require that solve.
+
+The moving-first-line batteries check both radial endpoint limits at nonzero transverse amplitude, including complex phases and the displayed cotangent coefficients. They also check the exact stability of every central-sphere incidence stratum in the display chamber.

@@ -1861,7 +1861,13 @@ function buildSideLayout(q, opts) {
   }
 
   const root = oriented.root;
-  const rootChildren = oriented.children[root];
+  const rootChildren = oriented.children[root].slice();
+  // E6's concurrency attachment z=1 is the short arm. Preserve node IDs
+  // and edges; traversal order alone does not specify chart attachments.
+  if (q.name === "E6" && rootChildren.length === 3) {
+    const short = rootChildren.findIndex(function (node) { return oriented.children[node].length === 0; });
+    if (short >= 0) rootChildren.splice(1, 0, rootChildren.splice(short, 1)[0]);
+  }
   const K = rootChildren.length;
   const nodes = new Array(n).fill(null);
   const arms = [];
@@ -1932,15 +1938,18 @@ function armAt(lay, r, theta) {
   return -1;
 }
 
-// prm = { r, theta, t, phi, sphere }.
+// prm = { r, theta, t, phi, sphere, outgoing }.
+// outgoing selects the E6 short-arm tip's noncompact chart, with weight-2
+// phase, rather than assigning that chart to a nonexistent second sphere.
 // Returns null on any non-finite input; never throws for finite input.
 function coreFlow(lay, prm) {
   const r = prm.r;
   const theta = prm.theta;
   const t = prm.t;
   if (!Number.isFinite(r) || !Number.isFinite(theta) || !Number.isFinite(t)) return null;
-  const g = Number.isFinite(prm.phi) ? prm.phi : 0;
   const sphereIn = Number.isFinite(prm.sphere) ? Math.floor(prm.sphere) : 0;
+  const phaseWeight = lay.q.name === "E6" ? (prm.outgoing ? (r === 0.5 ? 2 : 3) : sphereIn + 1) : 1;
+  const g = (Number.isFinite(prm.phi) ? prm.phi : 0) * phaseWeight;
 
   const rootNode = lay.nodes[lay.root];
   const R = rootNode.radius;
@@ -1996,6 +2005,19 @@ function coreFlow(lay, prm) {
     const nd = lay.nodes[curNode];
     const base = add3(nd.center, scale3(fr.arm.dir, -nd.radius));
     const tip = add3(nd.center, scale3(fr.arm.dir, nd.radius));
+    if (prm.outgoing && lay.q.name === "E6" && si === N - 1) {
+      const wing = parabFrame(tip, fr.arm.dir, scale3(fr.side, -1));
+      const angle = tl >= 1 ? PHI_CAP : Math.min(PHI_CAP, Math.atan(PHI_K_STRAT * tl / (1 - tl)));
+      const climb = function (a) {
+        const rho = wing.f * Math.tan(a);
+        return add3(tip, add3(scale3(wing.u, rho), scale3(wing.n, rho * rho / (2 * wing.f))));
+      };
+      const arc = [];
+      for (let i = 0; i < ARC_N; i++) arc.push(climb(angle * i / (ARC_N - 1)));
+      return { kind: "outgoing", att: att, node: curNode, sphereCount: N,
+        dot: climb(angle), arc: arc, exterior: null, paraboloid: wing,
+        stratum: null, capture: null, nearInfinity: false };
+    }
     // Guide arc: the meridian of THIS sphere only, base -> tip.
     const armArc = [];
     for (let i = 0; i < ARC_N; i++) armArc.push(ride(fr, si + i / (ARC_N - 1)));
@@ -2835,7 +2857,7 @@ return { NB, N_CENTER, N_MIDDLE, N_OUTER, N_GAUGE_REAL, c, cAdd, cSub, cMul, cNe
 
 // ---- module: chart ----
 const __ek_mod_chart = (function () {
-const { makeRep } = __ek_mod_core_math;
+const { makeRep, cMul, cSub, cScale, matScale } = __ek_mod_core_math;
 // chart.js — dependency-free, Node-safe port of the candidate finite
 // ``y = 0`` chart from sim/e6sim/charts.py (Milestone 1).
 //
@@ -2911,7 +2933,433 @@ function compactChart(r, theta) {
   return rep;
 }
 
-return { candidateY0Chart, chartZ, chartAt, compactChart };
+// M5 transverse cotangent chart, matching sim/e6sim/transverse.py.
+// The trace pairing <dx/dz,Y>=B_3[1][1]=1 fixes its normalization.
+// BA=ab and sum AB=0 are polynomial identities for every complex z,w.
+// Complex moment-map validity does not assert stability or global coverage.
+function transverseChart(z, w = 1) {
+  const zc = Array.isArray(z) ? z : [z, 0];
+  const wc = Array.isArray(w) ? w : [w, 0];
+  if (!zc.concat(wc).every(Number.isFinite)) throw new RangeError("Expected finite complex z and w.");
+  const rep = candidateY0Chart(zc);
+  const zz = cMul(zc, zc), neg = cScale(zc, -1);
+  const d = cSub(zz, zc);
+  rep.b = [Z([[0, cSub(zc, [1, 0])]]), Z([[0, d]]), Z([[0, d]])].map(m => matScale(m, wc));
+  rep.B = [
+    Z([[0, -1, zc], [0, neg, zc]]),
+    Z([[zz, 0, neg], [zc, 0, neg]]),
+    Z([[neg, zc, 0], [neg, 1, 0]])
+  ].map(m => matScale(m, wc));
+  return rep;
+}
+
+// Finite compact-gauge extension of M5. Set s=1-r, u=r exp(i theta),
+// z=u/s and w=s^2 eta, eta=t/(1-t) exp(i phi). Transform middle vertex 3
+// by diag(1,1/s): A_3 -> A_3 diag(1,s), b_3 -> b_3 diag(1,s),
+// B_3 -> diag(1,1/s) B_3. The formulas below are polynomial in s,u;
+// therefore they extend to r=1 without dividing by zero. This is a chosen
+// fiber trivialization, not a global coordinate atlas. Endpoint stability
+// and Morse-limit transitions require separate analysis; t=1 is not finite.
+function compactTransverseChart(r, theta, t = 0, phi = 0) {
+  const rep = compactChart(r, theta);
+  if (!Number.isFinite(t) || t < 0 || t >= 1 || !Number.isFinite(phi)) {
+    throw new RangeError("Expected 0 <= t < 1 and finite phi; t=1 requires a limit chart.");
+  }
+  const s = 1 - r, u = chartZ(r, theta), su = cScale(u, s);
+  const uu = cMul(u, u), minusSU = cScale(su, -1), d = cSub(uu, su);
+  const eta = chartZ(t / (1 - t), phi);
+  rep.b = [Z([[0, cSub(su, [s * s, 0])]]), Z([[0, d]]), Z([[0, cScale(d, s)]])]
+    .map(m => matScale(m, eta));
+  rep.B = [
+    Z([[0, -s * s, su], [0, minusSU, su]]),
+    Z([[uu, 0, minusSU], [su, 0, minusSU]]),
+    Z([[minusSU, su, 0], [cScale(u, -1), s, 0]])
+  ].map(m => matScale(m, eta));
+  return rep;
+}
+
+return { candidateY0Chart, chartZ, chartAt, compactChart, transverseChart, compactTransverseChart };
+})();
+
+// ---- module: limit-chart ----
+const __ek_mod_limit_chart = (function () {
+const { makeRep, cMul } = __ek_mod_core_math;
+// An actual E6 gauge-renormalized limit at z=1 (compact r=1/2, theta=0).
+// L=(1,1,1), p_i=e_i-L/3. In middle bases (e1,e1+e2),
+// g=P_L/lambda+(I-P_L), h=diag(1,1/lambda), q=1 give
+// lim lambda->infinity of z=1+v/lambda^2, w=lambda:
+// a=e1, A=[p_i,L], b=(0,v), B=[v L*/3; ell_i].
+// Multiplying every vertex gauge by lambda^(1/3) makes det(g)=1
+// without changing its action. Complex moment maps vanish identically.
+// v=0 is the fixed point; v is a new complex one-dimensional stratum
+// coordinate. This is one chart, not a global atlas or stability theorem.
+
+
+function concurrencyLimitChart(phi = 0, coordinate = [0, 0]) {
+  const v = Array.isArray(coordinate) ? coordinate : [coordinate, 0];
+  if (!Number.isFinite(phi) || v.length !== 2 || !v.every(Number.isFinite)) {
+    throw new RangeError("Expected finite phase and complex stratum coordinate.");
+  }
+  const phase = [Math.cos(phi), Math.sin(phi)];
+  const value = cMul(v, phase);
+  const ell = [[0, -1, 1], [1, 0, -1], [-1, 1, 0]];
+  const a = ell.map(() => [[[1, 0]], [[0, 0]]]);
+  const A = ell.map((_, i) => ell.map((__, j) => [[(i === j ? 1 : 0) - 1 / 3, 0], [1, 0]]));
+  const b = ell.map(() => [[[0, 0], value.slice()]]);
+  const B = ell.map((row) => [row.map(() => [value[0] / 3, value[1] / 3]), row.map((x) => [x * phase[0], x * phase[1]])]);
+  return makeRep(a, A, b, B);
+}
+
+return { concurrencyLimitChart };
+})();
+
+// ---- module: branch-charts ----
+const __ek_mod_branch_charts = (function () {
+const { makeRep, cMul, cSub, cScale } = __ek_mod_core_math;
+// Exact E6 long-arm atlas. Coordinates and gauges are derived in
+// journal/2026-10-21-stable-branches.txt. These charts satisfy mu_C=0;
+// their stable endpoints require the generic chamber gamma=(1,2.1,3).
+
+const C = x => {
+  if (typeof x === 'number' && Number.isFinite(x)) return [x,0];
+  if (Array.isArray(x) && x.length===2 && x.every(v=>typeof v==='number' && Number.isFinite(v))) return [x[0],x[1]];
+  throw new RangeError('Expected a finite number or complex [real, imaginary] pair.');
+};
+function validateSide(side) {
+  if(side!==0 && side!==1 && side!=='zero' && side!=='infinity') throw new RangeError('Expected side 0, 1, zero, or infinity.');
+}
+const M = rows => rows.map(row => row.map(C));
+const mul = (a,b) => cMul(C(a), C(b));
+const neg = a => cScale(C(a), -1);
+const sub1 = a => cSub(C(a), [1,0]);
+function assemble(side, A, b, B) {
+  validateSide(side);
+  const rep = makeRep([M([[1],[0]]),M([[1],[0]]),M([[1],[0]])], A.map(M), b.map(M), B.map(M));
+  if (side === 'infinity' || side === 1) {
+    for (const key of ['a','A','b','B']) [rep[key][1],rep[key][2]]=[rep[key][2],rep[key][1]];
+    rep.A.forEach(m => { [m[1],m[2]]=[m[2],m[1]]; });
+    rep.B.forEach(m => m.forEach(row => { [row[1],row[2]]=[row[2],row[1]]; }));
+    // The reciprocal cotangent fiber has opposite sign. Keep this same
+    // normalization in every infinity chart so positive real gauges glue
+    // their reverse-arrow decorations continuously at the fixed endpoints.
+    for (const key of ['b','B']) rep[key]=rep[key].map(m=>m.map(row=>row.map(neg)));
+  }
+  return rep;
+}
+
+// z is the original z on side zero, and 1/z on side infinity.
+// Infinity swaps branches 2/3 and central e2/e3; its signed fiber convention
+// agrees with compactFirstLineChart at both real radial endpoints.
+function stableBranchChart(side, z=0, w=0) {
+  z=C(z); w=C(w); const zm=sub1(z), zz=mul(z,z);
+  const B=[[[0,neg(z),z],[0,neg(z),1]],[[z,0,-1],[z,0,neg(z)]],[[neg(z),zz,0],[neg(z),z,0]]];
+  return assemble(side,
+    [[[1,0],[0,1],[0,z]],[[0,1],[1,0],[0,1]],[[0,1],[0,1],[1,0]]],
+    [[[0,mul(mul(z,zm),w)]],[[0,mul(zm,w)]],[[0,mul(mul(z,zm),w)]]],
+    B.map(m=>m.map(row=>row.map(a=>mul(a,w)))));
+}
+
+// Blow-up chart s=1/w, v=z*w^2. C* weights: s=-1, v=2.
+function branchMiddleChart(side, s=0, v=0) {
+  s=C(s); v=C(v); const vs=mul(v,s), z=mul(vs,s), zm=sub1(z);
+  return assemble(side,
+    [[[1,0],[0,1],[0,vs]],[[0,1],[1,0],[0,1]],[[0,1],[0,s],[1,0]]],
+    [[[0,mul(v,zm)]],[[0,zm]],[[0,mul(vs,zm)]]],
+    [[[0,neg(v),vs],[0,neg(vs),1]],[[z,0,-1],[vs,0,neg(vs)]],[[neg(vs),mul(vs,vs),0],[neg(vs),v,0]]]);
+}
+
+// Next blow-up chart h=1/v, p=s*v^2. C* weights: h=-2, p=3.
+function branchTipChart(side, h=0, p=0) {
+  h=C(h); p=C(p); const ph=mul(p,h), ph2=mul(ph,h), p2h2=mul(ph,ph), z=mul(p2h2,h), zm=sub1(z);
+  return assemble(side,
+    [[[1,0],[0,1],[0,ph]],[[0,h],[1,0],[0,1]],[[0,1],[0,ph],[1,0]]],
+    [[[0,zm]],[[0,zm]],[[0,mul(p,zm)]]],
+    [[[0,-1,ph2],[0,neg(ph),1]],[[p2h2,0,-1],[p,0,neg(ph)]],[[neg(p),p2h2,0],[neg(ph),1,0]]]);
+}
+
+// Convention: g(lambda).rep=(x,lambda*y), including every vertex.
+function branchFixedGrading(side, stage=1) {
+  validateSide(side);
+  if(stage!==1 && stage!==2) throw new RangeError('Expected fixed-point stage 1 or 2.');
+  let center=stage===1?[0,1,0]:[2,1,0];
+  let middle=stage===1?[[0,1],[1,0],[0,0]]:[[2,1],[1,0],[0,2]];
+  let outer=stage===1?[0,1,0]:[2,1,0];
+  if(side==='infinity'||side===1) {
+    [center[1],center[2]]=[center[2],center[1]];
+    [middle[1],middle[2]]=[middle[2],middle[1]];
+    [outer[1],outer[2]]=[outer[2],outer[1]];
+  }
+  const result={center:{weights:center}};
+  for(let i=0;i<3;i++){ result['middle'+i]={weights:middle[i]};result['outer'+i]={weights:[outer[i]]}; }
+  return result;
+}
+
+// Homogeneous moving-first-line chart. A middle-1 basis change makes both
+// radial endpoints finite, including the reverse arrows. At the infinity
+// pole the side-1 local fiber is exp(2i theta) eta.
+function compactFirstLineChart(r, theta, t=0, phi=0) {
+  if(![r,theta,t,phi].every(Number.isFinite)||r<0||r>1||t<0||t>=1) throw new RangeError('Invalid compact coordinates.');
+  const s=1-r,u=[r*Math.cos(theta),r*Math.sin(theta)], su=mul(s,u), uu=mul(u,u), d=cSub(u,C(s));
+  const eta=[t/(1-t)*Math.cos(phi),t/(1-t)*Math.sin(phi)];
+  return assemble(0,
+    [[[1,0],[0,s],[0,u]],[[0,1],[1,0],[0,1]],[[0,1],[0,1],[1,0]]],
+    [[[0,mul(mul(mul(u,d),s),eta)]],[[0,mul(mul(s,d),eta)]],[[0,mul(mul(u,d),eta)]]],
+    [[[0,neg(su),su],[0,neg(u),s]],[[su,0,-s*s],[su,0,neg(su)]],[[neg(su),uu,0],[neg(su),su,0]]].map(m=>m.map(row=>row.map(a=>mul(a,eta)))));
+}
+
+return { stableBranchChart, branchMiddleChart, branchTipChart, branchFixedGrading, compactFirstLineChart };
+})();
+
+// ---- module: fixed-point ----
+const __ek_mod_fixed_point = (function () {
+const { eyeZ, zerosZ, matMul, cAdd, cSub, cMul, cAbs2 } = __ek_mod_core_math;
+// C* fixedness witnesses for E6 representations, independent of stability.
+// Convention: g(lambda).rep = (a,A,lambda b,lambda B). In eigenbases of
+// g_v(lambda)=S_v diag(lambda^weights_v) S_v^-1, each nonzero arrow entry
+// has target weight minus source weight equal to its degree (x:0, y:1).
+// This integer grading proves equality for EVERY nonzero complex lambda,
+// not only sampled circle phases. Floating-point evaluation below checks
+// a supplied algebraic witness; small residuals alone are not exact proofs.
+// Common shifts of all vertex weights have no action. GL(3) at the center
+// modulo simultaneous scalars gives the same effective complex gauge as
+// SL(3); determinant normalization may require a finite covering parameter.
+
+
+const divide = (a, b) => {
+  const d = cAbs2(b);
+  return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];
+};
+const vertices = ['center', 'middle0', 'middle1', 'middle2', 'outer0', 'outer1', 'outer2'];
+const dimensions = [3, 2, 2, 2, 1, 1, 1];
+function arrows(rep) {
+  const result = [];
+  for (let i = 0; i < 3; i++) {
+    result.push({ name: 'a' + i, source: 'outer' + i, target: 'middle' + i, degree: 0, matrix: rep.a[i] });
+    result.push({ name: 'A' + i, source: 'middle' + i, target: 'center', degree: 0, matrix: rep.A[i] });
+    result.push({ name: 'b' + i, source: 'middle' + i, target: 'outer' + i, degree: 1, matrix: rep.b[i] });
+    result.push({ name: 'B' + i, source: 'center', target: 'middle' + i, degree: 1, matrix: rep.B[i] });
+  }
+  return result;
+}
+
+function inverse(matrix) {
+  const n = matrix.length, identity = eyeZ(n);
+  const rows = matrix.map((row, i) => row.map(z => z.slice()).concat(identity[i]));
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let i = col + 1; i < n; i++) if (cAbs2(rows[i][col]) > cAbs2(rows[pivot][col])) pivot = i;
+    if (cAbs2(rows[pivot][col]) < 1e-28) throw new RangeError('Singular grading basis.');
+    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];
+    const value = rows[col][col];
+    rows[col] = rows[col].map(z => divide(z, value));
+    for (let i = 0; i < n; i++) if (i !== col) {
+      const factor = rows[i][col];
+      rows[i] = rows[i].map((z, j) => cSub(z, cMul(factor, rows[col][j])));
+    }
+  }
+  return rows.map(row => row.slice(n));
+}
+
+function zeroSectionGrading() {
+  const grading = {};
+  vertices.forEach((v, i) => { grading[v] = { weights: Array(dimensions[i]).fill(0), basis: eyeZ(dimensions[i]) }; });
+  return grading;
+}
+
+function concurrencyGrading() {
+  const grading = zeroSectionGrading();
+  grading.center = {
+    weights: [0, 0, 1],
+    basis: [[2 / 3, -1 / 3, 1], [-1 / 3, 2 / 3, 1], [-1 / 3, -1 / 3, 1]].map(row => row.map(x => [x, 0]))
+  };
+  for (let i = 0; i < 3; i++) grading['middle' + i].weights = [0, 1];
+  return grading;
+}
+
+function checkFixedPointGrading(rep, grading, tolerance = 1e-10) {
+  if (!(tolerance >= 0) || !Number.isFinite(tolerance)) throw new RangeError('Invalid tolerance.');
+  const bases = {}, inverses = {};
+  vertices.forEach((v, i) => {
+    const spec = grading[v], n = dimensions[i];
+    if (!spec || !Array.isArray(spec.weights) || spec.weights.length !== n || !spec.weights.every(Number.isSafeInteger)) {
+      throw new RangeError('Expected integer weights at ' + v);
+    }
+    const basis = spec.basis || eyeZ(n);
+    if (basis.length !== n || !basis.every(row => row.length === n && row.every(z => Array.isArray(z) && z.length === 2 && z.every(Number.isFinite)))) {
+      throw new RangeError('Invalid grading basis at ' + v);
+    }
+    bases[v] = basis;
+    inverses[v] = inverse(basis);
+  });
+  let residualSquared = 0, scaleSquared = 0;
+  const arrowResiduals = {};
+  for (const arrow of arrows(rep)) {
+    const transformed = matMul(matMul(inverses[arrow.target], arrow.matrix), bases[arrow.source]);
+    let squared = 0;
+    transformed.forEach((row, i) => row.forEach((value, j) => {
+      const mismatch = grading[arrow.target].weights[i] - grading[arrow.source].weights[j] - arrow.degree;
+      squared += mismatch * mismatch * cAbs2(value);
+      scaleSquared += cAbs2(value);
+    }));
+    arrowResiduals[arrow.name] = Math.sqrt(squared);
+    residualSquared += squared;
+  }
+  const residual = Math.sqrt(residualSquared), relativeResidual = residual / Math.max(1, Math.sqrt(scaleSquared));
+  return { passes: Number.isFinite(relativeResidual) && relativeResidual <= tolerance, residual, relativeResidual, arrowResiduals };
+}
+
+// Necessary condition, not a sufficient certificate: differentiation at 1
+// gives H_target M - M H_source = degree*M. Inconsistency rules out even
+// an arbitrary non-diagonal compensating gauge. Consistency need not supply
+// semisimple integral generators and is deliberately NOT called fixedness.
+function fixedPointInfinitesimalTest(rep, tolerance = 1e-10) {
+  if (!(tolerance > 0) || !Number.isFinite(tolerance)) throw new RangeError('Invalid tolerance.');
+  const offsets = {}, dims = {};
+  let count = 0;
+  vertices.forEach((v, i) => { offsets[v] = count; dims[v] = dimensions[i]; count += dimensions[i] ** 2; });
+  const equations = [];
+  for (const arrow of arrows(rep)) {
+    const M = arrow.matrix, nt = dims[arrow.target], ns = dims[arrow.source];
+    for (let i = 0; i < nt; i++) for (let j = 0; j < ns; j++) {
+      const row = zerosZ(1, count + 1)[0];
+      for (let k = 0; k < nt; k++) {
+        const index = offsets[arrow.target] + i * nt + k;
+        row[index] = cAdd(row[index], M[k][j]);
+      }
+      for (let k = 0; k < ns; k++) {
+        const index = offsets[arrow.source] + k * ns + j;
+        row[index] = cSub(row[index], M[i][k]);
+      }
+      row[count] = arrow.degree ? M[i][j].slice() : [0, 0];
+      const norm = Math.sqrt(row.reduce((s, z) => s + cAbs2(z), 0));
+      equations.push(norm > 0 ? row.map(z => [z[0] / norm, z[1] / norm]) : row);
+    }
+  }
+  let rank = 0;
+  for (let col = 0; col < count; col++) {
+    let pivot = rank;
+    for (let i = rank; i < equations.length; i++) if (cAbs2(equations[i][col]) > cAbs2(equations[pivot][col])) pivot = i;
+    if (Math.sqrt(cAbs2(equations[pivot][col])) <= tolerance) continue;
+    [equations[rank], equations[pivot]] = [equations[pivot], equations[rank]];
+    const value = equations[rank][col];
+    equations[rank] = equations[rank].map(z => divide(z, value));
+    for (let i = rank + 1; i < equations.length; i++) {
+      const factor = equations[i][col];
+      equations[i] = equations[i].map((z, j) => cSub(z, cMul(factor, equations[rank][j])));
+    }
+    rank++;
+  }
+  const obstruction = equations.slice(rank).reduce((max, row) => Math.max(max, Math.sqrt(cAbs2(row[count]))), 0);
+  return { consistent: Number.isFinite(obstruction) && obstruction <= tolerance, rank, obstruction };
+}
+
+return { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading, fixedPointInfinitesimalTest };
+})();
+
+// ---- module: e6-levels ----
+const __ek_mod_e6_levels = (function () {
+// The frozen solver fixture and the nearby regular chamber are deliberately
+// separate. A zero complex moment map or a fixed grading does not imply stability.
+const E6_FIXTURE_LEVELS = [[3, 1], [3, 2], [3, 3]];
+const E6_REGULAR_LEVEL_NUMERATORS = [[30, 10], [30, 21], [30, 30]];
+const E6_REGULAR_LEVEL_DENOMINATOR = 10;
+const E6_REGULAR_LEVELS = E6_REGULAR_LEVEL_NUMERATORS.map(row => row.map(value => value / E6_REGULAR_LEVEL_DENOMINATOR));
+
+// Positive real roots d bounded by the affine null root (3;2,2,2;1,1,1).
+// q(d)=1 is the simply-laced real-root condition here. The 72 roots occur in
+// complementary pairs d,delta-d, describing 36 finite E6 root hyperplanes.
+function e6BoundedRealRoots() {
+  const roots = [];
+  for (let center = 0; center <= 3; center++) {
+    for (let bits = 0; bits < 8; bits++) for (let ternary = 0; ternary < 27; ternary++) {
+      const outer = [bits & 1, (bits >> 1) & 1, (bits >> 2) & 1];
+      const middle = [ternary % 3, Math.floor(ternary / 3) % 3, Math.floor(ternary / 9)];
+      let q = center * center;
+      for (let i = 0; i < 3; i++) q += outer[i] ** 2 + middle[i] ** 2 - middle[i] * (outer[i] + center);
+      if (q === 1) roots.push({ center, middle, outer });
+    }
+  }
+  return roots;
+}
+
+function e6RootWallAudit(levels, tolerance = 1e-10) {
+  if (!Array.isArray(levels) || levels.length !== 3 || levels.some(row =>
+    !Array.isArray(row) || row.length !== 2 || !row.every(Number.isFinite)) ||
+    !Number.isFinite(tolerance) || tolerance < 0) throw new RangeError('Expected three finite outer/middle levels and a nonnegative tolerance.');
+  const total = levels.reduce((s, row) => s + row[0] + 2 * row[1], 0);
+  const roots = e6BoundedRealRoots().map(root => {
+    const weight = levels.reduce((s, row, i) => s + row[0] * root.outer[i] + row[1] * root.middle[i], -total * root.center / 3);
+    return { center: root.center, middle: root.middle, outer: root.outer, weight };
+  });
+  const walls = roots.filter(root => Math.abs(root.weight) <= tolerance);
+  return { roots, walls, regular: walls.length === 0, minAbsWeight: Math.min(...roots.map(root => Math.abs(root.weight))) };
+}
+
+return { E6_FIXTURE_LEVELS, E6_REGULAR_LEVEL_NUMERATORS, E6_REGULAR_LEVEL_DENOMINATOR, E6_REGULAR_LEVELS, e6BoundedRealRoots, e6RootWallAudit };
+})();
+
+// ---- module: e6-atlas ----
+const __ek_mod_e6_atlas = (function () {
+const { concurrencyLimitChart } = __ek_mod_limit_chart;
+const { compactFirstLineChart, branchMiddleChart, branchTipChart, branchFixedGrading } = __ek_mod_branch_charts;
+const { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading } = __ek_mod_fixed_point;
+// Pure control-to-chart dispatch, shared by the widget and endpoint tests.
+// The explicit long-arm charts use E6_REGULAR_LEVELS; frozen fixture levels
+// remain a separate wall-level test case. Portrait coordinates are schematic.
+
+
+
+
+function e6AtlasPoint(parameters) {
+  const { r, theta, t, phi } = parameters;
+  const sphere = parameters.sphere === undefined ? 0 : parameters.sphere, outgoing = !!parameters.outgoing;
+  if (![r, theta, t, phi].every(Number.isFinite) || r < 0 || r > 1 || t < 0 || t > 1 ||
+    !Number.isInteger(sphere) || sphere < 0 || sphere > 1) throw new RangeError('Invalid E6 coordinates.');
+  const longArm = r === 0 || r === 1;
+  const shortArm = r === 0.5 && theta === 0;
+  let rep, grading = null, view = { firstLine: true };
+  const localPhase = r === 1 ? phi + 2 * theta : phi;
+  const polar = power => {
+    const magnitude = Math.pow(t / (1 - t), power);
+    return [magnitude * Math.cos(power * localPhase), magnitude * Math.sin(power * localPhase)];
+  };
+  if (longArm) {
+    const side = r === 0 ? 'zero' : 'infinity';
+    view.realFlags = sphere > 0 || outgoing || t === 1;
+    if (outgoing) {
+      if (sphere !== 1 || t === 1) throw new RangeError('No finite chart beyond the outgoing tip.');
+      rep = branchTipChart(side, 0, polar(3));
+      if (t === 0) grading = branchFixedGrading(side, 2);
+    } else if (t === 1) {
+      rep = sphere === 0 ? branchMiddleChart(side) : branchTipChart(side);
+      grading = branchFixedGrading(side, sphere + 1);
+    } else if (sphere === 0) {
+      rep = compactFirstLineChart(r, theta, t, phi);
+      view.centralFlow = { r, t };
+      if (t === 0) grading = zeroSectionGrading();
+    } else {
+      rep = branchMiddleChart(side, 0, polar(2));
+      view.branchGauge = { side, stage: 1, magnitude: Math.pow(t / (1 - t), 2) };
+      if (t === 0) grading = branchFixedGrading(side, 1);
+    }
+  } else if (shortArm && (outgoing || t === 1)) {
+    if (sphere !== 0 || (outgoing && t === 1)) throw new RangeError('No finite chart beyond the outgoing tip.');
+    rep = concurrencyLimitChart(0, outgoing ? polar(2) : 0);
+    view.concurrencyProgress = 1;
+    if (!outgoing || t === 0) grading = concurrencyGrading();
+  } else {
+    if (sphere !== 0 || outgoing || t === 1) throw new RangeError('No chart at this flow coordinate.');
+    rep = compactFirstLineChart(r, theta, t, phi);
+    view.centralFlow = { r, t };
+    if (shortArm) view.concurrencyProgress = t;
+    if (t === 0) grading = zeroSectionGrading();
+  }
+  // No endpoint is accepted solely because a marker reached a drawn tip.
+  if (grading && !checkFixedPointGrading(rep, grading).passes) throw new Error('Invalid fixed-point grading.');
+  return { rep, grading, view };
+}
+
+return { e6AtlasPoint };
 })();
 
 // ---- module: solver ----
@@ -4226,6 +4674,165 @@ function segment(equation) {
   return [low, high].map((t) => anchor.map((v, k) => v + t * direction[k]));
 }
 
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+// Homogeneous normal normalization may reverse a line at a chart change.
+// Keep its label at the same end while retaining the exact same segment.
+function firstLineOrientation(diagram) {
+  if (!diagram.valid) return diagram;
+  const directions = [[1, 1], [2, -1], [1, -2]];
+  return { ...diagram, lines: diagram.lines.map((line, i) => {
+    const d = directions[i];
+    return (line[1][0] - line[0][0]) * d[0] + (line[1][1] - line[0][1]) * d[1] < 0 ? [line[1], line[0]] : line;
+  }) };
+}
+
+// The compact transverse chart uses w=t/[4(1-t)] at r=1/2.
+// Thus G=I-s P_L with s=w/(1+w) has a unit-normalized finite limit.
+const concurrencyGaugeProgress = (t) => t / (4 - 3 * t);
+
+function centralDiagonal(options) {
+  const { r, t } = options;
+  if (![r, t].every(Number.isFinite) || r < 0 || r > 1 || t < 0 || t >= 1) throw new RangeError('Finite central display coordinates required');
+  return [1, Math.pow(1 - t, Math.max(0, 1 - 2 * r)), Math.pow(1 - t, Math.max(0, 2 * r - 1))];
+}
+
+// Extend the endpoint gauges continuously over the central chart. The same
+// positive central gauge acts on the flags and their cotangent operators.
+function centralDisplayGauge(data, operators, options) {
+  const d = centralDiagonal(options);
+  return { data: { ...data,
+    points: data.points.map(p => p.map((z, j) => z.map(v => v * d[j]))),
+    dualLines: data.dualLines.map(p => p.map((z, j) => z.map(v => v / d[j]))),
+  }, operators: operators && operators.map(K => K.map((row, j) => row.map((z, k) => z.map(v => v * d[j] / d[k])))), diagonal: d };
+}
+
+// The exact overlap gauges of the long-arm atlas, softened at zero so that
+// each animation starts in its current chart. Points and cotangent operators
+// undergo the same central change of basis.
+function branchDisplayGauge(data, operators, options) {
+  if (!options) return { data, operators };
+  const m = options.magnitude;
+  if (!(Number.isFinite(m) && m >= 0)) throw new RangeError('Finite branch magnitude required');
+  const d = options.firstLine ? (options.stage === 0 ? [1, 1 / (1 + m), 1] : [1 / (1 + m), 1, 1]) :
+    (options.stage === 0 ? [1 / (1 + m), 1 / (1 + m), 1] : [1 + m, 1, 1]);
+  if (options.side === 'infinity' || options.side === 1) {
+    if (options.firstLine) [d[1], d[2]] = [d[2], d[1]];
+    else [d[0], d[1]] = [d[1], d[0]];
+  }
+  return {
+    data: { ...data,
+      points: data.points.map((p) => p.map((z, j) => z.map((v) => v * d[j]))),
+      dualLines: data.dualLines.map((p) => p.map((z, j) => z.map((v) => v / d[j]))),
+    },
+    operators: operators && operators.map((K) => K.map((row, j) => row.map((z, k) => z.map((v) => v * d[j] / d[k])))),
+    diagonal: d,
+  };
+}
+
+// Project actual real projective flags in the same affine camera used by the
+// central chart. No modulus substitution is made: non-real flags are rejected.
+function realFlagDiagram(data) {
+  function real(v) {
+    const u = unit(v);
+    if (!u) return null;
+    let pivot = 0;
+    for (let i = 1; i < 3; i++) if (abs(u[i]) > abs(u[pivot])) pivot = i;
+    const phase = [u[pivot][0] / abs(u[pivot]), -u[pivot][1] / abs(u[pivot])];
+    const rotated = u.map((z) => mul(z, phase));
+    return rotated.every((z) => Math.abs(z[1]) < CHART_TOLERANCE) ? rotated.map((z) => z[0]) : null;
+  }
+  const points = data.points.map(real), dual = data.dualLines.map(real);
+  if (points.concat(dual).some((p) => !p)) return { valid: false, reason: 'Real incidence camera requires real projective flags.' };
+  const homogeneousPoints = points.map((p) => {
+    const sum = p[0] + p[1] + p[2];
+    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum];
+  });
+  const homogeneousLines = dual.map(([a, b, c]) => [b - a, c - a, SCALE * (b + c) / 2]);
+  const lines = homogeneousLines.map(segment);
+  if (lines.some((line) => !line) || homogeneousPoints.some((p) => Math.abs(p[2]) < 1e-12)) {
+    return { valid: false, reason: 'Flags are outside this affine camera.' };
+  }
+  const affine = homogeneousPoints.map((p) => p.slice(0, 2).map((v) => v / p[2]));
+  if (affine.some((p) => p.some((v) => Math.abs(v) > LIMIT))) return { valid: false, reason: 'Flag point is outside this affine camera.' };
+  return { valid: true, points: affine, lines, compactRadius: 0.5,
+    linePhases: [0, 0, 0], pointPhases: [0, 0, 0], phaseMatchedConcurrency: data.concurrent,
+    reconstruction: { homogeneousPoints, homogeneousLines, chart: 'Actual real flags; X=S(y-sum/2), Y=S(z-sum/2), W=sum' } };
+}
+
+// A continuous projective camera for the concurrency degeneration. Its
+// determinant is SCALE^2 (1+t), so it never collapses an incidence. Two
+// points genuinely pass through infinity; boundary markers retain their
+// identity rather than moving them through the concurrency point.
+function concurrencyDiagram(progress) {
+  const t = Math.max(0, Math.min(1, progress));
+  function camera(p) {
+    const sum = p[0] + p[1] + p[2];
+    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum + 3 * t * p[2]];
+  }
+  const homogeneousPoints = [0, 1, 2].map((i) => camera([0, 1, 2].map((j) => (i === j ? 1 : 0) - t / 3)));
+  const center = camera([1, 1, 1]);
+  const equations = homogeneousPoints.map((p) => cross(p, center));
+  const centerPoint = center.slice(0, 2).map((v) => v / center[2]);
+  const pointMarkers = homogeneousPoints.map((p, i) => {
+    const finite = Math.abs(p[2]) > 1e-12;
+    const q = finite ? p.slice(0, 2).map((v) => v / p[2]) : null;
+    if (q && q.every((v) => Math.abs(v) <= LIMIT)) return { point: q, clipped: false };
+    // Choose the boundary intersection on the correct affine ray. Exactly
+    // at infinity either antipodal boundary endpoint represents the point.
+    const direction = [p[0] * center[2] - center[0] * p[2], p[1] * center[2] - center[1] * p[2]];
+    const sign = p[2] < 0 ? -1 : 1;
+    const ray = direction.map((v) => v * sign);
+    const endpoints = segment(equations[i]);
+    const scores = endpoints.map((v) => (v[0] - centerPoint[0]) * ray[0] + (v[1] - centerPoint[1]) * ray[1]);
+    const point = endpoints[scores[0] > scores[1] ? 0 : 1];
+    const norm = Math.hypot(...ray);
+    return { point, clipped: true, direction: ray.map((v) => v / norm), atInfinity: !finite };
+  });
+  return {
+    valid: true, points: pointMarkers.map((p) => p.point), pointMarkers,
+    lines: equations.map(segment), linePhases: [0, 0, 0], pointPhases: [0, 0, 0],
+    compactRadius: 0.5, phaseMatchedConcurrency: true, concurrencyProgress: t,
+    transversal: t === 1 ? segment([0, 1, -SCALE / 3]) : null,
+    reconstruction: { homogeneousPoints, homogeneousLines: equations, center,
+      chart: "p_i=e_i-t(1,1,1)/3; X=S(y-sum/2), Y=S(z-sum/2), W=sum+3tz" },
+  };
+}
+
+// Three complex cotangent coefficients in a deterministic orthonormal flag
+// basis. This is a display gauge, not three complex-gauge invariants.
+function cotangentGlyphs(data, operators, progress) {
+  if (!data || !data.valid || !Array.isArray(operators)) return [];
+  const conj = (z) => [z[0], -z[1]];
+  const inner = (a, b) => a.reduce((sum, v, i) => {
+    const z = mul(conj(v), b[i]); return [sum[0] + z[0], sum[1] + z[1]];
+  }, [0, 0]);
+  return operators.map((K, i) => {
+    const incoming = Number.isFinite(progress) && progress < 1;
+    const s = incoming ? concurrencyGaugeProgress(progress) : 0;
+    const point = incoming ? [0, 1, 2].map((j) => [(i === j ? 1 : 0) - s / 3, 0]) : data.points[i];
+    // At this exact attachment K is a multiple of L ell_i, ell_i(L)=0.
+    // Conjugation by G therefore multiplies K by 1-s, without cancellation.
+    const operator = incoming ? K.map((row) => row.map((z) => z.map((v) => v * (1 - s)))) : K;
+    const e1 = unit(point);
+    const e3 = unit(data.dualLines[i].map(conj));
+    if (!e1 || !e3) return null;
+    // A conjugated cross product avoids switching a Gram-Schmidt seed
+    // when a line approaches a coordinate plane at a fixed point.
+    const e2 = unit([0, 1, 2].map(j => {
+      const a = mul(e3[(j + 1) % 3], e1[(j + 2) % 3]);
+      const b = mul(e3[(j + 2) % 3], e1[(j + 1) % 3]);
+      return conj([a[0] - b[0], a[1] - b[1]]);
+    }));
+    if (!e2) return null;
+    const action = (v) => operator.map((row) => row.reduce((sum, z, j) => {
+      const w = mul(z, v[j]); return [sum[0] + w[0], sum[1] + w[1]];
+    }, [0, 0]));
+    const coefficients = [inner(e1, action(e2)), inner(e1, action(e3)), inner(e2, action(e3))];
+    return { coefficients, basis: [e1, e2, e3] };
+  });
+}
+
 function flagDiagram(data, options = {}) {
   const fail = (reason) => ({ valid: false, reason });
   if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
@@ -4235,6 +4842,55 @@ function flagDiagram(data, options = {}) {
   }
   const points = data.points.map(unit), normals = data.dualLines.map(unit);
   if (points.concat(normals).some((v) => !v)) return fail("The decorated diagram requires finite nonzero homogeneous coordinates.");
+  if (options.firstLine && !options.realFlags && !Number.isFinite(options.concurrencyProgress)) {
+    // The chamber chart has l1=(0,-z,1), l2=(1,0,-1),
+    // l3=(-1,1,0). Work homogeneously so both radial poles are
+    // genuine finite flag configurations, independent of theta.
+    const numerator = normals[0][1], denominator = normals[0][2];
+    const size = abs(numerator) + abs(denominator);
+    if (!(size > 0)) return fail('The first line is outside the chamber chart.');
+    const expectedPoints = [0, 1, 2].map(i => [0, 1, 2].map(j => [i === j ? 1 : 0, 0]));
+    const expectedNormals = [
+      [[0, 0], numerator, denominator],
+      [[1, 0], [0, 0], [-1, 0]],
+      [[-1, 0], [1, 0], [0, 0]],
+    ].map(unit);
+    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expectedPoints[i])),
+      ...normals.map((p, i) => projectiveResidual(p, expectedNormals[i])));
+    if (residual > CHART_TOLERANCE) return fail('These flags are outside the first-line chamber chart.');
+    const r = abs(numerator) / size;
+    const phaseProduct = mul([-numerator[0], -numerator[1]], [denominator[0], -denominator[1]]);
+    const phase = r === 0 || r === 1 ? null : Math.atan2(phaseProduct[1], phaseProduct[0]);
+    const diagonal = options.centralFlow ? centralDiagonal(options.centralFlow) : [1, 1, 1];
+    const equations = [[0, -r, 1 - r], [-1, 0, 1], [-1, 1, 0]].map(n => {
+      const [a, b, c] = n.map((v, j) => v / diagonal[j]);
+      return [b - a, c - a, SCALE * (b + c) / 2];
+    });
+    const lines = equations.map(segment);
+    if (lines.some(line => !line)) return fail('The chamber lines cannot be clipped to the viewport.');
+    return firstLineOrientation({ valid: true, points: [[0, 0], [1, 0], [0, 1]].map(p => p.map(x => SCALE * (x - 0.5))),
+      lines, compactRadius: r, linePhases: [phase, 0, 0], pointPhases: [0, 0, 0],
+      phaseMatchedConcurrency: data.concurrent === true,
+      phaseRadii: [4 * r * (1 - r), 1, 1],
+      phaseVectors: [phase === null ? [0, 0] : [4 * r * (1 - r) * Math.cos(phase), 4 * r * (1 - r) * Math.sin(phase)], [1, 0], [1, 0]],
+      reconstruction: { homogeneousPoints: expectedPoints.map(p => { const s = p.reduce((v, z) => v + z[0], 0); return [SCALE * (p[1][0] - s / 2), SCALE * (p[2][0] - s / 2), s]; }),
+        homogeneousLines: equations, maxChartResidual: residual, chart: 'E6 first-line chamber: p=e1,e2,e3; n=(0,-z,1),(1,0,-1),(-1,1,0)' } });
+  }
+  if (options.realFlags) {
+    const diagram = realFlagDiagram(data);
+    return options.firstLine ? firstLineOrientation(diagram) : diagram;
+  }
+  if (Number.isFinite(options.concurrencyProgress)) {
+    const t = Math.max(0, Math.min(1, options.concurrencyProgress));
+    const expected = [0, 1, 2].map((i) => unit([0, 1, 2].map((j) => [
+      (i === j ? 1 : 0) - (t === 1 ? 1 / 3 : 0), 0])));
+    const dual = [[[0, 0], [-1, 0], [1, 0]], [[1, 0], [0, 0], [-1, 0]], [[-1, 0], [1, 0], [0, 0]]].map(unit);
+    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expected[i])),
+      ...normals.map((p, i) => projectiveResidual(p, dual[i])));
+    if (residual > CHART_TOLERANCE) return fail("These flags are outside the concurrency chart.");
+    const diagram = concurrencyDiagram(concurrencyGaugeProgress(t));
+    return options.firstLine ? firstLineOrientation(diagram) : diagram;
+  }
   const denominator = normals[2][1];
   const den = denominator[0] ** 2 + denominator[1] ** 2;
   const numerator = normals[2][0];
@@ -4289,17 +4945,35 @@ function flagDiagram(data, options = {}) {
   };
 }
 
-return { flagDiagram };
+return { concurrencyGaugeProgress, centralDisplayGauge, branchDisplayGauge, realFlagDiagram, concurrencyDiagram, cotangentGlyphs, flagDiagram };
 })();
 
 // ---- module: element-render ----
 const __ek_mod_element_render = (function () {
-const { flagDiagram } = __ek_mod_flag_diagram;
+const { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } = __ek_mod_flag_diagram;
 ﻿// The real flag skeleton records magnitude; line hue records phase.
 
 
 const POINT = ["p₁", "p₂", "p₃"];
 const LINE = ["ℓ₁", "ℓ₂", "ℓ₃"];
+
+// Shared by the canvas and the atlas integration checks.
+function elementFrame(view) {
+  let data = view && view.incidence ? view.incidence : null;
+  let operators = view && view.cotangentOperators;
+  if (data && data.valid && view.branchGauge) {
+    const gauged = branchDisplayGauge(data, operators, { ...view.branchGauge, firstLine: view.firstLine });
+    data = gauged.data; operators = gauged.operators;
+  }
+  const layout = data && data.valid ? flagDiagram(data, { compact: true,
+    concurrencyProgress: view.concurrencyProgress, realFlags: view.realFlags,
+    firstLine: view.firstLine, centralFlow: view.centralFlow }) : null;
+  if (data && data.valid && view.centralFlow) {
+    const gauged = centralDisplayGauge(data, operators, view.centralFlow);
+    data = gauged.data; operators = gauged.operators;
+  }
+  return { data, layout, glyphs: cotangentGlyphs(data, operators, view && view.concurrencyProgress) };
+}
 
 // All phases collapse at the two poles. Inside the chart, hue determines
 // phase modulo 2π; the shared saturation keeps equal phases the same color.
@@ -4320,7 +4994,7 @@ function makeElementView(host, opts) {
   canvas.style.cursor = "default";
   if (canvas.setAttribute) {
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "Flag incidence. Line positions show magnitude; line colors show phase.");
+    canvas.setAttribute("aria-label", "Flag incidence. Line positions show magnitude; line colors show phase. Boundary arrows mark points outside the projective viewport. Three small phase rings at each point encode its cotangent coefficients in a display basis.");
   }
   host.appendChild(canvas);
   const ctx = canvas.getContext ? canvas.getContext("2d") : null;
@@ -4336,6 +5010,7 @@ function makeElementView(host, opts) {
   host.appendChild(status);
   let data = null;
   let layout = null;
+  let glyphs = [];
   let statusKind = "";
 
   function palette() {
@@ -4373,6 +5048,13 @@ function makeElementView(host, opts) {
     ctx.lineCap = "round";
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "left";
+    if (layout.transversal) {
+      const a = pixel(layout.transversal[0]), b = pixel(layout.transversal[1]);
+      ctx.strokeStyle = pal.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.25;
+      if (ctx.setLineDash) ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     for (let i = 0; i < 3; i++) {
       const a = pixel(layout.lines[i][0]);
       const b = pixel(layout.lines[i][1]);
@@ -4390,22 +5072,51 @@ function makeElementView(host, opts) {
     if (ctx.setLineDash) ctx.setLineDash([]);
     for (let i = 0; i < 3; i++) {
       const p = pixel(layout.points[i]);
+      const marker = layout.pointMarkers && layout.pointMarkers[i];
       let groupIndex = 0;
       for (let j = 0; j < i; j++) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
-      ctx.beginPath(); ctx.arc(p[0], p[1], 4 + 3 * groupIndex, 0, Math.PI * 2);
       ctx.strokeStyle = pal.point; ctx.lineWidth = 2;
-      if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
-      ctx.stroke();
+      if (marker && marker.clipped) {
+        const d = [marker.direction[0], -marker.direction[1]];
+        ctx.beginPath();
+        ctx.moveTo(p[0] - 8 * d[0] - 4 * d[1], p[1] - 8 * d[1] + 4 * d[0]);
+        ctx.lineTo(p[0], p[1]);
+        ctx.lineTo(p[0] - 8 * d[0] + 4 * d[1], p[1] - 8 * d[1] - 4 * d[0]);
+        ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(p[0], p[1], 4 + 3 * groupIndex, 0, Math.PI * 2);
+        if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
+        ctx.stroke();
+      }
       ctx.fillStyle = pal.point;
-      ctx.fillText(POINT[i], p[0] + 12, p[1] - 9 + groupIndex * 15);
+      const labelX = marker && marker.clipped && p[0] > w / 2 ? p[0] - 44 : p[0] + 12;
+      const labelY = marker && marker.clipped && p[1] < h / 2 ? p[1] + 18 : p[1] - 9 + groupIndex * 15;
+      ctx.fillText(POINT[i], labelX, labelY);
+      // A single quiet, three-ring glyph: radius identifies the coefficient,
+      // opacity its bounded magnitude and the short hand its complex phase.
+      const glyph = glyphs[i];
+      if (glyph) glyph.coefficients.forEach((z, k) => {
+        const magnitude = Math.hypot(z[0], z[1]);
+        if (magnitude < 1e-10) return;
+        const cx = labelX + 27, cy = labelY - 4, radius = 3 + 3 * k;
+        const phase = Math.atan2(z[1], z[0]);
+        ctx.globalAlpha = 0.2 + 0.8 * magnitude / (1 + magnitude);
+        ctx.lineWidth = 1; ctx.strokeStyle = pal.point;
+        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + (radius - 2) * Math.cos(phase), cy - (radius - 2) * Math.sin(phase));
+        ctx.lineTo(cx + (radius + 1) * Math.cos(phase), cy - (radius + 1) * Math.sin(phase));
+        ctx.stroke(); ctx.globalAlpha = 1;
+      });
     }
   }
 
   function setData(view) {
-    data = view && view.incidence ? view.incidence : null;
-    layout = data && data.valid ? flagDiagram(data, { compact: true }) : null;
+    const frame = elementFrame(view);
+    data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
     draw();
   }
   function setStatus(text, kind) {
@@ -4428,7 +5139,7 @@ function makeElementView(host, opts) {
   };
 }
 
-return { phaseColor, makeElementView };
+return { elementFrame, phaseColor, makeElementView };
 })();
 
 // ---- module: flag-incidence ----
@@ -4710,13 +5421,17 @@ return { formatComplex, makeRepresentationReadout };
 // ---- module: widget ----
 const __ek_mod_widget = (function () {
 const { AFFINE_ADE } = __ek_mod_quiver_data;
-const { buildSideLayout, makeCoreView } = __ek_mod_core_view;
-const { compactChart } = __ek_mod_chart;
+const { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } = __ek_mod_core_view;
+const { e6AtlasPoint } = __ek_mod_e6_atlas;
+const { E6_REGULAR_LEVELS } = __ek_mod_e6_levels;
+const { matMul } = __ek_mod_core_math;
 const { makeRepresentationReadout } = __ek_mod_representation_readout;
 const { flagIncidence } = __ek_mod_flag_incidence;
 const { makeElementView } = __ek_mod_element_render;
 // E6 complex representatives and simultaneous flag/moduli views.
-// Both views share compact coordinates r,theta; t and phi are fixed at zero.
+// Compact representatives and the schematic core flow share coordinate controls.
+
+
 
 
 
@@ -4844,7 +5559,8 @@ function ensureStyles() {
 // ---------------------------------------------------------------------------
 function activate(container) {
   ensureStyles();
-  const state = { key: "E6" };
+  container.setAttribute("data-e6-levels", JSON.stringify(E6_REGULAR_LEVELS));
+  const state = { key: "E6", sphere: 0, arm: -1, outgoing: false };
   const tabs = document.createElement("div");
   tabs.className = "ek-tabs";
   container.appendChild(tabs);
@@ -4908,7 +5624,7 @@ function activate(container) {
   secondRow.style.marginTop = "6px";
   modPanel.appendChild(secondRow);
 
-  function slider(host, id, label, min, max, step, value, format, title, disabled) {
+  function slider(host, id, label, min, max, step, value, format, title, snaps) {
     const box = document.createElement("div");
     box.className = "ek-mod";
     const lab = document.createElement("label");
@@ -4922,13 +5638,17 @@ function activate(container) {
     input.max = String(max);
     input.step = String(step);
     input.value = String(value);
-    input.disabled = !!disabled;
+    input.disabled = false;
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
     function refresh() { readout.textContent = format(Number(input.value)); }
     input.addEventListener("input", function () {
-      if (input.disabled) return;
+      (snaps || []).some(function (snap) {
+        if (Math.abs(Number(input.value) - snap.value) > snap.tol) return false;
+        input.value = String(snap.value);
+        return true;
+      });
       refresh();
       apply();
     });
@@ -4940,13 +5660,26 @@ function activate(container) {
     return { input: input, refresh: refresh };
   }
   const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
-    function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity", false);
+    function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity",
+    [0, 0.5, 1].map(function (v) { return { value: v, tol: 0.02 }; }));
   const thetaControl = slider(firstRow, "ek-theta", "\u03b8", -Math.PI, Math.PI, "any", 0,
-    function (v) { return v.toFixed(3); }, "Phase in radians", false);
-  slider(secondRow, "ek-t", "t", 0, 1, 0.001, 0,
-    function () { return "0"; }, "Only t = 0 is implemented", true);
-  slider(secondRow, "ek-phi", "\u03c6", -Math.PI, Math.PI, "any", 0,
-    function () { return "0"; }, "Inactive when y = 0", true);
+    function (v) { return v.toFixed(3); }, "Phase in radians", [{ value: 0, tol: 0.03 * Math.PI }]);
+  const tCol = document.createElement("div");
+  tCol.className = "ek-tcol";
+  secondRow.appendChild(tCol);
+  const tControl = slider(tCol, "ek-t", "t", 0, 1, 0.001, 0,
+    function (v) { return v >= 1 ? "\u221e" : (v / (1 - v)).toFixed(2); },
+    "Local flow on the current sphere; readout t/(1-t)", []);
+  tControl.input.parentNode.style.flex = "1 1 auto";
+  const limBtn = document.createElement("button");
+  limBtn.id = "ek-limit";
+  limBtn.type = "button";
+  limBtn.className = "ek-btn";
+  limBtn.style.display = "none";
+  limBtn.style.alignSelf = "flex-start";
+  tCol.appendChild(limBtn);
+  const phiControl = slider(secondRow, "ek-phi", "\u03c6", -Math.PI, Math.PI, "any", 0,
+    function (v) { return v.toFixed(3); }, "Flow phase in radians", [{ value: 0, tol: 0.03 * Math.PI }]);
 
   const coreView = makeCoreView(coreFrame, { getPalette: palette });
   const incidenceView = makeElementView(incidenceFrame, { getPalette: palette });
@@ -4955,6 +5688,37 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
+  let lastFlow = null;
+  function limitMode(t) {
+    if (!lastFlow) return null;
+    if (state.outgoing) return t <= 0.1 ? "return" : null;
+    if (lastFlow.kind === "arm") {
+      if (state.key === "E6" && state.sphere === lastFlow.sphereCount - 1 && t >= T_NEAR_INF) return "outgoing";
+      if (state.sphere < lastFlow.sphereCount - 1 && t >= T_NEAR_INF) return "up";
+      if (state.sphere > 0 && t <= 0.1) return "down";
+    } else if (lastFlow.capture && lastFlow.capture.w >= CAP_NEAR_INF_W && t >= T_NEAR_INF &&
+        (layout.arms[lastFlow.capture.k].nodes.length > 1 ||
+         (state.key === "E6" && lastFlow.capture.k === 1))) return "enter";
+    return null;
+  }
+  limBtn.addEventListener("click", function () {
+    // Flush current slider values before resolving a transition (RAF may be pending).
+    update();
+    const mode = limitMode(Number(tControl.input.value));
+    if (mode === "outgoing") { state.outgoing = true; tControl.input.value = "0"; }
+    else if (mode === "return") { state.outgoing = false; tControl.input.value = "1"; }
+    else if (mode === "up") { state.sphere++; tControl.input.value = "0"; }
+    else if (mode === "down") { state.sphere--; tControl.input.value = "1"; }
+    else if (mode === "enter") {
+      state.arm = lastFlow.capture.k;
+      state.outgoing = state.key === "E6" && state.arm === 1;
+      state.sphere = state.outgoing ? 0 : 1;
+      rControl.input.value = String(layout.arms[state.arm].param);
+      thetaControl.input.value = "0";
+      tControl.input.value = "0";
+    } else return;
+    apply();
+  });
   let pending = false;
   function apply() {
     if (pending) return;
@@ -4966,21 +5730,39 @@ function activate(container) {
   function update() {
     const r = Number(rControl.input.value);
     const theta = Number(thetaControl.input.value);
+    const t = Number(tControl.input.value);
+    const phi = Number(phiControl.input.value);
+    const arm = armAt(layout, r, theta);
+    if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
     rControl.refresh();
     thetaControl.refresh();
-    if (coreView) coreView.update(layout, { r: r, theta: theta, t: 0, phi: 0, sphere: 0 }, false);
+    tControl.refresh();
+    phiControl.refresh();
+    lastFlow = coreView ? coreView.update(layout, { r: r, theta: theta, t: t, phi: phi, sphere: state.sphere, outgoing: state.outgoing }, true) : null;
+    const mode = limitMode(t);
+    limBtn.style.display = mode ? "inline-block" : "none";
+    limBtn.textContent = mode === "down" || mode === "return" ? "lim t\u21920" : "lim t\u2192\u221e";
+    limBtn.title = mode === "down" || mode === "return" ? "Move inward" : "Move outward";
+    coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
+    coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
+      coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
       incidenceView.setStatus("E6 only", "warn");
       return;
     }
     try {
-      const rep = compactChart(r, theta);
+      const point = e6AtlasPoint({ r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing });
+      const rep = point.rep;
+      coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
       matrices.setData(rep);
-      incidenceView.setData({ incidence: flagIncidence(rep) });
+      const viewData = Object.assign({ incidence: flagIncidence(rep),
+        cotangentOperators: rep.A.map(function (A, i) { return matMul(A, rep.B[i]); }) }, point.view);
+      incidenceView.setData(viewData);
       incidenceView.setStatus("", "info");
     } catch (error) {
+      coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
       incidenceView.setStatus("Representation unavailable", "error");
@@ -4991,6 +5773,9 @@ function activate(container) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
     });
     layout = buildSideLayout(AFFINE_ADE[state.key]);
+    state.arm = -1;
+    state.sphere = 0;
+    state.outgoing = false;
     if (coreView) coreView.setLayout(layout);
     apply();
   }
