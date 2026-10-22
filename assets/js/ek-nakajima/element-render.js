@@ -33,8 +33,11 @@ export function cotangentArrowGeometry(point, line, target) {
     return {start:p.map((v,j)=>v+offset[j]*(gap+ARROW_LENGTH)),end:p.map((v,j)=>v+offset[j]*gap)};
   }
   const close=target&&Math.hypot(...target.map((v,j)=>v-point[j]))<64/3;
-  return [arrow(point,tangent.map(v=>v*sign),7),arrow(point,normal,7),
-    target?arrow(target,normal.map(v=>close?-v:v),2):null];
+  // Five pixels clears the line stroke and the tangent arrow's head, leaving
+  // a small gap on the same side as the perpendicular arrow at this point.
+  const tangentAnchor=point.map((v,j)=>v+5*normal[j]);
+  return [arrow(tangentAnchor,tangent.map(v=>v*sign),9),arrow(point,normal,8),
+    target?arrow(target,normal.map(v=>close?-v:v),3):null];
 }
 
 export function cotangentArrowColor(z, dark) {
@@ -87,7 +90,7 @@ function balancedPhaseColor(phase, vector, dark) {
 }
 
 function incidenceColor(hue, strength, dark) {
-  return 'hsl(' + (hue === null ? 0 : hue) + ', ' + 70 * strength + '%, ' + (dark ? 70 : 40) + '%)';
+  return 'hsl(' + (hue === null ? 0 : hue) + ', ' + 85 * strength + '%, ' + (dark ? 70 : 40) + '%)';
 }
 
 export function makeElementView(host, opts) {

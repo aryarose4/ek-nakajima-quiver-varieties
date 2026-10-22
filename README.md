@@ -128,7 +128,11 @@ flag projectors and cotangent operators; the final camera and y coefficient
 basis cancel this history using normalized complex phasors wherever their
 references are nonzero. The camera combines two point correlations with a
 cotangent-operator entry, avoiding the first-point reference's zero near
-`r=.34624` and extending through the short tip. It is a complex unitary camera
+`r=.34624` and extending through the short tip. Additional operator and linked
+point/operator correlations keep both camera phases defined at the right
+arm's first fixed point, through its incoming limit and higher-stratum chart.
+These transitions are tested for geometry, glyphs, and phase/incidence colors.
+It is a complex unitary camera
 even for some real flags; its real-part projection cannot show every incidence
 literally. Projection loss and vanishing camera references are recorded.
 Line hue and saturation encode the imaginary and real parts of

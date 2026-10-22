@@ -231,9 +231,11 @@ async function main() {
   check('infinity diagram remains finite', ctx.lines.slice(-3).every(p => p.every(Number.isFinite)));
   set(radius, 0);
   check('zero uses a balanced endpoint', balanced());
-  set(radius, 0.015); check("radius snaps to zero", Number(radius.value) === 0);
+  set(radius, 0.015); check("radius remains free near zero outside weaker magnet", Number(radius.value) === 0.015);
+  set(radius, 0.004); check("radius snaps to zero within weaker magnet", Number(radius.value) === 0);
   set(radius, 0.49); check("radius snaps to one half", Number(radius.value) === 0.5);
-  set(radius, 0.985); check("radius snaps to one", Number(radius.value) === 1);
+  set(radius, 0.985); check("radius remains free near one outside weaker magnet", Number(radius.value) === 0.985);
+  set(radius, 0.996); check("radius snaps to one within weaker magnet", Number(radius.value) === 1);
   set(radius, 0.47); check("radius outside magnet remains free", Number(radius.value) === 0.47);
   set(theta, 0.08); check("theta snaps to zero", Number(theta.value) === 0);
   set(phi, -0.08); check("phi snaps to zero", Number(phi.value) === 0);

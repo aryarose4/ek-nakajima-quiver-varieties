@@ -230,7 +230,7 @@ function activate(container) {
   }
   const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
     function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity",
-    [0, 0.5, 1].map(function (v) { return { value: v, tol: 0.02 }; }));
+    [0, 0.5, 1].map(function (v) { return { value: v, tol: v === 0.5 ? 0.02 : 0.005 }; }));
   const thetaControl = slider(firstRow, "ek-theta", "\u03b8", -Math.PI, Math.PI, "any", 0,
     function (v) { return v.toFixed(3); }, "Phase in radians", [{ value: 0, tol: 0.03 * Math.PI }]);
   const tCol = document.createElement("div");

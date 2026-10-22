@@ -133,7 +133,11 @@ export function balancedDiagram(rep, options = {}) {
   const normal=coordinates([x,y,z],data.dualLines[pair[1]].map(cConj)).map(cConj);
   const point=coordinates([x,y,z],data.points[pair[0]]);
   const phasor=value=>abs(value)>1e-10?cScale(value,1/abs(value)):[1,0];
-  const alphaAnchor=cConj(cMul(normal[0],cConj(normal[1])));
+  // At the right arm's first fixed point the two plane normals are
+  // orthogonal. K_1 still couples the x/y directions there, so it supplies
+  // the missing phase without switching camera conventions at the endpoint.
+  const operatorAlpha=cConj(inner(y,operators[0].map(row=>row.reduce((s,v,j)=>cAdd(s,cMul(v,x[j])),[0,0]))));
+  const alphaAnchor=cAdd(cConj(cMul(normal[0],cConj(normal[1]))),cMul([0,1],operatorAlpha));
   const alpha=phasor(alphaAnchor);
   // One point correlation vanishes inside a perfectly regular radial path.
   // Two independent point references avoid that real-axis sign flip; K_2
@@ -143,7 +147,11 @@ export function balancedDiagram(rep, options = {}) {
   const q0=cMul(point[2],cConj(point[1]));
   const q1=cMul(point1[2],cConj(point1[1]));
   const k=inner(z,operators[1].map(row=>row.reduce((s,v,j)=>cAdd(s,cMul(v,y[j])),[0,0])));
-  const betaAnchor=cAdd(k,cAdd(q0,cMul([0,1],q1)));
+  // The same fixed point has zero direct y/z references. Link the nonzero
+  // point z/x correlation through K_1's x/y correlation instead. This product
+  // has exactly the same phase covariance as q0, q1 and k.
+  const linked=cMul(operatorAlpha,cMul(point1[2],cConj(point1[0])));
+  const betaAnchor=cAdd(cMul([0,1],linked),cAdd(k,cAdd(q0,cMul([0,1],q1))));
   const beta=phasor(betaAnchor);
   x=x.map(v=>cMul(v,alpha));z=z.map(v=>cMul(v,beta));
   const camera=[x,y,z];
@@ -160,8 +168,8 @@ export function balancedDiagram(rep, options = {}) {
   glyphs.forEach(g=>{g.basis=g.basis.map(v=>[0,1,2].map(j=>camera.reduce((s,e,k)=>cAdd(s,cMul(e[j],v[k])),[0,0])));});
   const rawPoints=[],lineGeometry=[];
   const points=[],lines=[],pointMarkers=[],linePhases=[],phaseVectors=[],pointPhases=[],pointPhaseVectors=[],projectionResiduals=[],cameraDefects=[];
-  if(abs(alphaAnchor)<=1e-10)cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'x'});
-  if(abs(betaAnchor)<=1e-10*Math.max(1,abs(k),abs(q0),abs(q1)))cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'z'});
+  if(abs(alphaAnchor)<=1e-10*Math.max(1,abs(operatorAlpha)))cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'x'});
+  if(abs(betaAnchor)<=1e-10*Math.max(1,abs(k),abs(q0),abs(q1),abs(linked)))cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'z'});
   for(let i=0;i<3;i++) {
     const p=coordinates(camera,data.points[i]);
     const n=coordinates(camera,data.dualLines[i].map(cConj)).map(cConj);

@@ -235,5 +235,41 @@ for(const r of [.3,.5]) for(const t of [0,.4]) {
     }
   }
 }
+// The right-arm first endpoint previously lost both camera phase references.
+// Check approach, exact chart handoff, and departure into the next stratum,
+// including the second sphere's outgoing chart and the phase-dependent glyphs.
+function colorCoordinates(frame) {
+  const c=frame.layout.incidenceColors;
+  return c.lineHues.concat(c.pointHues).map((h,i)=>{
+    const strength=i<3?c.lineStrengths[i]:c.pointStrengths[i-3];
+    const angle=(h===null?0:h)*Math.PI/180;
+    return [strength*Math.cos(angle),strength*Math.sin(angle)];
+  });
+}
+for(const theta of [0,.7]) for(const phi of [0,.7,2.1]) for(const sphere of [0,1]) {
+  const parameters={r:1,theta,phi,sphere};
+  const endpoint=solveBalancedAtlas({...parameters,t:1});
+  check(endpoint.success,'right-arm fixed endpoint balances');
+  const end=balancedDiagram(endpoint.solvedRep);
+  check(!end.layout.cameraDefects.some(d=>d.kind==='camera-phase-anchor-vanishing'),'right-arm endpoint has nonvanishing camera phases');
+  const nextParameters={...parameters,sphere:1,outgoing:sphere===1};
+  const base=solveBalancedAtlas({...nextParameters,t:0});
+  check(base.success,'higher-stratum base balances');
+  const start=balancedDiagram(base.solvedRep,{previous:end});
+  check(pictureDistance(end,start)<1e-7,'limit button preserves geometry and glyphs');
+  check(distance(colorCoordinates(end),colorCoordinates(start))<1e-7,'limit button preserves phase and incidence colors');
+  for(const epsilon of [1e-3,1e-5,1e-7]) {
+    const incoming=solveBalancedAtlas({...parameters,t:1-epsilon});
+    const outgoing=solveBalancedAtlas({...nextParameters,t:epsilon});
+    check(incoming.success&&outgoing.success,'both sides of right-arm endpoint balance');
+    const from=balancedDiagram(incoming.solvedRep,{previous:history});
+    const middle=balancedDiagram(endpoint.solvedRep,{previous:from});
+    const to=balancedDiagram(outgoing.solvedRep,{previous:middle});
+    check(pictureDistance(from,middle)<50*epsilon+1e-6,'right-arm incoming picture approaches endpoint continuously');
+    check(pictureDistance(middle,to)<50*epsilon+1e-6,'right-arm picture departs into higher stratum continuously');
+    check(distance(colorCoordinates(from),colorCoordinates(middle))<50*epsilon+1e-6,'right-arm incoming colors approach endpoint continuously');
+    check(distance(colorCoordinates(middle),colorCoordinates(to))<50*epsilon+1e-6,'higher-stratum colors approach endpoint continuously');
+  }
+}
 console.log(checks+' balanced diagram checks passed.');
 
