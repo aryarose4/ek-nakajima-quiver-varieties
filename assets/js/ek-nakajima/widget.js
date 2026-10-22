@@ -3,11 +3,10 @@
 
 import { AFFINE_ADE } from "./quiver-data.js";
 import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
-import { e6AtlasPoint } from "./e6-atlas.js";
+import { e6AtlasPoint, e6HasInfinityLimit } from "./e6-atlas.js";
+import { createBalancedClient } from './balanced-client.js';
 import { E6_REGULAR_LEVELS } from "./e6-levels.js";
-import { matMul } from "./core-math.js";
 import { makeRepresentationReadout } from "./representation-readout.js";
-import { flagIncidence } from "./flag-incidence.js";
 import { makeElementView } from "./element-render.js";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
@@ -151,7 +150,7 @@ function activate(container) {
   container.appendChild(matrixHost);
   const matrixLabel = document.createElement("div");
   matrixLabel.className = "ek-sec";
-  matrixLabel.textContent = "Complex representative";
+  matrixLabel.textContent = "Balanced representative";
   matrixHost.appendChild(matrixLabel);
   const matrices = makeRepresentationReadout(matrixHost);
 
@@ -258,6 +257,22 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
+  const balancedClient = createBalancedClient({ onProgress: function (result, parameters) {
+    displayBalanced(result, parameters);
+    // This is a validated intermediate representation, not the latest request.
+    incidenceFrame.setAttribute('aria-busy', 'true');
+    incidenceFrame.setAttribute('data-balanced', 'pending');
+  } });
+  let balancedFrame = null;
+  let lastBalancedKey = null;
+  function displayBalanced(result, parameters) {
+    matrices.setData(result.solvedRep);
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
+    if (frame && frame.valid) balancedFrame = frame.continuation;
+    incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
+    incidenceFrame.setAttribute('data-real-residual', String(result.residuals.real_norm));
+    incidenceView.setStatus('', 'info');
+  }
   let lastFlow = null;
   function limitMode(t) {
     if (!lastFlow) return null;
@@ -276,7 +291,7 @@ function activate(container) {
     update();
     const mode = limitMode(Number(tControl.input.value));
     if (mode === "outgoing") { state.outgoing = true; tControl.input.value = "0"; }
-    else if (mode === "return") { state.outgoing = false; tControl.input.value = "1"; }
+    else if (mode === "return") { state.outgoing = false; tControl.input.max = "1"; tControl.input.value = "1"; }
     else if (mode === "up") { state.sphere++; tControl.input.value = "0"; }
     else if (mode === "down") { state.sphere--; tControl.input.value = "1"; }
     else if (mode === "enter") {
@@ -300,10 +315,13 @@ function activate(container) {
   function update() {
     const r = Number(rControl.input.value);
     const theta = Number(thetaControl.input.value);
-    const t = Number(tControl.input.value);
     const phi = Number(phiControl.input.value);
     const arm = armAt(layout, r, theta);
     if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
+    const tMax = state.key !== 'E6' || e6HasInfinityLimit({r, theta, sphere:state.sphere, outgoing:state.outgoing}) ? 1 : .99;
+    tControl.input.max = String(tMax);
+    if (Number(tControl.input.value) > tMax) tControl.input.value = String(tMax);
+    const t = Number(tControl.input.value);
     rControl.refresh();
     thetaControl.refresh();
     tControl.refresh();
@@ -316,6 +334,9 @@ function activate(container) {
     coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
     coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
+      balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+      incidenceFrame.setAttribute('aria-busy', 'false');
+      incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
@@ -323,15 +344,30 @@ function activate(container) {
       return;
     }
     try {
-      const point = e6AtlasPoint({ r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing });
-      const rep = point.rep;
+      const parameters = { r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing };
+      const point = e6AtlasPoint(parameters);
       coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
-      matrices.setData(rep);
-      const viewData = Object.assign({ incidence: flagIncidence(rep),
-        cotangentOperators: rep.A.map(function (A, i) { return matMul(A, rep.B[i]); }) }, point.view);
-      incidenceView.setData(viewData);
-      incidenceView.setStatus("", "info");
+      const key = JSON.stringify(parameters);
+      if (key === lastBalancedKey) return;
+      lastBalancedKey = key;
+      incidenceFrame.setAttribute('aria-busy', 'true');
+      incidenceFrame.setAttribute('data-balanced', 'pending');
+      balancedClient.request(parameters, function (result) {
+        incidenceFrame.setAttribute('aria-busy', 'false');
+        if (!result.success) {
+          incidenceFrame.setAttribute('data-balanced', 'false');
+          matrices.setData(null);
+          incidenceView.setData(null);
+          incidenceView.setStatus('Balanced representation unavailable', 'error');
+          return;
+        }
+        displayBalanced(result, parameters);
+        incidenceFrame.setAttribute('data-balanced', 'true');
+      });
     } catch (error) {
+      balancedClient.invalidate(); lastBalancedKey = null;
+      incidenceFrame.setAttribute('aria-busy', 'false');
+      incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);

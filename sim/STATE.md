@@ -52,6 +52,16 @@ Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
 
 ## Data contract (frozen)
 
+Live balanced display (2026-10-21): `balanced-model.js` now solves the E6
+atlas at the display levels below, in a background worker. Exact bounded
+overlaps handle incoming long-arm and concurrency limits. `balanced-diagram.js`
+uses only a unitary display frame, with temporal phase alignment, to extract
+positions, slopes and cotangent glyphs from the solved matrices. Numerical
+tests cover fixed configurations, branch interiors and near-limit continuity;
+this is not a global convergence or continuity theorem. General complex
+incidences need not be literal incidences in the real-part affine projection.
+The previous schematic display gauges are no longer used by the live widget.
+
 Browser atlas update (2026-10-21): the explorer now uses separate regular
 levels `alpha=(3,3,3), gamma=(1,21/10,3)`; the Python fixture above is unchanged.
 The frozen levels lie on two root hyperplanes. `assets/js/ek-nakajima/branch-charts.js`

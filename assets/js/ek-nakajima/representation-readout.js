@@ -19,27 +19,54 @@ export function formatComplex(z) {
 
 export function makeRepresentationReadout(host) {
   const style = document.createElement("style");
-  style.textContent = [
-    ".ek-rep-readout { min-width:0; color:var(--ek-box-tx,inherit); }",
-    ".ek-rep-readout .ek-rep-row { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px 22px; padding:8px 0; }",
-    ".ek-rep-readout .ek-rep-row + .ek-rep-row { border-top:1px solid var(--ek-box-bd,#cfd4da); }",
-    ".ek-rep-readout .ek-rep-matrix { display:flex; align-items:center; gap:6px; min-width:0; }",
-    ".ek-rep-readout .ek-rep-label { white-space:nowrap; font-family:Georgia,serif; font-style:italic; }",
-    ".ek-rep-readout .ek-rep-grid { display:grid; gap:3px 10px; font:0.75rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }",
-    ".ek-rep-readout .ek-rep-cell { text-align:right; white-space:nowrap; }",
-    ".ek-rep-readout .ek-rep-bracket { align-self:stretch; width:5px; box-sizing:border-box; border-top:1px solid; border-bottom:1px solid; flex-shrink:0; }",
-    ".ek-rep-readout .ek-rep-bracket-left { border-left:1px solid; }",
-    ".ek-rep-readout .ek-rep-bracket-right { border-right:1px solid; }",
-    "@media(max-width:440px) { .ek-rep-readout .ek-rep-row { gap:12px 16px; } .ek-rep-readout .ek-rep-grid { font-size:0.68rem; column-gap:7px; } }"
-  ].join("\n");
+  style.textContent = `
+.ek-rep-readout { display:grid; gap:10px; min-width:0; color:var(--ek-box-tx,inherit); }
+.ek-rep-readout .ek-rep-card { min-width:0; border:1px solid var(--ek-box-bd,#cfd4da); border-radius:6px; overflow:hidden; }
+.ek-rep-readout .ek-rep-header { display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px; border-bottom:1px solid var(--ek-box-bd,#cfd4da); font:600 0.75rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.ek-rep-readout .ek-rep-copy { color:inherit; background:transparent; border:1px solid var(--ek-box-bd,#cfd4da); border-radius:4px; padding:2px 6px; font:inherit; font-size:0.68rem; width:64px; cursor:pointer; }
+.ek-rep-readout .ek-rep-copy:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+.ek-rep-readout .ek-rep-body { height:244px; box-sizing:border-box; overflow-x:auto; overflow-y:hidden; padding:12px 10px 18px; }
+.ek-rep-readout .ek-rep-code { display:flex; flex-direction:column; gap:12px; width:max-content; min-width:100%; font:0.75rem/18px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; user-select:text; }
+.ek-rep-readout .ek-rep-matrix { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.ek-rep-readout .ek-rep-label { width:45px; flex-shrink:0; white-space:nowrap; }
+.ek-rep-readout .ek-rep-label sub,.ek-rep-readout .ek-rep-label sup { font-size:0.72em; line-height:0; }
+.ek-rep-readout .ek-rep-grid { display:grid; grid-auto-rows:18px; column-gap:10px; }
+.ek-rep-readout .ek-rep-cell { text-align:right; white-space:pre; min-width:3ch; }
+.ek-rep-readout .ek-rep-bracket { align-self:stretch; width:4px; box-sizing:border-box; border-top:1px solid; border-bottom:1px solid; flex-shrink:0; }
+.ek-rep-readout .ek-rep-bracket-left { border-left:1px solid; }
+.ek-rep-readout .ek-rep-bracket-right { border-right:1px solid; }
+`;
   host.appendChild(style);
   const root = document.createElement("div");
   root.className = "ek-rep-readout";
   host.appendChild(root);
+  function fitCards() {
+    root.style.gridTemplateColumns = host.clientWidth >= 760 ? "repeat(3,minmax(0,1fr))" : "minmax(0,1fr)";
+  }
+  fitCards();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitCards).observe(host);
+  else if (typeof window !== "undefined") window.addEventListener("resize", fitCards);
   const matrices = [];
-  function matrix(row, letter, level, branch, key, rows, cols) {
+  function fallbackCopy(text) {
+    const previous = document.activeElement;
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    document.body.appendChild(field);
+    let copied = false;
+    try { field.select(); copied = document.execCommand("copy"); }
+    finally {
+      document.body.removeChild(field);
+      if (previous && previous.focus) previous.focus();
+    }
+    if (!copied) throw new Error("Copy failed");
+  }
+  function matrix(parent, letter, level, branch, key, rows, cols) {
     const wrap = document.createElement("div");
     wrap.className = "ek-rep-matrix";
+    wrap.style.height = rows * 18 + "px";
     const label = document.createElement("span");
     label.className = "ek-rep-label";
     label.textContent = letter;
@@ -61,7 +88,7 @@ export function makeRepresentationReadout(host) {
     bracket("left");
     const grid = document.createElement("div");
     grid.className = "ek-rep-grid";
-    grid.style.gridTemplateColumns = "repeat(" + cols + ", auto)";
+    grid.style.gridTemplateColumns = "repeat(" + cols + ", max-content)";
     wrap.appendChild(grid);
     const cells = [];
     for (let k = 0; k < rows * cols; k++) {
@@ -72,17 +99,58 @@ export function makeRepresentationReadout(host) {
       grid.appendChild(cell);
     }
     bracket("right");
-    row.appendChild(wrap);
-    matrices.push({ branch, key, rows, cols, cells });
+    parent.appendChild(wrap);
+    const view = { branch, key, rows, cols, cells, letter, level };
+    matrices.push(view);
+    return view;
+  }
+  function branchText(views) {
+    return views.map(function(view) {
+      const lines = [];
+      for (let i = 0; i < view.rows; i++) {
+        lines.push("[ " + view.cells.slice(i * view.cols, (i + 1) * view.cols).map(function(cell) { return cell.textContent; }).join(", ") + " ]");
+      }
+      return view.letter + "_" + (view.branch + 1) + "^(" + view.level + ") =\n" + lines.join("\n");
+    }).join("\n\n");
   }
   for (let i = 0; i < 3; i++) {
-    const row = document.createElement("div");
-    row.className = "ek-rep-row";
-    root.appendChild(row);
-    matrix(row, "x", 1, i, "a", 2, 1);
-    matrix(row, "x", 2, i, "A", 3, 2);
-    matrix(row, "y", 1, i, "b", 1, 2);
-    matrix(row, "y", 2, i, "B", 2, 3);
+    const card = document.createElement("div");
+    card.className = "ek-rep-card";
+    const header = document.createElement("div");
+    header.className = "ek-rep-header";
+    const title = document.createElement("span");
+    title.textContent = "Branch " + (i + 1);
+    header.appendChild(title);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ek-rep-copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy Branch " + (i + 1) + " matrices");
+    header.appendChild(button);
+    card.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "ek-rep-body";
+    body.tabIndex = 0;
+    body.setAttribute("aria-label", "Branch " + (i + 1) + " matrices");
+    const code = document.createElement("div");
+    code.className = "ek-rep-code";
+    body.appendChild(code);
+    card.appendChild(body);
+    root.appendChild(card);
+    const views = [matrix(code,"x",1,i,"a",2,1), matrix(code,"x",2,i,"A",3,2), matrix(code,"y",1,i,"b",1,2), matrix(code,"y",2,i,"B",2,3)];
+    let feedbackTimer;
+    button.addEventListener("click", function() {
+      const text = branchText(views);
+      Promise.resolve().then(function() {
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text).catch(function() { fallbackCopy(text); });
+        }
+        fallbackCopy(text);
+      }).then(function() { button.textContent = "Copied"; }, function() { button.textContent = "Retry"; }).then(function() {
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(function() { button.textContent = "Copy"; }, 1400);
+      });
+    });
   }
   return {
     setData(rep) {

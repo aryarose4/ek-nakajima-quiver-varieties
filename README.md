@@ -20,7 +20,7 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** The ALE core explorer and E6 flag-incidence view are integrated. The incidence view shows three marked projective lines, with hue for phase. Both views share their coordinates, with live complex x and y matrices above. It reads the candidate complex chart directly; it does not require a real moment-map solve or claim stability. The solver and older projection utilities remain available for mathematical validation.
+> **Status.** The E6 flag picture and matrix readout now use numerically balanced representatives at `alpha=(3,3,3), gamma=(1,2.1,3)`. A background worker solves the real moment maps before displaying new matrices. A unitary display frame aligns successive flags and their cotangent data. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
 
 ## Try it
 
@@ -58,27 +58,53 @@ The E6 incidence and moduli views appear together, with the complex arrow matric
 
 $$z=\frac{r}{1-r}e^{i\theta},\qquad 0\leq r\leq1.$$
 
-Thus `r=1` is infinity, and concurrency occurs at `r=1/2, theta=0`. Away from
-the two endpoint attachments, the third branch uses
-`A_3 = [e3, (1-r)e1 + r exp(i theta)e2]`. The restored `t` and `phi` controls set
-`eta = t/(1-t) exp(i phi)`. Reverse arrows come from the exact M5 transverse
-kernel: in the affine chart, `y = w Y(z)` with `w = (1-r)^2 eta`, transported
-to the compact gauge. These representatives satisfy the complex moment-map
-equations without real balancing and remain finite at both radial endpoints
-for `t < 1`. At `t = 0` this is the previous zero-reverse-arrow chart.
-The exact endpoint attachments use the stable replacement charts below.
-
+Thus `r=1` is infinity, and concurrency occurs at `r=1/2, theta=0`.
+The compact central chart moves the first line with
+`A1=[e1,(1-r)e2+r exp(i theta)e3]`; the controls set
+`eta=t/(1-t) exp(i phi)`. These are input complex-gauge representatives.
+`balanced-model.js` solves their real moment maps with checked residuals,
+using exact bounded overlap representatives near the three arm limits.
+Continuation seeds are reused within a chart family, with a cold fallback.
+The optimizer checks its cached residual before building another Jacobian,
+stopping when both existing absolute and relative acceptance bars are met.
+Final complex-equation, positivity, and gauge checks still run.
+Exact solve-local caches reuse unchanged log-gauge block exponentials and
+inverses across finite-difference evaluations; this does not alter tolerances.
+Only successful solves reach the matrix readout; dragging coalesces pending
+requests and displays validated intermediate results while the newest solve
+is pending. Matrices remain visible during solving. Only the newest result
+marks the current parameters balanced; tab changes invalidate intermediate
+updates too. The generated worker is included
+in both the modular app and standalone HTML.
+The readout uses three fixed-height branch cards, with selectable matrix
+entries, horizontal scrolling, and per-branch copying. Cards stack on narrow
+hosts without changing height as values update. Newly gained dot/line or
+point coincidences and collinearity pulse the affected dots for 750 ms;
+new concurrence pulses its common marker. Unchanged incidences do not pulse.
 The sliders snap to the three radial attachments and zero phase. The limit
 buttons give one-sphere outward/inward navigation in the core portrait.
+The E6 t slider stops at readout 99 (compact coordinate .99) when its current
+path has no supported infinity endpoint; exact incoming branch limits retain
+compact coordinate 1 and the infinity readout. Outgoing paths use the finite cap.
 All E6 sphere intersections and exterior tips carry explicit C* grading
 witnesses. Sphere radii, angles and the rendered motion remain schematic;
 the implementation does not claim a global stable atlas. Unsupported charts clear
 the matrix readout instead of leaving matrices from a different point visible.
-The flag panel records the forward-arrow flags. Small nested rings beside each
-point encode the three upper-triangular coefficients of `K_i=A_i B_i` in an
-orthonormal flag basis: opacity encodes magnitude, and ticks encode complex
-phase. These are display-basis coefficients, not complex-gauge invariants;
-the canonical gauge reset at the limit may reset their phases. The full reverse
+The flag panel records the forward-arrow flags, with plane labels P1/P2/P3
+and unlabelled marked points. Its top-left "y data" toggle starts unchecked.
+When enabled, three fixed-length 16px arrows
+encode the upper-triangular coefficients of `K_i=A_i B_i` in an orthonormal
+flag basis: hue encodes phase and saturation encodes magnitude. The `c12`
+arrow is tangential toward the marked point; `c13` is normal toward it;
+`c23` is normal toward the projected orthogonal direction in the flag plane.
+That target is constructed from column 2 of balanced `A_i` after removing its
+point component, with column 1 as fallback. Coefficient phases use the current
+camera's affine convention. Targets outside the viewport or at affine infinity
+are explicitly recorded and their `c23` arrow is omitted; no artificial target
+is substituted. Zero coefficients are hidden. Screen arrows are schematic
+matrix components, not literal displacements in complex projective space.
+These are display-basis coefficients, not complex-gauge invariants;
+their phases are measured in the current camera frame. The full reverse
 arrows remain visible in the matrix readout.
 
 At the concurrency attachment (`r=1/2`, `theta=0`), the first outward limit
@@ -94,13 +120,42 @@ the outgoing paraboloid at the short arm's tip, rather than a second sphere.
 The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
-The concurrency animation uses a projective change of display frame: its
-marked points approach `p_i=e_i-L/3`, so all three become collinear while the
-flag lines remain concurrent. A faint transversal marks this alignment.
-Edge markers handle points outside the affine viewport. This is a gauge change
-of the displayed flags, not additional motion in the moduli space. The outgoing
-chart retains these flags while its reverse-arrow decorations change. No new
-on-page announcements accompany the transition.
+The live view no longer applies the old synthetic concurrency animation or
+nonunitary display gauges. All positions, slopes, phases, and cotangent
+decorations come from the balanced representation in a unitary first-flag
+frame. Internal diagonal phases are aligned with the previous frame using
+flag projectors and cotangent operators; the final camera and y coefficient
+basis cancel this history using normalized complex phasors wherever their
+references are nonzero. The camera combines two point correlations with a
+cotangent-operator entry, avoiding the first-point reference's zero near
+`r=.34624` and extending through the short tip. It is a complex unitary camera
+even for some real flags; its real-part projection cannot show every incidence
+literally. Projection loss and vanishing camera references are recorded.
+Line hue and saturation encode the imaginary and real parts of
+`2*n[0]*conj(n[1])` for the normalized dual line in this camera. This product
+is independent of homogeneous rescaling; it is a viewing-chart phase cue,
+not a global invariant or a complete encoding of a complex line. Smooth
+contrast scaling by `sqrt(|v|^2+.04^2)` emphasizes its phase while remaining
+continuous at zero; `.04` is a display parameter. Hues stay
+within 20 degrees of three centers 120 degrees apart, retaining separate bands.
+A dot's hue uses the normalized complex incidence residuals against the other
+two lines, with opposite residual weights. Matching another line's hue means
+that pairing vanishes; own-line hue need not match. If both other pairings
+vanish the dot fades continuously to neutral, since one hue cannot represent
+both lines. These line phase cues and incidence hues are separate from y-data.
+Nearly incident configurations can have perceptually indistinguishable hues;
+this visual diagnostic is not an exact numerical certificate. Color does not
+repair apparent crossings introduced by the planar projection.
+Boundary markers handle points beyond the viewport. Affine infinity and
+degenerate projected normals or vanishing phase references remain possible
+camera discontinuities (including known exterior-tip cases); balancing
+alone is not a global continuous planar drawing of complex projective flags.
+The camera is anchored to the actual intersection of two balanced lines and
+projects line equations together. At concurrency all three drawn lines pass
+through a small common marker in view, even after complex phase histories.
+A camera phase choice computed from the current flags and shared viewport zoom preserve
+the short tip's visible collinearity; a faint guide marks that alignment.
+No additional on-page explanation accompanies this change.
 The outgoing coordinate has weight two under reverse-arrow scaling:
 `v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
 meaning of the controls; the outgoing circle action has a half-turn stabilizer.
@@ -144,15 +199,11 @@ display levels. The old fixture's semistable points are detected by exact
 zero weights. This endpoint certification does not claim complete coverage
 or stability of every point in every two-dimensional chart.
 
-The central chart now fixes the three marked points and lines 2/3, while line 1
-moves with `A1=[e1,(1-r)e2+r exp(i theta)e3]`. The same polynomial representative
-is used at both radial endpoints. Exact incidence-stratum certificates verify
-stability of the entire central sphere in the display chamber. A continuous
-diagonal display gauge also matches the long-arm frames at finite transverse
-amplitude; line hue records phase and fades at the poles. The separate
-concurrency animation still selects a special display frame at its attachment.
-The E7/E8 tabs retain their moduli portraits; complex representatives are currently E6-only.
-
+The compact first-line chart is stable on the whole central sphere by exact
+incidence-stratum certificates. Its raw coordinate flags fix three points and
+two lines, but these are not the displayed coordinates: balancing and the
+unitary camera determine the live picture. The legacy schematic drawing
+helpers remain available for regression tests.
 
 ## The mathematics
 
@@ -189,7 +240,7 @@ layer uses a vendored three.js only.
 | `assets/js/ek-nakajima/element-screen.js` | Legacy orthographic projection utility, retained for validation. |
 | `assets/js/ek-nakajima/flag-incidence.js` | Complex flag extraction, numerical incidence classification, and real schematic layout. |
 | `assets/js/ek-nakajima/flag-diagram.js` | Continuous chart geometry and relative line phase, with reconstruction of the complex parameter from the decorated diagram. |
-| `assets/js/ek-nakajima/element-render.js` | Continuous flag diagram with line hue for relative phase. |
+| `assets/js/ek-nakajima/element-render.js` | Balanced flag diagram with hue indicating cross-incidence; legacy chart phase rendering. |
 | `assets/js/ek-nakajima/quiver-data.js` | Per-type affine ADE data: nodes, edges, marks $=\delta$, junction, framing nodes, the finite core tree, and `validateQuiver`. |
 | `assets/js/ek-nakajima/tree-embed.js` | Shared pure radial tidy-tree embedding used by both layout layers. |
 | `assets/js/ek-nakajima/core-layout.js` | Quiet core-tree layout: a non-overlapping externally-tangent radial packing of the finite Dynkin core. |
@@ -236,3 +287,5 @@ here.
 
 Released under the [MIT License](LICENSE). The bundled `three.js` is under its
 own MIT license (see `assets/js/ek-nakajima/lib/`).
+
+The y arrows use darker strokes and quadratic opacity fall-off near zero magnitude (half opacity at magnitude 0.15).

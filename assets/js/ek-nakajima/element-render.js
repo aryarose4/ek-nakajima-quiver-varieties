@@ -1,11 +1,58 @@
-﻿// The real flag skeleton records magnitude; line hue records phase.
+// Balanced flags use hue for cross-incidence; legacy charts use phase.
 import { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } from "./flag-diagram.js";
+import { balancedDiagram } from './balanced-diagram.js';
 
-const POINT = ["p₁", "p₂", "p₃"];
-const LINE = ["ℓ₁", "ℓ₂", "ℓ₃"];
+const LINE = ["P₁", "P₂", "P₃"];
+const ARROW_LENGTH = 16;
+
+// React to mathematical incidence gains, never to accidental screen crossings.
+export function newIncidenceHighlights(previous, current) {
+  const points = [];
+  if (!previous || !previous.valid || !current || !current.valid) return { points, concurrency: false };
+  for (let i = 0; i < 3; i++) {
+    const gained = [0, 1, 2].some(j => j !== i &&
+      ((current.incident[i][j] && !previous.incident[i][j]) ||
+       (current.pointEqual[i][j] && !previous.pointEqual[i][j])));
+    if (gained || (current.collinear && !previous.collinear)) points.push(i);
+  }
+  return { points, concurrency: current.concurrent && !previous.concurrent };
+}
+
+export function incidenceFlashStrength(elapsed) {
+  return elapsed >= 0 && elapsed < 750 ? Math.pow(Math.sin(Math.PI * elapsed / 750), 2) : 0;
+}
+
+// Fixed pixel lengths: geometry indicates the matrix component, not magnitude.
+export function cotangentArrowGeometry(point, line, target) {
+  const d=line[1].map((v,j)=>v-line[0][j]),length=Math.hypot(...d);
+  if(length<1e-8)return [null,null,null];
+  const tangent=d.map(v=>v/length),normal=[-tangent[1],tangent[0]];
+  const toward=target||line[0];
+  const sign=toward.reduce((s,v,j)=>s+(v-point[j])*tangent[j],0)>=0?1:-1;
+  function arrow(p,offset,gap) {
+    return {start:p.map((v,j)=>v+offset[j]*(gap+ARROW_LENGTH)),end:p.map((v,j)=>v+offset[j]*gap)};
+  }
+  const close=target&&Math.hypot(...target.map((v,j)=>v-point[j]))<64/3;
+  return [arrow(point,tangent.map(v=>v*sign),7),arrow(point,normal,7),
+    target?arrow(target,normal.map(v=>close?-v:v),2):null];
+}
+
+export function cotangentArrowColor(z, dark) {
+  const magnitude=Math.hypot(z[0],z[1]);
+  if(magnitude<1e-10)return null;
+  const hue=(210+Math.atan2(z[1],z[0])*180/Math.PI+360)%360;
+  return 'hsl('+hue+', '+85*magnitude/(1+magnitude)+'%, '+(dark?55:28)+'%)';
+}
+
+// Quadratic extinction near zero; normal-sized coefficients remain legible.
+export function cotangentArrowOpacity(z) {
+  const magnitude=Math.hypot(z[0],z[1]);
+  return magnitude*magnitude/(magnitude*magnitude+.15*.15);
+}
 
 // Shared by the canvas and the atlas integration checks.
 export function elementFrame(view) {
+  if (view && view.balancedRep) return balancedDiagram(view.balancedRep, { previous: view.previous });
   let data = view && view.incidence ? view.incidence : null;
   let operators = view && view.cotangentOperators;
   if (data && data.valid && view.branchGauge) {
@@ -32,6 +79,16 @@ export function phaseColor(phase, compactRadius, dark) {
   return "hsl(" + hue + ", " + saturation + "%, " + (dark ? 70 : 40) + "%)";
 }
 
+function balancedPhaseColor(phase, vector, dark) {
+  const strength = Math.min(1, Math.hypot(vector[0], vector[1]));
+  const hue = ((210 + (phase || 0) * 180 / Math.PI) % 360 + 360) % 360;
+  return 'hsl(' + hue + ', ' + 70 * strength + '%, ' + (dark ? 70 : 40) + '%)';
+}
+
+function incidenceColor(hue, strength, dark) {
+  return 'hsl(' + (hue === null ? 0 : hue) + ', ' + 70 * strength + '%, ' + (dark ? 70 : 40) + '%)';
+}
+
 export function makeElementView(host, opts) {
   opts = opts || {};
   const canvas = document.createElement("canvas");
@@ -41,9 +98,29 @@ export function makeElementView(host, opts) {
   canvas.style.cursor = "default";
   if (canvas.setAttribute) {
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "Flag incidence. Line positions show magnitude; line colors show phase. Boundary arrows mark points outside the projective viewport. Three small phase rings at each point encode its cotangent coefficients in a display basis.");
+    canvas.setAttribute("aria-label", "Flag incidence. A dot matching another line's hue indicates numerical incidence. A dot incident to both other lines is neutral. Own-line hue need not match. Boundary arrows mark points outside the projective viewport. Cotangent arrows encode three matrix components; hue shows phase and saturation shows magnitude.");
   }
   host.appendChild(canvas);
+  let showYData = false;
+  const yToggleLabel = document.createElement('label');
+  yToggleLabel.style.position = 'absolute';
+  yToggleLabel.style.top = '10px';
+  yToggleLabel.style.left = '10px';
+  yToggleLabel.style.display = 'flex';
+  yToggleLabel.style.alignItems = 'center';
+  yToggleLabel.style.gap = '5px';
+  yToggleLabel.style.fontSize = '12px';
+  yToggleLabel.style.cursor = 'pointer';
+  const yToggle = document.createElement('input');
+  yToggle.id = 'ek-y-data';
+  yToggle.type = 'checkbox';
+  yToggle.checked = false;
+  yToggle.addEventListener('change', function () { showYData = yToggle.checked; draw(); });
+  yToggleLabel.appendChild(yToggle);
+  const yToggleText = document.createElement('span');
+  yToggleText.textContent = 'y data';
+  yToggleLabel.appendChild(yToggleText);
+  host.appendChild(yToggleLabel);
   const ctx = canvas.getContext ? canvas.getContext("2d") : null;
   const status = document.createElement("div");
   status.className = "ek-elem-status";
@@ -59,6 +136,8 @@ export function makeElementView(host, opts) {
   let layout = null;
   let glyphs = [];
   let statusKind = "";
+  let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+  let animationFrame = null;
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -73,6 +152,8 @@ export function makeElementView(host, opts) {
 
   function draw() {
     const pal = palette();
+    yToggleLabel.style.color = pal.text;
+    canvas.setAttribute('data-y-data', String(showYData));
     status.style.color = statusKind === "error" ? "#d64545" : "#b27c22";
     if (!ctx) return;
     const w = host.clientWidth || 0;
@@ -92,6 +173,22 @@ export function makeElementView(host, opts) {
     }
     const scale = Math.max(1, Math.min(w / 2 - 36, h / 2 - 27));
     function pixel(p) { return [w / 2 + p[0] * scale, h / 2 - p[1] * scale]; }
+    const now = Date.now();
+    const flashing = flashStarts.map((start, i) => now - start < 750 ? i : -1).filter(i => i >= 0);
+    canvas.setAttribute('data-incidence-flash', flashing.join(','));
+    function glow(p, index, color) {
+      const strength = incidenceFlashStrength(now - flashStarts[index]);
+      if (!strength) return;
+      ctx.globalAlpha = .8 * strength;
+      ctx.shadowColor = color; ctx.shadowBlur = 18;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = .7 * strength;
+      ctx.fillStyle = pal.dark ? '#ffffff' : '#fff6cc';
+      ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.lineCap = "round";
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "left";
@@ -105,10 +202,11 @@ export function makeElementView(host, opts) {
     for (let i = 0; i < 3; i++) {
       const a = pixel(layout.lines[i][0]);
       const b = pixel(layout.lines[i][1]);
-      const color = phaseColor(layout.linePhases[i], layout.compactRadius, pal.dark);
+      const color = layout.incidenceColors ? incidenceColor(layout.incidenceColors.lineHues[i], layout.incidenceColors.lineStrengths[i], pal.dark) : layout.phaseVectors ? balancedPhaseColor(layout.linePhases[i], layout.phaseVectors[i], pal.dark) :
+        phaseColor(layout.linePhases[i], layout.compactRadius, pal.dark);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      if (ctx.setLineDash) ctx.setLineDash(i === 0 ? [] : i === 1 ? [8, 5] : [2, 5]);
+      if (ctx.setLineDash) ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       let coincidentBefore = 0;
       for (let j = 0; j < i; j++) if (data.lineEqual && data.lineEqual[i][j]) coincidentBefore++;
@@ -117,6 +215,15 @@ export function makeElementView(host, opts) {
       ctx.fillText(LINE[i], a[0] + (b[0] - a[0]) * t + 5, a[1] + (b[1] - a[1]) * t - 6);
     }
     if (ctx.setLineDash) ctx.setLineDash([]);
+    if (layout.concurrencyPoint) {
+      const q = pixel(layout.concurrencyPoint);
+      glow(q, 3, pal.point);
+      ctx.fillStyle = pal.point;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = pal.point; ctx.lineWidth = 1; ctx.globalAlpha = 0.45;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     for (let i = 0; i < 3; i++) {
       const p = pixel(layout.points[i]);
       const marker = layout.pointMarkers && layout.pointMarkers[i];
@@ -124,7 +231,9 @@ export function makeElementView(host, opts) {
       for (let j = 0; j < i; j++) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
-      ctx.strokeStyle = pal.point; ctx.lineWidth = 2;
+      ctx.strokeStyle = layout.incidenceColors ? incidenceColor(layout.incidenceColors.pointHues[i], layout.incidenceColors.pointStrengths[i], pal.dark) : layout.pointPhaseVectors ? balancedPhaseColor(layout.pointPhases[i], layout.pointPhaseVectors[i], pal.dark) : pal.point;
+      glow(p, i, ctx.strokeStyle);
+      ctx.lineWidth = 2;
       if (marker && marker.clipped) {
         const d = [marker.direction[0], -marker.direction[1]];
         ctx.beginPath();
@@ -137,34 +246,47 @@ export function makeElementView(host, opts) {
         if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
         ctx.stroke();
       }
-      ctx.fillStyle = pal.point;
-      const labelX = marker && marker.clipped && p[0] > w / 2 ? p[0] - 44 : p[0] + 12;
-      const labelY = marker && marker.clipped && p[1] < h / 2 ? p[1] + 18 : p[1] - 9 + groupIndex * 15;
-      ctx.fillText(POINT[i], labelX, labelY);
-      // A single quiet, three-ring glyph: radius identifies the coefficient,
-      // opacity its bounded magnitude and the short hand its complex phase.
+      // Tangential c12 and normal c13 arrows approach the marked point;
+      // normal c23 approaches the projected orthogonal flag direction.
       const glyph = glyphs[i];
-      if (glyph) glyph.coefficients.forEach((z, k) => {
-        const magnitude = Math.hypot(z[0], z[1]);
-        if (magnitude < 1e-10) return;
-        const cx = labelX + 27, cy = labelY - 4, radius = 3 + 3 * k;
-        const phase = Math.atan2(z[1], z[0]);
-        ctx.globalAlpha = 0.2 + 0.8 * magnitude / (1 + magnitude);
-        ctx.lineWidth = 1; ctx.strokeStyle = pal.point;
-        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx + (radius - 2) * Math.cos(phase), cy - (radius - 2) * Math.sin(phase));
-        ctx.lineTo(cx + (radius + 1) * Math.cos(phase), cy - (radius + 1) * Math.sin(phase));
-        ctx.stroke(); ctx.globalAlpha = 1;
+      const target=layout.cotangentTargets&&layout.cotangentTargets[i];
+      const arrows=cotangentArrowGeometry(p,layout.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
+      if(showYData&&glyph)glyph.coefficients.forEach((z,k)=>{
+        const color=cotangentArrowColor(z,pal.dark),arrow=arrows[k];
+        if(!color||!arrow)return;
+        const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
+        const perpendicular=[-direction[1],direction[0]];
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=cotangentArrowOpacity(z);
+        ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
+        for(const side of [-1,1]) {
+          ctx.moveTo(...arrow.end);
+          ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
+        }
+        ctx.stroke();
       });
+      ctx.globalAlpha=1;
+    }
+    if (flashing.length && animationFrame === null && typeof requestAnimationFrame === 'function') {
+      animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
 
   function setData(view) {
     const frame = elementFrame(view);
+    const highlights = newIncidenceHighlights(data, frame.data);
+    const now = Date.now();
+    if (!frame.data || !frame.data.valid) {
+      flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+      canvas.setAttribute('data-incidence-flash', '');
+    } else {
+      highlights.points.concat(highlights.concurrency ? [3] : []).forEach(i => {
+        // Do not prolong an active pulse when several incidences arrive together.
+        if (now - flashStarts[i] >= 750) flashStarts[i] = now;
+      });
+    }
     data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
     draw();
+    return frame;
   }
   function setStatus(text, kind) {
     const failed = kind === "error" || kind === "warn";

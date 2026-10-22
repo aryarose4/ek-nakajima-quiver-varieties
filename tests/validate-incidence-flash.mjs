@@ -1,0 +1,21 @@
+import assert from 'assert';
+import {newIncidenceHighlights, incidenceFlashStrength} from './element-render.js';
+const generic=()=>({valid:true,incident:[[true,false,false],[false,true,false],[false,false,true]],
+  pointEqual:[[true,false,false],[false,true,false],[false,false,true]],concurrent:false,collinear:false});
+const a=generic(),b=generic();b.incident[1][0]=true;
+assert.deepStrictEqual(newIncidenceHighlights(null,b),{points:[],concurrency:false});
+assert.deepStrictEqual(newIncidenceHighlights(a,b),{points:[1],concurrency:false});
+assert.deepStrictEqual(newIncidenceHighlights(b,b),{points:[],concurrency:false});
+assert.deepStrictEqual(newIncidenceHighlights(b,a),{points:[],concurrency:false});
+const equal=generic();equal.pointEqual[0][2]=equal.pointEqual[2][0]=true;
+assert.deepStrictEqual(newIncidenceHighlights(a,equal).points,[0,2]);
+const aligned=generic();aligned.collinear=true;aligned.concurrent=true;
+assert.deepStrictEqual(newIncidenceHighlights(a,aligned),{points:[0,1,2],concurrency:true});
+assert.strictEqual(incidenceFlashStrength(0),0);
+assert.strictEqual(incidenceFlashStrength(375),1);
+assert.strictEqual(incidenceFlashStrength(750),0);
+assert.strictEqual(incidenceFlashStrength(1000),0);
+assert.strictEqual(incidenceFlashStrength(-1),0);
+assert.ok(incidenceFlashStrength(100)<incidenceFlashStrength(200));
+assert.ok(incidenceFlashStrength(600)>incidenceFlashStrength(700));
+console.log('Incidence flash: gains, no initial/repeated/loss pulses, and 750ms fade passed.');

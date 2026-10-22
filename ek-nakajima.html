@@ -3310,6 +3310,14 @@ const { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading } = __ek_
 
 
 
+// Exact endpoint availability in this atlas, shared with the compact t control.
+function e6HasInfinityLimit(parameters) {
+  const {r, theta, outgoing} = parameters;
+  const sphere = parameters.sphere === undefined ? 0 : parameters.sphere;
+  return !outgoing && (((r === 0 || r === 1) && (sphere === 0 || sphere === 1)) ||
+    (r === .5 && theta === 0 && sphere === 0));
+}
+
 function e6AtlasPoint(parameters) {
   const { r, theta, t, phi } = parameters;
   const sphere = parameters.sphere === undefined ? 0 : parameters.sphere, outgoing = !!parameters.outgoing;
@@ -3359,7 +3367,7 @@ function e6AtlasPoint(parameters) {
   return { rep, grading, view };
 }
 
-return { e6AtlasPoint };
+return { e6HasInfinityLimit, e6AtlasPoint };
 })();
 
 // ---- module: solver ----
@@ -3608,14 +3616,17 @@ function HMatrices(raw) {
 // `q` is an array of complex scalars (one per branch). Exported so tests and
 // callers can build genuinely complex (non-unitary) gauge transforms.
 function applyComplexGauge(rep, g, h, q) {
-  const ginv = matInv(g);
+  return applyGaugeWithInverses(rep, g, h, q, matInv(g), h.map(matInv));
+}
+
+function applyGaugeWithInverses(rep, g, h, q, ginv, hInv) {
   const a = [];
   const A = [];
   const b = [];
   const B = [];
   for (let i = 0; i < NB; i++) {
     const hi = h[i];
-    const hiInv = matInv(hi);
+    const hiInv = hInv[i];
     const qi = Array.isArray(q[i]) ? q[i] : [q[i], 0];
     const qInv = sInv(qi);
     a.push(matScale(matMul(hi, rep.a[i]), qInv));
@@ -3645,11 +3656,26 @@ function allFiniteRep(rep) {
 // residual
 // ---------------------------------------------------------------------------
 function makePackedResidual(rep, levels) {
+  // A finite-difference column changes only one log-gauge block. Reuse the
+  // other exponentials and inverses, with exact keys and solve-local lifetime.
+  const cache = new Array(4);
+  function block(x, slot, start, count, basis) {
+    const old = cache[slot];
+    if (old && old.coords.every((v, i) => v === x[start + i])) return old;
+    const coords = x.slice(start, start + count);
+    const gauge = expmHermitian(matScale(unpackHermitian(coords, basis), .5));
+    const inverse = matInv(gauge);
+    const entry = { coords, gauge, inverse };
+    cache[slot] = entry;
+    return entry;
+  }
   return function (x) {
     try {
-      const raw = rawFromCoords(x);
-      const { g, h, q } = positiveGauge(raw);
-      const gauged = applyComplexGauge(rep, g, h, q);
+      const center = block(x, 0, 0, 8, CENTER_BASIS);
+      const middle = [0, 1, 2].map(i => block(x, i + 1, MIDDLE_START + 4 * i, 4, MIDDLE_BASIS));
+      const q = [0, 1, 2].map(i => Math.exp(.5 * x[OUTER_START + i]));
+      const gauged = applyGaugeWithInverses(rep, center.gauge, middle.map(b => b.gauge), q,
+        center.inverse, middle.map(b => b.inverse));
       const r = packRealResidual(gauged, levels);
       if (!r.every((v) => isFinite(v))) return r.map(() => 1e8);
       return r;
@@ -3744,6 +3770,9 @@ function levMar(f, x0, opts) {
   let trust = opts.trust0 || 2.0;
 
   for (iter = 0; iter < maxIter; iter++) {
+    // Reuse the accepted residual before paying for another full Jacobian.
+    // buildResult still checks complex equations and positivity independently.
+    if (cost <= opts.residualCost) { status = "residual_tol"; break; }
     const J = fdJacobian(f, x, r, opts.fdStep);
     nfev += n;
     const g = new Array(n).fill(0);
@@ -3878,11 +3907,10 @@ function solveRealMomentMap(rep, levels, options = {}) {
 
   let best = null;
   let totalNfev = 0;
-  // A packed residual at the success bar has cost = ||r||^2 <= abs_tol^2; once a
-  // seed reaches that, the remaining fallback seeds are redundant. (The previous
-  // `cost < 1e-24` test almost never fired, so a warm-started solve still ran
-  // every multistart seed.)
-  const successCost = opts.abs_tol * opts.abs_tol;
+  // Respect both acceptance bars, including callers with a tighter relative
+  // tolerance. Meeting them also makes further fallback seeds redundant.
+  const residualTol = Math.min(opts.abs_tol, opts.rel_tol * levelScale(rep, levelsArr));
+  const successCost = residualTol * residualTol;
   for (const seed of seeds) {
     if (totalNfev >= opts.max_nfev) break;
     const res = levMar(f, seed, {
@@ -3893,10 +3921,11 @@ function solveRealMomentMap(rep, levels, options = {}) {
       xtol: opts.xtol,
       gtol: opts.gtol,
       fdStep: opts.fdStep,
+      residualCost: successCost,
     });
     totalNfev += res.nfev;
     if (best === null || res.cost < best.cost) best = res;
-    if (best.cost < successCost) break; // residual success bar met
+    if (best.cost <= successCost) break; // residual success bar met
   }
 
   return buildResult(rep, levelsArr, best.x, opts, {
@@ -3998,6 +4027,941 @@ function buildResult(rep, levels, x, opts, meta) {
 }
 
 return { expmHermitian, hermitianEigenvalues, flatLogGauge, applyComplexGauge, solveRealMomentMap };
+})();
+
+// ---- module: balanced-model ----
+const __ek_mod_balanced_model = (function () {
+const { e6AtlasPoint } = __ek_mod_e6_atlas;
+const { branchMiddleChart, branchTipChart } = __ek_mod_branch_charts;
+const { makeRep } = __ek_mod_core_math;
+const { E6_REGULAR_LEVELS } = __ek_mod_e6_levels;
+const { solveRealMomentMap } = __ek_mod_solver;
+// Numerical balance of the existing E6 atlas; no UI or shared mutable state.
+
+
+
+
+
+
+function family(p) {
+  if (p.r === 0 || p.r === 1) return `${p.r}:${p.outgoing ? 'outgoing' : p.t === 1 ? 'endpoint'+(p.sphere||0) : 'sphere'+(p.sphere||0)}`;
+  return p.r === .5 && p.theta === 0 && (p.outgoing || p.t === 1) ? 'concurrency' : 'central';
+}
+function finiteGauge(g) {
+  return g && Array.isArray(g.center) && g.center.length === 8 &&
+    Array.isArray(g.middle) && g.middle.length === 3 && g.middle.every(a=>Array.isArray(a)&&a.length===4) &&
+    Array.isArray(g.outer) && g.outer.length === 3 && g.outer.every(a=>Array.isArray(a)&&a.length===1) &&
+    g.center.concat(...g.middle,...g.outer).every(Number.isFinite);
+}
+function failed(atlas, status, message) {
+  return { success:false, solvedRep:null, logGauge:null, residuals:null, atlas,
+    rawRep:atlas ? atlas.rep : null, continuation:null,
+    diagnostics:{status,message,iterations:0,nfev:0} };
+}
+
+// Exact finite-gauge overlap along the incoming concurrency sphere.
+// s=4/eta; at s=0 these matrices equal concurrencyLimitChart(0,0).
+function boundedConcurrency(s) {
+  const ell=[[0,-1,1],[1,0,-1],[-1,1,0]];
+  return makeRep(
+    ell.map(()=>[[[1,0]],[[0,0]]]),
+    ell.map((_,i)=>ell.map((__,j)=>[[(i===j?1:0)-1/3+s[0]/3,s[1]/3],[1,0]])),
+    ell.map(()=>[[[0,0],[0,0]]]),
+    ell.map(row=>[row.map(()=>[0,0]),row.map(x=>[x,0])])
+  );
+}
+
+// A previous successful result is an optional continuation token. Seeds are
+// accepted only within the same chart family and at identical real levels.
+// Failed attempts never expose a previous representation as the current solve.
+function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, options = {}) {
+  let atlas;
+  try { atlas = e6AtlasPoint(parameters); }
+  catch(e) { return failed(null,'chart_error',String(e)); }
+  let numericalRep=atlas.rep, chartFamily=family(parameters);
+  // Exact overlap formulas keep coefficients bounded near compact endpoints.
+  if ((parameters.r===0 || parameters.r===1) && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {
+    const phase=parameters.phi+(parameters.r===1 ? 2*parameters.theta : 0);
+    const power=parameters.sphere===1 ? 2 : 1;
+    const magnitude=Math.pow((1-parameters.t)/parameters.t,power);
+    const reciprocal=[magnitude*Math.cos(power*phase),-magnitude*Math.sin(power*phase)];
+    numericalRep=power===2 ? branchTipChart(parameters.r,reciprocal,0) : branchMiddleChart(parameters.r,reciprocal,0);
+    chartFamily+=':overlap';
+  }
+  if (parameters.r===.5 && parameters.theta===0 && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {
+    const magnitude=4*(1-parameters.t)/parameters.t;
+    numericalRep=boundedConcurrency([magnitude*Math.cos(parameters.phi),-magnitude*Math.sin(parameters.phi)]);
+    chartFamily='concurrency:incoming-overlap';
+  }
+  const levelKey=JSON.stringify(levels);
+  const defaults={maxIter:80,max_nfev:4000,multistart:false};
+  const solverOptions=Object.assign(defaults,options.solverOptions||{});
+  const previous=options.previous && (options.previous.continuation || options.previous);
+  let warm=options.initialLogGauge;
+  if (!warm && previous && previous.family===chartFamily && previous.levelKey===levelKey) warm=previous.logGauge;
+  if (!finiteGauge(warm)) warm=null;
+  let result, attempts=0, totalNfev=0;
+  try {
+    attempts++;
+    result=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:warm}));
+    totalNfev+=result.diagnostics.nfev;
+    if (!result.success && warm) {
+      attempts++;
+      const cold=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:null}));
+      totalNfev+=cold.diagnostics.nfev;
+      if(cold.success || cold.residuals.real_norm<result.residuals.real_norm) result=cold;
+    }
+  } catch(e) { return failed(atlas,'solver_exception',String(e)); }
+  const success=!!result.success;
+  return {
+    success, solvedRep:success ? result.solvedRep : null,
+    logGauge:success ? result.logGauge : null, residuals:result.residuals,
+    atlas, rawRep:atlas.rep, numericalRep,
+    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm,chartFamily}),
+    continuation:success ? {family:chartFamily,levelKey,logGauge:result.logGauge} : null,
+  };
+}
+
+return { solveBalancedAtlas };
+})();
+
+// ---- module: flag-incidence ----
+const __ek_mod_flag_incidence = (function () {
+// Numerical incidence of E6 flags L_i = im(A_i a_i) in P_i = im(A_i).
+// Points and dual lines are complex homogeneous vectors. The dual pairing is
+// BILINEAR (not Hermitian). This forgets gauge-dependent lengths and angles.
+// Unit-norm residuals <= tolerance are classified as zero; this is a numerical
+// diagnostic, not an exact certificate. Very ill-conditioned gauges can change
+// a tolerance-based classification.
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const cross = (a, b) => [
+  sub(mul(a[1], b[2]), mul(a[2], b[1])),
+  sub(mul(a[2], b[0]), mul(a[0], b[2])),
+  sub(mul(a[0], b[1]), mul(a[1], b[0])),
+];
+const dot = (a, b) => a.reduce((s, z, i) => add(s, mul(z, b[i])), [0, 0]);
+const norm = (v) => Math.hypot(...v.reduce((a, z) => a.concat(z), []));
+function unit(v) {
+  const scale = Math.max(...v.reduce((a, z) => a.concat(z.map(Math.abs)), []));
+  if (!(scale > 0) || !Number.isFinite(scale)) return null;
+  const w = v.map((z) => z.map((x) => x / scale));
+  const n = norm(w);
+  return w.map((z) => z.map((x) => x / n));
+}
+const matrix = (f) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => f(i, j)));
+
+function flagIncidence(rep, tolerance = 1e-8) {
+  const fail = (reason) => ({ valid: false, reason, tolerance, numerical: true });
+  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid incidence tolerance.");
+  const points = [], dualLines = [];
+  try {
+    for (let i = 0; i < 3; i++) {
+      const A = rep.A[i], a = rep.a[i];
+      if (A.length !== 3 || A.some((r) => r.length !== 2) ||
+          a.length !== 2 || a.some((r) => r.length !== 1)) {
+        return fail("Incidence requires three flags of dimensions 1 and 2 in C³.");
+      }
+      const u = unit(A.map((r) => r[0])), v = unit(A.map((r) => r[1]));
+      if (!u || !v) return fail(`Flag ${i + 1}: the plane map has rank below two.`);
+      const n = cross(u, v);
+      if (!(norm(n) > tolerance)) return fail(`Flag ${i + 1}: the plane map is numerically rank deficient.`);
+      // Scale the maps before multiplication to avoid overflow/underflow.
+      const flatA = unit(A.reduce((out, row) => out.concat(row), []));
+      const av = unit(a.map((r) => r[0]));
+      if (!flatA || !av) return fail(`Flag ${i + 1}: no projective point is defined.`);
+      const p = [0, 1, 2].map((r) => add(mul(flatA[2 * r], av[0]), mul(flatA[2 * r + 1], av[1])));
+      if (!(norm(p) > tolerance)) return fail(`Flag ${i + 1}: the point map is numerically zero.`);
+      points.push(unit(p));
+      dualLines.push(unit(n));
+    }
+  } catch (_) {
+    return fail("The representation does not supply three finite E6 flags.");
+  }
+  const residuals = matrix((i, j) => norm([dot(dualLines[j], points[i])]));
+  return {
+    valid: true, numerical: true, tolerance, points, dualLines, residuals,
+    incident: matrix((i, j) => residuals[i][j] <= tolerance),
+    pointEqual: matrix((i, j) => norm(cross(points[i], points[j])) <= tolerance),
+    lineEqual: matrix((i, j) => norm(cross(dualLines[i], dualLines[j])) <= tolerance),
+    concurrent: norm([dot(dualLines[0], cross(dualLines[1], dualLines[2]))]) <= tolerance,
+    collinear: norm([dot(points[0], cross(points[1], points[2]))]) <= tolerance,
+  };
+}
+
+// Cyclic triple ratio of three complex flags. Each point/dual-line scale and
+// the central complex gauge cancel between numerator and denominator.
+// Near-zero denominator pairings are undefined at the incidence tolerance;
+// numerator pairings are retained, including an exactly zero ratio.
+function flagTripleRatio(data) {
+  const tolerance = data && data.tolerance;
+  const fail = (reason) => ({ valid: false, numerical: true, tolerance,
+    reason, value: null, magnitude: null, phase: null });
+  if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
+  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid triple-ratio tolerance.");
+  try {
+    const p = data.points.map(unit), n = data.dualLines.map(unit);
+    if (p.length !== 3 || n.length !== 3 || p.concat(n).some((v) => !v || v.length !== 3)) {
+      return fail("The triple ratio requires three finite flags.");
+    }
+    const numerator = [dot(n[0], p[1]), dot(n[1], p[2]), dot(n[2], p[0])];
+    const denominator = [dot(n[0], p[2]), dot(n[2], p[1]), dot(n[1], p[0])];
+    if (numerator.concat(denominator).some((z) => !z.every(Number.isFinite))) {
+      return fail("The triple ratio requires finite pairings.");
+    }
+    if (denominator.some((z) => Math.hypot(...z) <= tolerance)) {
+      return fail("The triple ratio is undefined: a denominator pairing is zero or below the incidence tolerance.");
+    }
+    const num = numerator.reduce(mul, [1, 0]), den = denominator.reduce(mul, [1, 0]);
+    const denNorm2 = den[0] * den[0] + den[1] * den[1];
+    const value = [(num[0] * den[0] + num[1] * den[1]) / denNorm2,
+      (num[1] * den[0] - num[0] * den[1]) / denNorm2];
+    const magnitude = Math.hypot(...value);
+    if (!Number.isFinite(magnitude)) return fail("The numerical triple ratio is not finite.");
+    return { valid: true, numerical: true, tolerance, value, magnitude,
+      phase: magnitude === 0 ? null : Math.atan2(value[1], value[0]) };
+  } catch (_) {
+    return fail("The triple ratio requires three finite flags.");
+  }
+}
+
+// A combinatorial REAL diagram, not a real projection of CP² and not a complete
+// projective invariant. Preserves the nine incidences, equal points, equal lines,
+// and concurrency of the lines. Additional point collinearity is not encoded.
+// All coordinates are in [-1,1]. Inconsistent numerical classifications produce
+// an explicit unavailable result rather than an inaccurate drawing.
+function incidenceLayout(data) {
+  const fail = (reason) => ({ valid: false, reason });
+  if (!data || !data.valid) return fail(data && data.reason || "Flag incidence is unavailable.");
+  const ids = [], reps = [];
+  for (let i = 0; i < 3; i++) {
+    let k = reps.findIndex((j) => data.lineEqual[i][j]);
+    if (k < 0) { k = reps.length; reps.push(i); }
+    ids.push(k);
+  }
+  const equations = reps.length === 3 && !data.concurrent ?
+    [[0, 1, -0.45], [1.5, 1, 0.55], [-1.5, 1, 0.55]] :
+    [[0, 1, 0], [-1, 1, 0], [1, 1, 0]];
+  function segment(l) {
+    const hits = [];
+    [-0.92, 0.92].forEach((v) => {
+      if (l[1]) hits.push([v, -(l[0] * v + l[2]) / l[1]]);
+      if (l[0]) hits.push([-(l[1] * v + l[2]) / l[0], v]);
+    });
+    const inside = hits.filter((p, i) => p.every((v) => Math.abs(v) <= 0.9200001) &&
+      hits.slice(0, i).every((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-8));
+    return [inside[0], inside[1]];
+  }
+  const uniqueLines = equations.slice(0, reps.length);
+  const lines = ids.map((k) => segment(uniqueLines[k]));
+  const points = [];
+  const on = (p, l) => Math.abs(l[0] * p[0] + l[1] * p[1] + l[2]) < 1e-7;
+  const equal = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-7;
+  for (let i = 0; i < 3; i++) {
+    const same = points.findIndex((_, j) => data.pointEqual[i][j]);
+    if (same >= 0) { points.push(points[same].slice()); continue; }
+    const through = uniqueLines.filter((_, k) => data.incident[i][reps[k]]);
+    if (!through.length) return fail("The numerical incidence pattern has no containing flag line.");
+    let candidates;
+    if (through.length > 1) {
+      const a = through[0], b = through[1], det = a[0] * b[1] - a[1] * b[0];
+      if (Math.abs(det) < 1e-10) return fail("The numerical line classes are inconsistent.");
+      candidates = [[(a[1] * b[2] - a[2] * b[1]) / det,
+        (a[2] * b[0] - a[0] * b[2]) / det]];
+    } else {
+      const ends = segment(through[0]);
+      candidates = [0.28, 0.68, 0.42, 0.82, 0.15, 0.56].map((t) =>
+        ends[0].map((v, k) => v + t * (ends[1][k] - v)));
+    }
+    const p = candidates.find((p) =>
+      ids.every((k, j) => on(p, uniqueLines[k]) === data.incident[i][j]) &&
+      points.every((q, j) => equal(p, q) === data.pointEqual[i][j]));
+    if (!p) return fail("The numerical incidence pattern cannot be drawn consistently at this tolerance.");
+    points.push(p);
+  }
+  // Validate the entire realization, including equivalence-class transitivity.
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    if (on(points[i], uniqueLines[ids[j]]) !== data.incident[i][j] ||
+        equal(points[i], points[j]) !== data.pointEqual[i][j] ||
+        (ids[i] === ids[j]) !== data.lineEqual[i][j]) {
+      return fail("The numerical incidence classification is internally inconsistent.");
+    }
+  }
+  return { valid: true, points, lines, schematic: true };
+}
+
+return { flagIncidence, flagTripleRatio, incidenceLayout };
+})();
+
+// ---- module: flag-diagram ----
+const __ek_mod_flag_diagram = (function () {
+// Phase-decorated real skeleton of the E6 candidate flag chart.
+// Homogeneous points are e1,e2,e3 and dual lines are
+// (0,-1,1), (1,0,-1), (-z,1,0). Replacing z by |z| gives the
+// real skeleton; the phase on line 3 recovers the original complex flag.
+// This is a chart-specific encoding, not a projection of arbitrary CP2 flags.
+const SCALE = 1.125;
+const LIMIT = 0.9;
+const CHART_TOLERANCE = 1e-9;
+const abs = (z) => Math.hypot(z[0], z[1]);
+const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+function unit(v) {
+  if (!Array.isArray(v) || v.length !== 3 || v.some((z) =>
+    !Array.isArray(z) || z.length !== 2 || !z.every(Number.isFinite))) return null;
+  const scale = Math.max(...v.map(abs));
+  if (!(scale > 0)) return null;
+  const scaled = v.map((z) => z.map((x) => x / scale));
+  const length = Math.hypot(...scaled.map(abs));
+  return scaled.map((z) => z.map((x) => x / length));
+}
+function projectiveResidual(a, b) {
+  let sum = 0;
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+    const p = mul(a[i], b[j]), q = mul(a[j], b[i]);
+    sum += (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2;
+  }
+  return Math.sqrt(sum);
+}
+// Clip an infinite line to the fixed viewport by a continuous parametric
+// interval. Endpoint order follows its direction, including at corner hits.
+function segment(equation) {
+  const [a, b, c] = equation;
+  const length = Math.hypot(a, b);
+  const normal = [a / length, b / length];
+  const anchor = normal.map((v) => -v * c / length);
+  const direction = [normal[1], -normal[0]];
+  let low = -Infinity, high = Infinity;
+  for (let k = 0; k < 2; k++) {
+    if (direction[k] === 0) {
+      if (Math.abs(anchor[k]) > LIMIT) return null;
+    } else {
+      const first = (-LIMIT - anchor[k]) / direction[k];
+      const second = (LIMIT - anchor[k]) / direction[k];
+      low = Math.max(low, Math.min(first, second));
+      high = Math.min(high, Math.max(first, second));
+    }
+  }
+  if (!(low <= high && Number.isFinite(low) && Number.isFinite(high))) return null;
+  return [low, high].map((t) => anchor.map((v, k) => v + t * direction[k]));
+}
+
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+// Homogeneous normal normalization may reverse a line at a chart change.
+// Keep its label at the same end while retaining the exact same segment.
+function firstLineOrientation(diagram) {
+  if (!diagram.valid) return diagram;
+  const directions = [[1, 1], [2, -1], [1, -2]];
+  return { ...diagram, lines: diagram.lines.map((line, i) => {
+    const d = directions[i];
+    return (line[1][0] - line[0][0]) * d[0] + (line[1][1] - line[0][1]) * d[1] < 0 ? [line[1], line[0]] : line;
+  }) };
+}
+
+// The compact transverse chart uses w=t/[4(1-t)] at r=1/2.
+// Thus G=I-s P_L with s=w/(1+w) has a unit-normalized finite limit.
+const concurrencyGaugeProgress = (t) => t / (4 - 3 * t);
+
+function centralDiagonal(options) {
+  const { r, t } = options;
+  if (![r, t].every(Number.isFinite) || r < 0 || r > 1 || t < 0 || t >= 1) throw new RangeError('Finite central display coordinates required');
+  return [1, Math.pow(1 - t, Math.max(0, 1 - 2 * r)), Math.pow(1 - t, Math.max(0, 2 * r - 1))];
+}
+
+// Extend the endpoint gauges continuously over the central chart. The same
+// positive central gauge acts on the flags and their cotangent operators.
+function centralDisplayGauge(data, operators, options) {
+  const d = centralDiagonal(options);
+  return { data: { ...data,
+    points: data.points.map(p => p.map((z, j) => z.map(v => v * d[j]))),
+    dualLines: data.dualLines.map(p => p.map((z, j) => z.map(v => v / d[j]))),
+  }, operators: operators && operators.map(K => K.map((row, j) => row.map((z, k) => z.map(v => v * d[j] / d[k])))), diagonal: d };
+}
+
+// The exact overlap gauges of the long-arm atlas, softened at zero so that
+// each animation starts in its current chart. Points and cotangent operators
+// undergo the same central change of basis.
+function branchDisplayGauge(data, operators, options) {
+  if (!options) return { data, operators };
+  const m = options.magnitude;
+  if (!(Number.isFinite(m) && m >= 0)) throw new RangeError('Finite branch magnitude required');
+  const d = options.firstLine ? (options.stage === 0 ? [1, 1 / (1 + m), 1] : [1 / (1 + m), 1, 1]) :
+    (options.stage === 0 ? [1 / (1 + m), 1 / (1 + m), 1] : [1 + m, 1, 1]);
+  if (options.side === 'infinity' || options.side === 1) {
+    if (options.firstLine) [d[1], d[2]] = [d[2], d[1]];
+    else [d[0], d[1]] = [d[1], d[0]];
+  }
+  return {
+    data: { ...data,
+      points: data.points.map((p) => p.map((z, j) => z.map((v) => v * d[j]))),
+      dualLines: data.dualLines.map((p) => p.map((z, j) => z.map((v) => v / d[j]))),
+    },
+    operators: operators && operators.map((K) => K.map((row, j) => row.map((z, k) => z.map((v) => v * d[j] / d[k])))),
+    diagonal: d,
+  };
+}
+
+// Project actual real projective flags in the same affine camera used by the
+// central chart. No modulus substitution is made: non-real flags are rejected.
+function realFlagDiagram(data) {
+  function real(v) {
+    const u = unit(v);
+    if (!u) return null;
+    let pivot = 0;
+    for (let i = 1; i < 3; i++) if (abs(u[i]) > abs(u[pivot])) pivot = i;
+    const phase = [u[pivot][0] / abs(u[pivot]), -u[pivot][1] / abs(u[pivot])];
+    const rotated = u.map((z) => mul(z, phase));
+    return rotated.every((z) => Math.abs(z[1]) < CHART_TOLERANCE) ? rotated.map((z) => z[0]) : null;
+  }
+  const points = data.points.map(real), dual = data.dualLines.map(real);
+  if (points.concat(dual).some((p) => !p)) return { valid: false, reason: 'Real incidence camera requires real projective flags.' };
+  const homogeneousPoints = points.map((p) => {
+    const sum = p[0] + p[1] + p[2];
+    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum];
+  });
+  const homogeneousLines = dual.map(([a, b, c]) => [b - a, c - a, SCALE * (b + c) / 2]);
+  const lines = homogeneousLines.map(segment);
+  if (lines.some((line) => !line) || homogeneousPoints.some((p) => Math.abs(p[2]) < 1e-12)) {
+    return { valid: false, reason: 'Flags are outside this affine camera.' };
+  }
+  const affine = homogeneousPoints.map((p) => p.slice(0, 2).map((v) => v / p[2]));
+  if (affine.some((p) => p.some((v) => Math.abs(v) > LIMIT))) return { valid: false, reason: 'Flag point is outside this affine camera.' };
+  return { valid: true, points: affine, lines, compactRadius: 0.5,
+    linePhases: [0, 0, 0], pointPhases: [0, 0, 0], phaseMatchedConcurrency: data.concurrent,
+    reconstruction: { homogeneousPoints, homogeneousLines, chart: 'Actual real flags; X=S(y-sum/2), Y=S(z-sum/2), W=sum' } };
+}
+
+// A continuous projective camera for the concurrency degeneration. Its
+// determinant is SCALE^2 (1+t), so it never collapses an incidence. Two
+// points genuinely pass through infinity; boundary markers retain their
+// identity rather than moving them through the concurrency point.
+function concurrencyDiagram(progress) {
+  const t = Math.max(0, Math.min(1, progress));
+  function camera(p) {
+    const sum = p[0] + p[1] + p[2];
+    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum + 3 * t * p[2]];
+  }
+  const homogeneousPoints = [0, 1, 2].map((i) => camera([0, 1, 2].map((j) => (i === j ? 1 : 0) - t / 3)));
+  const center = camera([1, 1, 1]);
+  const equations = homogeneousPoints.map((p) => cross(p, center));
+  const centerPoint = center.slice(0, 2).map((v) => v / center[2]);
+  const pointMarkers = homogeneousPoints.map((p, i) => {
+    const finite = Math.abs(p[2]) > 1e-12;
+    const q = finite ? p.slice(0, 2).map((v) => v / p[2]) : null;
+    if (q && q.every((v) => Math.abs(v) <= LIMIT)) return { point: q, clipped: false };
+    // Choose the boundary intersection on the correct affine ray. Exactly
+    // at infinity either antipodal boundary endpoint represents the point.
+    const direction = [p[0] * center[2] - center[0] * p[2], p[1] * center[2] - center[1] * p[2]];
+    const sign = p[2] < 0 ? -1 : 1;
+    const ray = direction.map((v) => v * sign);
+    const endpoints = segment(equations[i]);
+    const scores = endpoints.map((v) => (v[0] - centerPoint[0]) * ray[0] + (v[1] - centerPoint[1]) * ray[1]);
+    const point = endpoints[scores[0] > scores[1] ? 0 : 1];
+    const norm = Math.hypot(...ray);
+    return { point, clipped: true, direction: ray.map((v) => v / norm), atInfinity: !finite };
+  });
+  return {
+    valid: true, points: pointMarkers.map((p) => p.point), pointMarkers,
+    lines: equations.map(segment), linePhases: [0, 0, 0], pointPhases: [0, 0, 0],
+    compactRadius: 0.5, phaseMatchedConcurrency: true, concurrencyProgress: t,
+    transversal: t === 1 ? segment([0, 1, -SCALE / 3]) : null,
+    reconstruction: { homogeneousPoints, homogeneousLines: equations, center,
+      chart: "p_i=e_i-t(1,1,1)/3; X=S(y-sum/2), Y=S(z-sum/2), W=sum+3tz" },
+  };
+}
+
+// Three complex cotangent coefficients in a deterministic orthonormal flag
+// basis. This is a display gauge, not three complex-gauge invariants.
+function cotangentGlyphs(data, operators, progress) {
+  if (!data || !data.valid || !Array.isArray(operators)) return [];
+  const conj = (z) => [z[0], -z[1]];
+  const inner = (a, b) => a.reduce((sum, v, i) => {
+    const z = mul(conj(v), b[i]); return [sum[0] + z[0], sum[1] + z[1]];
+  }, [0, 0]);
+  return operators.map((K, i) => {
+    const incoming = Number.isFinite(progress) && progress < 1;
+    const s = incoming ? concurrencyGaugeProgress(progress) : 0;
+    const point = incoming ? [0, 1, 2].map((j) => [(i === j ? 1 : 0) - s / 3, 0]) : data.points[i];
+    // At this exact attachment K is a multiple of L ell_i, ell_i(L)=0.
+    // Conjugation by G therefore multiplies K by 1-s, without cancellation.
+    const operator = incoming ? K.map((row) => row.map((z) => z.map((v) => v * (1 - s)))) : K;
+    const e1 = unit(point);
+    const e3 = unit(data.dualLines[i].map(conj));
+    if (!e1 || !e3) return null;
+    // A conjugated cross product avoids switching a Gram-Schmidt seed
+    // when a line approaches a coordinate plane at a fixed point.
+    const e2 = unit([0, 1, 2].map(j => {
+      const a = mul(e3[(j + 1) % 3], e1[(j + 2) % 3]);
+      const b = mul(e3[(j + 2) % 3], e1[(j + 1) % 3]);
+      return conj([a[0] - b[0], a[1] - b[1]]);
+    }));
+    if (!e2) return null;
+    const action = (v) => operator.map((row) => row.reduce((sum, z, j) => {
+      const w = mul(z, v[j]); return [sum[0] + w[0], sum[1] + w[1]];
+    }, [0, 0]));
+    const coefficients = [inner(e1, action(e2)), inner(e1, action(e3)), inner(e2, action(e3))];
+    return { coefficients, basis: [e1, e2, e3] };
+  });
+}
+
+function flagDiagram(data, options = {}) {
+  const fail = (reason) => ({ valid: false, reason });
+  if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
+  if (!Array.isArray(data.points) || !Array.isArray(data.dualLines) ||
+      data.points.length !== 3 || data.dualLines.length !== 3) {
+    return fail("The decorated diagram requires three finite flags.");
+  }
+  const points = data.points.map(unit), normals = data.dualLines.map(unit);
+  if (points.concat(normals).some((v) => !v)) return fail("The decorated diagram requires finite nonzero homogeneous coordinates.");
+  if (options.firstLine && !options.realFlags && !Number.isFinite(options.concurrencyProgress)) {
+    // The chamber chart has l1=(0,-z,1), l2=(1,0,-1),
+    // l3=(-1,1,0). Work homogeneously so both radial poles are
+    // genuine finite flag configurations, independent of theta.
+    const numerator = normals[0][1], denominator = normals[0][2];
+    const size = abs(numerator) + abs(denominator);
+    if (!(size > 0)) return fail('The first line is outside the chamber chart.');
+    const expectedPoints = [0, 1, 2].map(i => [0, 1, 2].map(j => [i === j ? 1 : 0, 0]));
+    const expectedNormals = [
+      [[0, 0], numerator, denominator],
+      [[1, 0], [0, 0], [-1, 0]],
+      [[-1, 0], [1, 0], [0, 0]],
+    ].map(unit);
+    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expectedPoints[i])),
+      ...normals.map((p, i) => projectiveResidual(p, expectedNormals[i])));
+    if (residual > CHART_TOLERANCE) return fail('These flags are outside the first-line chamber chart.');
+    const r = abs(numerator) / size;
+    const phaseProduct = mul([-numerator[0], -numerator[1]], [denominator[0], -denominator[1]]);
+    const phase = r === 0 || r === 1 ? null : Math.atan2(phaseProduct[1], phaseProduct[0]);
+    const diagonal = options.centralFlow ? centralDiagonal(options.centralFlow) : [1, 1, 1];
+    const equations = [[0, -r, 1 - r], [-1, 0, 1], [-1, 1, 0]].map(n => {
+      const [a, b, c] = n.map((v, j) => v / diagonal[j]);
+      return [b - a, c - a, SCALE * (b + c) / 2];
+    });
+    const lines = equations.map(segment);
+    if (lines.some(line => !line)) return fail('The chamber lines cannot be clipped to the viewport.');
+    return firstLineOrientation({ valid: true, points: [[0, 0], [1, 0], [0, 1]].map(p => p.map(x => SCALE * (x - 0.5))),
+      lines, compactRadius: r, linePhases: [phase, 0, 0], pointPhases: [0, 0, 0],
+      phaseMatchedConcurrency: data.concurrent === true,
+      phaseRadii: [4 * r * (1 - r), 1, 1],
+      phaseVectors: [phase === null ? [0, 0] : [4 * r * (1 - r) * Math.cos(phase), 4 * r * (1 - r) * Math.sin(phase)], [1, 0], [1, 0]],
+      reconstruction: { homogeneousPoints: expectedPoints.map(p => { const s = p.reduce((v, z) => v + z[0], 0); return [SCALE * (p[1][0] - s / 2), SCALE * (p[2][0] - s / 2), s]; }),
+        homogeneousLines: equations, maxChartResidual: residual, chart: 'E6 first-line chamber: p=e1,e2,e3; n=(0,-z,1),(1,0,-1),(-1,1,0)' } });
+  }
+  if (options.realFlags) {
+    const diagram = realFlagDiagram(data);
+    return options.firstLine ? firstLineOrientation(diagram) : diagram;
+  }
+  if (Number.isFinite(options.concurrencyProgress)) {
+    const t = Math.max(0, Math.min(1, options.concurrencyProgress));
+    const expected = [0, 1, 2].map((i) => unit([0, 1, 2].map((j) => [
+      (i === j ? 1 : 0) - (t === 1 ? 1 / 3 : 0), 0])));
+    const dual = [[[0, 0], [-1, 0], [1, 0]], [[1, 0], [0, 0], [-1, 0]], [[-1, 0], [1, 0], [0, 0]]].map(unit);
+    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expected[i])),
+      ...normals.map((p, i) => projectiveResidual(p, dual[i])));
+    if (residual > CHART_TOLERANCE) return fail("These flags are outside the concurrency chart.");
+    const diagram = concurrencyDiagram(concurrencyGaugeProgress(t));
+    return options.firstLine ? firstLineOrientation(diagram) : diagram;
+  }
+  const denominator = normals[2][1];
+  const den = denominator[0] ** 2 + denominator[1] ** 2;
+  const numerator = normals[2][0];
+  const atInfinity = !(den > 0);
+  if (atInfinity && !options.compact) return fail("These flags are outside the supported E6 candidate chart.");
+  const homogeneousSize = abs(numerator) + abs(denominator);
+  if (!(homogeneousSize > 0)) return fail("The third line is outside the candidate chart.");
+  const compactRadius = abs(numerator) / homogeneousSize;
+  const z = atInfinity ? null :
+    [-(numerator[0] * denominator[0] + numerator[1] * denominator[1]) / den,
+      -(numerator[1] * denominator[0] - numerator[0] * denominator[1]) / den];
+  const magnitude = atInfinity ? Infinity : abs(z);
+  if (!atInfinity && !Number.isFinite(magnitude)) return fail("The candidate chart coordinate is not finite.");
+  const expectedPoints = [0, 1, 2].map((i) => [0, 1, 2].map((j) => [i === j ? 1 : 0, 0]));
+  const expectedNormals = [
+    [[0, 0], [-1, 0], [1, 0]],
+    [[1, 0], [0, 0], [-1, 0]],
+    [numerator, denominator, [0, 0]],
+  ].map(unit);
+  const maxChartResidual = Math.max(...points.map((p, i) => projectiveResidual(p, expectedPoints[i])),
+    ...normals.map((n, i) => projectiveResidual(n, expectedNormals[i])));
+  if (maxChartResidual > CHART_TOLERANCE) return fail("These flags are outside the supported E6 candidate chart; no chart change has been applied.");
+  // In x+y+w=1 use (X,Y)=(y,w). With compact radial coordinate r,
+  // the third real line is X+rY=r, including both projective endpoints.
+  const size = Math.max(1, magnitude);
+  const affineLineEquations = [[-1, 1, 0], [1, 2, -1],
+    options.compact ? [1, compactRadius, -compactRadius] :
+      [1 / size + magnitude / size, magnitude / size, -magnitude / size]];
+  const lines = affineLineEquations.map(([a, b, c]) => segment([a, b, SCALE * (0.5 * a + 0.5 * b + c)]));
+  if (lines.some((line) => !line)) return fail("The chart lines cannot be clipped to the viewport.");
+  const phase = magnitude === 0 || atInfinity ? null : Math.atan2(z[1], z[0]);
+  return {
+    valid: true,
+    points: [[0, 0], [1, 0], [0, 1]].map((p) => p.map((x) => SCALE * (x - 0.5))),
+    lines, linePhases: [0, 0, phase], pointPhases: [0, 0, 0],
+    phaseVectors: [[1, 0], [1, 0], options.compact ?
+      (phase === null ? [0, 0] : [4 * compactRadius * (1 - compactRadius) * Math.cos(phase),
+        4 * compactRadius * (1 - compactRadius) * Math.sin(phase)]) : z.slice()],
+    phaseRadii: [1, 1, options.compact ? 4 * compactRadius * (1 - compactRadius) : magnitude],
+    parameter: z, magnitude, compactRadius, atInfinity,
+    homogeneousParameter: [[-numerator[0], -numerator[1]], denominator.slice()],
+    phaseMatchedConcurrency: data.concurrent === true,
+    reconstruction: {
+      chart: "E6 candidate: p=e1,e2,e3; n=(0,-1,1),(1,0,-1),(-z,1,0)",
+      affineViewport: [-0.3, 1.3], coordinateScale: SCALE,
+      affineLineEquations, maxChartResidual, chartTolerance: CHART_TOLERANCE,
+      // For the third equation ax+by+c=0, r=b/(a-b), then z=r exp(i phase).
+      magnitudeFromLine: options.compact ? "b/(a-b); compact r=b/a" : "b/(a-b)",
+      recoveredParameter: atInfinity ? null : phase === null ? [0, 0] :
+        [magnitude * Math.cos(phase), magnitude * Math.sin(phase)],
+    },
+  };
+}
+
+return { concurrencyGaugeProgress, centralDisplayGauge, branchDisplayGauge, realFlagDiagram, concurrencyDiagram, cotangentGlyphs, flagDiagram };
+})();
+
+// ---- module: balanced-diagram ----
+const __ek_mod_balanced_diagram = (function () {
+const { cAdd, cSub, cMul, cConj, cScale, matMul, matAdj } = __ek_mod_core_math;
+const { flagIncidence } = __ek_mod_flag_incidence;
+const { cotangentGlyphs } = __ek_mod_flag_diagram;
+// A unitary viewing frame and phase-decorated affine camera for balanced flags.
+// The caller must supply a converged real-moment-map representative. This module
+// never applies a positive/nonunitary display gauge or reconstructs chart data.
+// A second unitary camera puts a genuine intersection at the affine origin.
+// Lines are projected as equations, never independently anchored at real-part
+// points: concurrency is therefore retained even after complex phase histories.
+// Affine infinity and isotropic projected normals remain camera defects,
+// explicitly recorded below, not mathematical singularities of the moduli space.
+
+
+
+
+const abs = z => Math.hypot(z[0], z[1]);
+const norm = v => Math.hypot(...v.map(abs));
+const unit = v => { const n = norm(v); return v.map(z => cScale(z, 1 / n)); };
+const inner = (u,v) => u.reduce((s,z,i) => cAdd(s,cMul(cConj(z),v[i])),[0,0]);
+const cross = (u,v) => [0,1,2].map(i => cSub(cMul(u[(i+1)%3],v[(i+2)%3]),cMul(u[(i+2)%3],v[(i+1)%3])));
+const projector = v => v.map(a => v.map(b => cMul(a,cConj(b))));
+const coordinates = (frame,v) => frame.map(e => inner(e,v));
+const matrixOf = columns => [0,1,2].map(i => columns.map(v => v[i]));
+const divide = (a,b) => cScale(cMul(a,cConj(b)),1 / (abs(b)*abs(b)));
+const LIMIT = .9, SCALE = 1.125;
+
+// A homogeneous-scale-invariant signed phase moves each line within its own
+// hue band. The bands stay separated, so incidence retains its color meaning.
+// The two other line hues span a minor arc excluding the own-line hue.
+// Opposite residual weights reach an endpoint precisely when that pairing
+// vanishes. At simultaneous incidence there is no unique hue: fade to neutral.
+function incidenceColors(data, phaseVectors = []) {
+  // Smooth contrast adjustment, not an incidence tolerance: weak phase
+  // correlations fade to the band center instead of acquiring arbitrary hue.
+  const phaseColors=phaseVectors.map(v=>cScale(v,1/Math.hypot(v[0],v[1],.04)));
+  const lineHues = [210, 330, 90].map((h,i)=>
+    h+20*(phaseColors[i]?phaseColors[i][1]:0));
+  const lineStrengths=[0,1,2].map(i=>phaseColors[i]?
+    .75+.2*phaseColors[i][0]:1);
+  const pointHues = [], pointStrengths = [], ambiguous = [];
+  for (let i = 0; i < 3; i++) {
+    const others = [0, 1, 2].filter(j => j !== i);
+    const residuals = others.map(j => data.residuals[i][j]);
+    const angles = others.map(j => lineHues[j] * Math.PI / 180);
+    const x = residuals[1] * Math.cos(angles[0]) + residuals[0] * Math.cos(angles[1]);
+    const y = residuals[1] * Math.sin(angles[0]) + residuals[0] * Math.sin(angles[1]);
+    const strength = Math.hypot(x, y);
+    pointHues.push(strength > 0 ? (Math.atan2(y, x) * 180 / Math.PI + 360) % 360 : null);
+    const total=residuals[0]+residuals[1];
+    const saturation=total>0?(residuals[1]*lineStrengths[others[0]]+residuals[0]*lineStrengths[others[1]])/total:0;
+    pointStrengths.push(saturation*Math.min(1, strength / .03));
+    ambiguous.push(residuals.every(r => r <= data.tolerance));
+  }
+  return { lineHues, lineStrengths, pointHues, pointStrengths, ambiguous, tolerance: data.tolerance };
+}
+function vectorPhase(v, previous) {
+  let z=previous&&inner(previous,v);
+  if(!z||abs(z)<1e-10) z=v.reduce((a,b)=>abs(a)>=abs(b)?a:b);
+  return v.map(x=>cMul(x,cScale(cConj(z),1/abs(z))));
+}
+
+function descriptors(data, operators) {
+  return data.points.map(projector).concat(data.dualLines.map(n => projector(n.map(cConj))),operators);
+}
+
+// Only residual diagonal U(1) phases remain after matching the first flag.
+// Correlating homogeneous projectors avoids all arbitrary vector phases. The
+// maximum spanning tree recovers an exact diagonal gauge on a connected graph;
+// coordinate ascent then improves the approximate match during actual motion.
+function alignPhases(current, previous) {
+  if (!previous) return [[1,0],[1,0],[1,0]];
+  const C = [0,1,2].map(j => [0,1,2].map(k => current.reduce((s,M,i) =>
+    cAdd(s,cMul(M[j][k],cConj(previous[i][j][k]))),[0,0])));
+  const d = [[1,0],[1,0],[1,0]], visited = [true,false,false];
+  for (let count=0;count<2;count++) {
+    let best = null;
+    for (let j=0;j<3;j++) for(let k=0;k<3;k++) if(visited[j]&&!visited[k]&&(!best||abs(C[j][k])>best.w)) best={j,k,w:abs(C[j][k])};
+    if (!best || best.w < 1e-14) break;
+    d[best.k]=cMul(cConj(cScale(C[best.j][best.k],1/best.w)),d[best.j]); visited[best.k]=true;
+  }
+  for(let pass=0;pass<30;pass++) for(let j=1;j<3;j++) {
+    const z=[0,1,2].filter(k=>k!==j).reduce((s,k)=>cAdd(s,cMul(C[j][k],d[k])),[0,0]);
+    if(abs(z)>1e-14) d[j]=cScale(z,1/abs(z));
+  }
+  return d;
+}
+
+function clip(anchor, direction) {
+  let lo=-Infinity,hi=Infinity;
+  for(let j=0;j<2;j++) {
+    if(Math.abs(direction[j])<1e-14) { if(Math.abs(anchor[j])>LIMIT+1e-10) return null; }
+    else { const a=(-LIMIT-anchor[j])/direction[j],b=(LIMIT-anchor[j])/direction[j]; lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b)); }
+  }
+  return lo<=hi&&Number.isFinite(lo)&&Number.isFinite(hi) ? [lo,hi].map(t=>anchor.map((x,j)=>x+t*direction[j])) : null;
+}
+
+function balancedDiagram(rep, options = {}) {
+  const source=flagIncidence(rep);
+  if(!source.valid) return {valid:false,reason:source.reason};
+  // Transport the internal frame only. The final projective camera and glyph
+  // phases below cancel this choice, so slider history cannot change the view.
+  const previous=options.previous && (options.previous.continuation || options.previous);
+  const e1=source.points[0],e3=source.dualLines[0].map(cConj),e2=unit(cross(e3,e1).map(cConj));
+  let frame=[e1,e2,e3];
+  const rawOperators=rep.A.map((A,i)=>matMul(A,rep.B[i]));
+  function transformed() {
+    const F=matrixOf(frame),FH=matAdj(F);
+    const data={...source, points:source.points.map(p=>coordinates(frame,p)),dualLines:source.dualLines.map(n=>coordinates(frame,n.map(cConj)).map(cConj))};
+    const operators=rawOperators.map(K=>matMul(matMul(FH,K),F));
+    return {data,operators};
+  }
+  let current=transformed();
+  const phases=alignPhases(descriptors(current.data,current.operators),previous&&previous.descriptors);
+  frame=frame.map((v,j)=>v.map(z=>cMul(z,phases[j])));
+  current=transformed();
+  const {data,operators}=current;
+  data.points=data.points.map((p,i)=>vectorPhase(p,previous&&previous.points&&previous.points[i]));
+  data.dualLines=data.dualLines.map((p,i)=>vectorPhase(p,previous&&previous.dualLines&&previous.dualLines[i]));
+  const pairs=[[0,1],[0,2],[1,2]];
+  let pair=[0,1];
+  let intersection=cross(data.dualLines[pair[0]],data.dualLines[pair[1]]);
+  if(norm(intersection)<1e-6) {
+    pair=pairs.reduce((best,p)=>norm(cross(data.dualLines[p[0]],data.dualLines[p[1]]))>
+      norm(cross(data.dualLines[best[0]],data.dualLines[best[1]]))?p:best,pairs[0]);
+    intersection=cross(data.dualLines[pair[0]],data.dualLines[pair[1]]);
+  }
+  const uniqueIntersection=norm(intersection)>1e-10;
+  // The all-coincident case has no distinguished intersection; retain a
+  // direction in the common plane, without displaying a spurious unique dot.
+  if(!uniqueIntersection) intersection=data.points[pair[0]];
+  let z=vectorPhase(unit(intersection),null);
+  let x=vectorPhase(data.dualLines[pair[0]].map(cConj),null);
+  const y=vectorPhase(unit(cross(z,x).map(cConj)),null);
+  // Full complex phasors cancel the arbitrary phases of x and z relative to
+  // y. Blending an unwrapped angle would turn its winding into screen motion.
+  const normal=coordinates([x,y,z],data.dualLines[pair[1]].map(cConj)).map(cConj);
+  const point=coordinates([x,y,z],data.points[pair[0]]);
+  const phasor=value=>abs(value)>1e-10?cScale(value,1/abs(value)):[1,0];
+  const alphaAnchor=cConj(cMul(normal[0],cConj(normal[1])));
+  const alpha=phasor(alphaAnchor);
+  // One point correlation vanishes inside a perfectly regular radial path.
+  // Two independent point references avoid that real-axis sign flip; K_2
+  // supplies a reference at the short tip where both point correlations vanish.
+  // Every summand has the same covariance under the remaining y/z phases.
+  const point1=coordinates([x,y,z],data.points[1]);
+  const q0=cMul(point[2],cConj(point[1]));
+  const q1=cMul(point1[2],cConj(point1[1]));
+  const k=inner(z,operators[1].map(row=>row.reduce((s,v,j)=>cAdd(s,cMul(v,y[j])),[0,0])));
+  const betaAnchor=cAdd(k,cAdd(q0,cMul([0,1],q1)));
+  const beta=phasor(betaAnchor);
+  x=x.map(v=>cMul(v,alpha));z=z.map(v=>cMul(v,beta));
+  const camera=[x,y,z];
+  // Coefficient colors also use the current camera, rather than a transported
+  // flag basis whose phases can wind after a closed slider loop.
+  function affinePhase(v) {
+    const w=v.reduce(cAdd,[0,0]);
+    return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):vectorPhase(v,null);
+  }
+  const C=matrixOf(camera),CH=matAdj(C);
+  const glyphData={...data,points:data.points.map(p=>affinePhase(coordinates(camera,p))),
+    dualLines:data.dualLines.map(n=>affinePhase(coordinates(camera,n.map(cConj)).map(cConj)))};
+  const glyphs=cotangentGlyphs(glyphData,operators.map(K=>matMul(matMul(CH,K),C)));
+  glyphs.forEach(g=>{g.basis=g.basis.map(v=>[0,1,2].map(j=>camera.reduce((s,e,k)=>cAdd(s,cMul(e[j],v[k])),[0,0])));});
+  const rawPoints=[],lineGeometry=[];
+  const points=[],lines=[],pointMarkers=[],linePhases=[],phaseVectors=[],pointPhases=[],pointPhaseVectors=[],projectionResiduals=[],cameraDefects=[];
+  if(abs(alphaAnchor)<=1e-10)cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'x'});
+  if(abs(betaAnchor)<=1e-10*Math.max(1,abs(k),abs(q0),abs(q1)))cameraDefects.push({kind:'camera-phase-anchor-vanishing',axis:'z'});
+  for(let i=0;i<3;i++) {
+    const p=coordinates(camera,data.points[i]);
+    const n=coordinates(camera,data.dualLines[i].map(cConj)).map(cConj);
+    const W=p.reduce(cAdd,[0,0]);
+    const h=[cScale(p[0],SCALE),cScale(p[1],SCALE),W];
+    let point,atInfinity=abs(W)<1e-10;
+    if(!atInfinity) point=h.slice(0,2).map(z=>divide(z,W)[0]);
+    else {
+      const pivot=abs(h[0])>=abs(h[1])?h[0]:h[1];
+      const phase=abs(pivot)>0?cScale(cConj(pivot),1/abs(pivot)):[1,0];
+      point=h.slice(0,2).map(z=>cMul(z,phase)[0]);
+      const m=Math.max(...point.map(Math.abs),1e-12); point=point.map(x=>LIMIT*x/m);
+      cameraDefects.push({flag:i,kind:'affine-infinity'});
+    }
+    const a=cSub(n[0],n[2]),b=cSub(n[1],n[2]);
+    // Principal real normal of the complex line. A sign change does not alter
+    // the geometric line; endpoint order is separately matched to the last view.
+    const squared=cAdd(cMul(a,a),cMul(b,b));
+    const psi=.5*Math.atan2(squared[1],squared[0]);
+    const rotate=[Math.cos(psi),-Math.sin(psi)];
+    let normal=[cMul(a,rotate)[0],cMul(b,rotate)[0]];
+    if(abs(squared)<1e-10*(abs(a)**2+abs(b)**2)) cameraDefects.push({flag:i,kind:'isotropic-complex-normal'});
+    if(Math.hypot(...normal)<1e-12) normal=[1,0];
+    const length=Math.hypot(...normal);normal=normal.map(x=>x/length);
+    const direction=[normal[1],-normal[0]];
+    const constant=cScale(n[2],SCALE);
+    const offset=cMul(constant,rotate)[0]/length;
+    const anchor=normal.map(x=>-x*offset);
+    // Keep the marked point on its actual projected line. This orthogonal
+    // screen projection is not a gauge transformation of the balanced data.
+    const pointResidual=normal[0]*point[0]+normal[1]*point[1]+offset;
+    point=point.map((value,j)=>value-pointResidual*normal[j]);
+    rawPoints.push(point.slice());lineGeometry.push({anchor,direction});
+    let segment=clip(anchor,direction);
+    const magnitude=Math.max(...point.map(Math.abs));
+    const clipped=magnitude>LIMIT;
+    let marker=clipped?point.map(x=>x*LIMIT/magnitude):point;
+    if(segment&&(clipped||atInfinity)) {
+      const scores=segment.map(q=>atInfinity?q[0]*point[0]+q[1]*point[1]:-Math.hypot(q[0]-point[0],q[1]-point[1]));
+      marker=segment[scores[0]>scores[1]?0:1].slice();
+    }
+    // A line completely outside the camera has no honest viewport segment.
+    if(!segment) { cameraDefects.push({flag:i,kind:'line-outside-camera'}); segment=[marker.slice(),marker.slice()]; }
+    const old=previous&&previous.lines&&previous.lines[i];
+    if(old&&(segment[1][0]-segment[0][0])*(old[1][0]-old[0][0])+(segment[1][1]-segment[0][1])*(old[1][1]-old[0][1])<0) segment.reverse();
+    const phase=cMul(p[0],cConj(p[1]));
+    const linePhase=cMul(n[0],cConj(n[1]));
+    const directionNorm=Math.hypot(...point)||1;
+    points.push(marker);lines.push(segment);pointMarkers.push({point:marker,clipped:clipped||atInfinity,atInfinity,direction:point.map(x=>x/directionNorm)});
+    pointPhases.push(abs(phase)>1e-12?Math.atan2(phase[1],phase[0]):null);
+    pointPhaseVectors.push(cScale(phase,2));
+    linePhases.push(abs(linePhase)>1e-12?Math.atan2(linePhase[1],linePhase[0]):null);
+    phaseVectors.push(cScale(linePhase,2));
+    projectionResiduals.push(atInfinity?null:Math.hypot(...h.slice(0,2).map(z=>divide(z,W)[1])));
+  }
+  // One camera zoom for the whole configuration preserves incidence. Clipping
+  // each marked point separately can otherwise conceal collinearity at a tip.
+  const extent=Math.max(1,...rawPoints.flat().map(Math.abs));
+  const zoom=Math.min(1,.76/extent);
+  for(let i=0;i<3;i++) {
+    const point=rawPoints[i].map(v=>v*zoom);
+    let segment=clip(lineGeometry[i].anchor.map(v=>v*zoom),lineGeometry[i].direction);
+    if(!segment) continue;
+    const old=previous&&previous.lines&&previous.lines[i];
+    if(old&&(segment[1][0]-segment[0][0])*(old[1][0]-old[0][0])+(segment[1][1]-segment[0][1])*(old[1][1]-old[0][1])<0) segment.reverse();
+    lines[i]=segment;points[i]=point;pointMarkers[i].point=point;
+    pointMarkers[i].clipped=pointMarkers[i].atInfinity;
+  }
+  // Use the second column of balanced A as a seed for the distinguished
+  // projective direction in the flag plane perpendicular to its marked point.
+  // Its projective direction also agrees with the camera's coefficient basis.
+  const cotangentTargets=rep.A.map((A,i)=>{
+    const e1=data.points[i];
+    function perpendicularColumn(j) {
+      const column=coordinates(frame,A.map(row=>row[j]));
+      const projection=inner(e1,column);
+      return {column,vector:column.map((v,k)=>cSub(v,cMul(e1[k],projection)))};
+    }
+    let seed=perpendicularColumn(1);
+    if(norm(seed.vector)<1e-10*norm(seed.column)) seed=perpendicularColumn(0);
+    if(!(norm(seed.vector)>1e-14)) return null;
+    const homogeneous=unit(seed.vector),v=coordinates(camera,homogeneous),W=v.reduce(cAdd,[0,0]);
+    const atInfinity=abs(W)<1e-10;
+    if(atInfinity) return {point:null,homogeneous,atInfinity:true,clipped:false};
+    let target=v.slice(0,2).map(z=>SCALE*divide(z,W)[0]*zoom);
+    const segment=lines[i],a=segment[0],d=segment[1].map((x,j)=>x-a[j]);
+    const length2=d.reduce((s,x)=>s+x*x,0);
+    if(length2<1e-20) return {point:null,homogeneous,atInfinity:false,clipped:true};
+    const t=target.reduce((s,x,j)=>s+(x-a[j])*d[j],0)/length2;
+    const clipped=t<0||t>1;
+    // A target beyond the viewport is not replaced by a different finite point.
+    target=clipped?null:a.map((x,j)=>x+t*d[j]);
+    return {point:target,homogeneous,atInfinity:false,clipped};
+  });
+  let transversal=null;
+  if(data.collinear) {
+    const [a,b,c]=points;
+    const area=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+    const pair=pairs.reduce((best,p)=>Math.hypot(...points[p[0]].map((v,j)=>v-points[p[1]][j]))>
+      Math.hypot(...points[best[0]].map((v,j)=>v-points[best[1]][j]))?p:best,pairs[0]);
+    const direction=points[pair[1]].map((v,j)=>v-points[pair[0]][j]);
+    if(Math.abs(area)<1e-7&&Math.hypot(...direction)>1e-8) transversal=clip(points[pair[0]],direction);
+  }
+  const layout={valid:true,points,lines,pointMarkers,linePhases,pointPhases,pointPhaseVectors,phaseVectors,phaseRadii:phaseVectors.map(abs),compactRadius:.5,incidenceColors:incidenceColors(data,phaseVectors),
+    transversal,cotangentTargets,
+    concurrencyPoint:data.concurrent&&uniqueIntersection?[0,0]:null,
+    phaseMatchedConcurrency:data.concurrent,projectionResiduals,cameraDefects,
+    reconstruction:{chart:'Unitary intersection camera; projected line equations',homogeneousPoints:data.points,homogeneousLines:data.dualLines,camera}};
+  return {valid:true,data,layout,glyphs,operators,frame,
+    continuation:{descriptors:descriptors(data,operators),lines,points:data.points,dualLines:data.dualLines},source:'balanced-representation'};
+}
+
+return { incidenceColors, balancedDiagram };
+})();
+
+// ---- module: balanced-worker-source ----
+const __ek_mod_balanced_worker_source = { BALANCED_WORKER_SOURCE: "const __ek_mod_core_math = (function () {\n// core-math.js — dependency-free, Node-safe port of the frozen E6 math core.\n//\n// This mirrors the verified Python reference in the standalone repo's\n// `sim/e6sim/` package (Milestone 0 conventions/representation/moment maps and\n// the V0/V5 geometry). It is the foundation for the browser solver and the\n// single-element (su(3) triangle) view. Nothing here is a new mathematical\n// claim: it re-expresses the frozen, independently-verified conventions.\n//\n// Conventions (identical to sim/e6sim):\n//   three branches i = 0,1,2, each C^1 -> C^2 -> C^3, common central C^3;\n//   matrices a_i (2x1), A_i (3x2), b_i (1x2), B_i (2x3);\n//   levels stored 0-based: level[i][0] = outer (alpha_i),\n//                          level[i][1] = middle (gamma_i);\n//   the level/beta factor of two lives ONLY in betaToLevel;\n//   the real Hermitian moment maps have the i/2 factor removed.\n//\n// Complex numbers are 2-element arrays [re, im]; complex matrices are arrays\n// of rows of such pairs.\n\n// ---------------------------------------------------------------------------\n// dimensions (Milestone 0)\n// ---------------------------------------------------------------------------\nconst NB = 3;\nconst N_CENTER = 3;\nconst N_MIDDLE = 2;\nconst N_OUTER = 1;\nconst N_GAUGE_REAL = 8 + NB * (4 + 1); // 23\n\n// ---------------------------------------------------------------------------\n// complex scalar\n// ---------------------------------------------------------------------------\nconst c = (re, im = 0) => [re, im];\nconst cAdd = (a, b) => [a[0] + b[0], a[1] + b[1]];\nconst cSub = (a, b) => [a[0] - b[0], a[1] - b[1]];\nconst cMul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];\nconst cNeg = (a) => [-a[0], -a[1]];\nconst cConj = (a) => [a[0], -a[1]];\nconst cAbs2 = (a) => a[0] * a[0] + a[1] * a[1];\n\nconst _sc = (s) => (typeof s === \"number\" ? [s, 0] : s);\nconst cScale = (a, s) => {\n  const t = _sc(s);\n  return [a[0] * t[0] - a[1] * t[1], a[0] * t[1] + a[1] * t[0]];\n};\n\n// ---------------------------------------------------------------------------\n// complex matrices (array of rows of [re,im])\n// ---------------------------------------------------------------------------\nfunction zerosZ(r, cols) {\n  return Array.from({ length: r }, () => Array.from({ length: cols }, () => [0, 0]));\n}\nfunction eyeZ(n) {\n  const M = zerosZ(n, n);\n  for (let i = 0; i < n; i++) M[i][i] = [1, 0];\n  return M;\n}\nfunction shapeOf(A) {\n  return [A.length, A.length ? A[0].length : 0];\n}\nfunction matMul(A, B) {\n  const [r, k] = shapeOf(A);\n  const [k2, cc] = shapeOf(B);\n  if (k !== k2) throw new Error(`matMul: ${r}x${k} times ${k2}x${cc}`);\n  const M = zerosZ(r, cc);\n  for (let i = 0; i < r; i++)\n    for (let j = 0; j < cc; j++) {\n      let s = [0, 0];\n      for (let t = 0; t < k; t++) s = cAdd(s, cMul(A[i][t], B[t][j]));\n      M[i][j] = s;\n    }\n  return M;\n}\nfunction matAdd(A, B) {\n  return A.map((row, i) => row.map((e, j) => cAdd(e, B[i][j])));\n}\nfunction matSub(A, B) {\n  return A.map((row, i) => row.map((e, j) => cSub(e, B[i][j])));\n}\nfunction matScale(A, s) {\n  const t = _sc(s);\n  return A.map((row) => row.map((e) => cScale(e, t)));\n}\nfunction matAdj(A) {\n  const [r, cc] = shapeOf(A);\n  const M = zerosZ(cc, r);\n  for (let i = 0; i < cc; i++) for (let j = 0; j < r; j++) M[i][j] = cConj(A[j][i]);\n  return M;\n}\nfunction matTrace(A) {\n  let s = [0, 0];\n  for (let i = 0; i < A.length; i++) s = cAdd(s, A[i][i]);\n  return s;\n}\nfunction frob2(A) {\n  let s = 0;\n  for (const row of A) for (const e of row) s += e[0] * e[0] + e[1] * e[1];\n  return s;\n}\nfunction frobNorm(A) {\n  return Math.sqrt(frob2(A));\n}\n\n// ---------------------------------------------------------------------------\n// conventions: traceless part and Frobenius-orthonormal Hermitian bases\n// ---------------------------------------------------------------------------\nfunction traceless(M) {\n  const n = M.length;\n  const t = matTrace(M);\n  return matSub(M, matScale(eyeZ(n), cScale(t, 1 / n)));\n}\n\n// symmetric off-diagonal, antisymmetric off-diagonal, then diagonal traceless.\nfunction tracelessHermitianBasis(n) {\n  const basis = [];\n  for (let j = 0; j < n; j++)\n    for (let k = j + 1; k < n; k++) {\n      const M = zerosZ(n, n);\n      M[j][k] = [1, 0];\n      M[k][j] = [1, 0];\n      basis.push(matScale(M, 1 / Math.SQRT2));\n    }\n  for (let j = 0; j < n; j++)\n    for (let k = j + 1; k < n; k++) {\n      const M = zerosZ(n, n);\n      M[j][k] = [0, 1];\n      M[k][j] = [0, -1];\n      basis.push(matScale(M, 1 / Math.SQRT2));\n    }\n  for (let m = 1; m < n; m++) {\n    const d = new Array(n).fill(0);\n    for (let t = 0; t < m; t++) d[t] = 1;\n    d[m] = -m;\n    const M = zerosZ(n, n);\n    for (let i = 0; i < n; i++) M[i][i] = [d[i], 0];\n    basis.push(matScale(M, 1 / Math.sqrt(m * (m + 1))));\n  }\n  return basis;\n}\n\nfunction hermitianBasis(n) {\n  const basis = tracelessHermitianBasis(n);\n  basis.push(matScale(eyeZ(n), 1 / Math.sqrt(n)));\n  return basis;\n}\n\n// Cached bases for the three vertex types.\nconst CENTER_BASIS = tracelessHermitianBasis(N_CENTER); // 8, traceless\nconst MIDDLE_BASIS = hermitianBasis(N_MIDDLE); // 4, includes trace\nconst OUTER_BASIS = hermitianBasis(N_OUTER); // 1\n\n// coord_a = trace(B_a m) because the basis is Frobenius-orthonormal.\nfunction packHermitian(m, basis) {\n  return basis.map((B) => matTrace(matMul(B, m))[0]);\n}\nfunction unpackHermitian(coords, basis) {\n  const n = basis.length ? basis[0].length : 0;\n  let out = zerosZ(n, n);\n  coords.forEach((x, a) => {\n    out = matAdd(out, matScale(basis[a], x));\n  });\n  return out;\n}\n\n// Source Lie-algebra level i c I -> Hermitian-equation level 2c.\nfunction betaToLevel(beta) {\n  return beta.map((b) => b.map((x) => 2 * x));\n}\n\n// ---------------------------------------------------------------------------\n// representation: matrices, validation, unitary gauge action\n// ---------------------------------------------------------------------------\nfunction makeRep(a, A, b, B) {\n  return { a, A, b, B };\n}\n\nfunction validateRep(rep) {\n  const ok = (M, r, cc) => Array.isArray(M) && M.length === r && M[0].length === cc;\n  const errs = [];\n  for (let i = 0; i < NB; i++) {\n    if (!ok(rep.a[i], 2, 1)) errs.push(`a[${i}] shape`);\n    if (!ok(rep.A[i], 3, 2)) errs.push(`A[${i}] shape`);\n    if (!ok(rep.b[i], 1, 2)) errs.push(`b[${i}] shape`);\n    if (!ok(rep.B[i], 2, 3)) errs.push(`B[${i}] shape`);\n  }\n  return errs;\n}\n\n// Unitary gauge, per Milestone 0:\n//   a_i -> h_i a_i q_i^{-1},  A_i -> g A_i h_i^{-1},\n//   b_i -> q_i b_i h_i^{-1},  B_i -> h_i B_i g^{-1}.\n// For unitary g, h_i, q_i the inverse is the adjoint.\nfunction gaugeAction(rep, g, h, q) {\n  const a = [], A = [], b = [], B = [];\n  for (let i = 0; i < NB; i++) {\n    const qinv = cScale(cConj(q[i]), 1 / cAbs2(q[i]));\n    a.push(matScale(matMul(h[i], rep.a[i]), qinv));\n    A.push(matMul(matMul(g, rep.A[i]), matAdj(h[i])));\n    b.push(matScale(matMul(rep.b[i], matAdj(h[i])), q[i]));\n    B.push(matMul(matMul(h[i], rep.B[i]), matAdj(g)));\n  }\n  return makeRep(a, A, b, B);\n}\n\n// Diagonal unitary gauges (exact, no QR needed).\n// angles: {g:[a,b,cc], h:[[p,q],...], q:[t,...]}\nfunction diagonalUnitaryGauge(angles) {\n  const ph = (t) => [Math.cos(t), Math.sin(t)];\n  const g = zerosZ(3, 3);\n  g[0][0] = ph(angles.g[0]);\n  g[1][1] = ph(angles.g[1]);\n  g[2][2] = ph(angles.g[2]);\n  const h = angles.h.map(([p, q2]) => {\n    const M = zerosZ(2, 2);\n    M[0][0] = ph(p);\n    M[1][1] = ph(q2);\n    return M;\n  });\n  const q = angles.q.map(ph);\n  return { g, h, q };\n}\n\n// ---------------------------------------------------------------------------\n// moment maps\n// ---------------------------------------------------------------------------\nfunction complexResidual(rep) {\n  const outer = [], middle = [];\n  let center = zerosZ(N_CENTER, N_CENTER);\n  for (let i = 0; i < NB; i++) {\n    const ai = rep.a[i], Ai = rep.A[i], bi = rep.b[i], Bi = rep.B[i];\n    outer.push(matMul(bi, ai));\n    middle.push(matSub(matMul(Bi, Ai), matMul(ai, bi)));\n    center = matSub(center, matMul(Ai, Bi));\n  }\n  return { outer, middle, center: traceless(center) };\n}\n\nfunction complexResidualNorm(rep) {\n  const r = complexResidual(rep);\n  let s = 0;\n  for (const m of r.outer) s += frob2(m);\n  for (const m of r.middle) s += frob2(m);\n  s += frob2(r.center);\n  return Math.sqrt(s);\n}\n\nfunction realMaps(rep) {\n  const outer = [], middle = [];\n  let center = zerosZ(N_CENTER, N_CENTER);\n  for (let i = 0; i < NB; i++) {\n    const ai = rep.a[i], Ai = rep.A[i], bi = rep.b[i], Bi = rep.B[i];\n    outer.push(matSub(matMul(matAdj(ai), ai), matMul(bi, matAdj(bi))));\n    // R_i2 = A^*A - B B^* - a a^* + b^* b\n    middle.push(\n      matAdd(\n        matSub(matMul(matAdj(Ai), Ai), matMul(Bi, matAdj(Bi))),\n        matSub(matMul(matAdj(bi), bi), matMul(ai, matAdj(ai)))\n      )\n    );\n    // center += -A A^* + B^* B\n    center = matAdd(\n      center,\n      matAdd(matScale(matMul(Ai, matAdj(Ai)), -1), matMul(matAdj(Bi), Bi))\n    );\n  }\n  return { outer, middle, center: traceless(center) };\n}\n\nfunction realResidual(rep, levels) {\n  const raw = realMaps(rep);\n  const outer = [], middle = [];\n  for (let i = 0; i < NB; i++) {\n    outer.push(matSub(raw.outer[i], matScale(eyeZ(N_OUTER), levels[i][0])));\n    middle.push(matSub(raw.middle[i], matScale(eyeZ(N_MIDDLE), levels[i][1])));\n  }\n  return { outer, middle, center: raw.center };\n}\n\n// 23 orthonormal Hermitian coordinates: 3 outer (1 each) + 3 middle (4) + 8.\nfunction packRealResidual(rep, levels) {\n  const r = realResidual(rep, levels);\n  const parts = [];\n  for (let i = 0; i < NB; i++) parts.push(...packHermitian(r.outer[i], OUTER_BASIS));\n  for (let i = 0; i < NB; i++) parts.push(...packHermitian(r.middle[i], MIDDLE_BASIS));\n  parts.push(...packHermitian(r.center, CENTER_BASIS));\n  return parts;\n}\n\nfunction realResidualNorm(rep, levels) {\n  return Math.hypot(...packRealResidual(rep, levels));\n}\n\nfunction branchTraces(rep) {\n  return rep.A.map((Ai, i) => {\n    const Bi = rep.B[i];\n    const T = matSub(matMul(Ai, matAdj(Ai)), matMul(matAdj(Bi), Bi));\n    return matTrace(T)[0];\n  });\n}\n\n// ---------------------------------------------------------------------------\n// geometry (V0 + V5)\n// ---------------------------------------------------------------------------\nfunction extractGeometry(rep, levels) {\n  const T = [], Q = [], q = [], K = [], Cf = [], Ff = [];\n  for (let i = 0; i < NB; i++) {\n    const X = rep.A[i], Y = rep.B[i];\n    const Ti = matSub(matMul(X, matAdj(X)), matMul(matAdj(Y), Y));\n    const t = matTrace(Ti)[0];\n    const Qi = matSub(Ti, matScale(eyeZ(3), t / 3));\n    T.push(Ti);\n    Q.push(Qi);\n    q.push(packHermitian(Qi, CENTER_BASIS));\n    const Ki = matMul(X, Y);\n    K.push(Ki);\n    Cf.push(matScale(matAdd(Ki, matAdj(Ki)), 0.5));\n    Ff.push(matScale(matSub(Ki, matAdj(Ki)), [0, -0.5]));\n  }\n  // closure sum_i Q_i and sum_i K_i\n  let closure = zerosZ(3, 3);\n  let closureK = zerosZ(3, 3);\n  for (let i = 0; i < NB; i++) {\n    closure = matAdd(closure, Q[i]);\n    closureK = matAdd(closureK, K[i]);\n  }\n  const pairwise = Q.map((Qi, i) => Q.map((Qj) => {\n    // trace(Qi Qj) is real\n    return matTrace(matMul(Qi, Qj))[0];\n  }));\n  return {\n    T, Q, q, K, C: Cf, F: Ff,\n    closure,\n    closureError: frobNorm(closure),\n    closureK,\n    closureKError: frobNorm(closureK),\n    edgeNorms: q.map((qi) => Math.hypot(...qi)),\n    pairwise,\n    branchTraces: T.map((Ti) => matTrace(Ti)[0]),\n    branchTracesExpected: levels.map((L) => L[0] + 2 * L[1]),\n  };\n}\n\n// trace(Q_i Q_j) = (||Q_k||^2 - ||Q_i||^2 - ||Q_j||^2)/2 for a closing triple.\nfunction triangleSideFromPairwise(pairwise, i, j, k) {\n  return (pairwise[k][k] - pairwise[i][i] - pairwise[j][j]) / 2;\n}\n\nreturn { NB, N_CENTER, N_MIDDLE, N_OUTER, N_GAUGE_REAL, c, cAdd, cSub, cMul, cNeg, cConj, cAbs2, cScale, zerosZ, eyeZ, shapeOf, matMul, matAdd, matSub, matScale, matAdj, matTrace, frob2, frobNorm, traceless, tracelessHermitianBasis, hermitianBasis, CENTER_BASIS, MIDDLE_BASIS, OUTER_BASIS, packHermitian, unpackHermitian, betaToLevel, makeRep, validateRep, gaugeAction, diagonalUnitaryGauge, complexResidual, complexResidualNorm, realMaps, realResidual, packRealResidual, realResidualNorm, branchTraces, extractGeometry, triangleSideFromPairwise };\n})();\n\nconst __ek_mod_chart = (function () {\nconst { makeRep, cMul, cSub, cScale, matScale } = __ek_mod_core_math;\n// chart.js — dependency-free, Node-safe port of the candidate finite\n// ``y = 0`` chart from sim/e6sim/charts.py (Milestone 1).\n//\n// The chart is the conversation's candidate family, with ``z = r exp(i theta)``:\n//\n//   a_1 = a_2 = a_3 = [[1], [0]]\n//\n//   A_1 = [[1, 0],        A_2 = [[0, 1],        A_3 = [[0, 1],\n//          [0, 1],               [1, 0],               [0, z],\n//          [0, 1]]               [0, 1]]               [1, 0]]\n//\n//   b_i = 0,   B_i = 0.\n//\n// All ``y`` matrices vanish, so the complex moment-map equations at tau = 0\n// hold identically. This says nothing about stability or coverage; those live\n// in sim/e6sim/stability.py and sim/e6sim/atlas.py.\n//\n// Complex numbers are 2-element arrays [re, im]; complex matrices are arrays\n// of rows of such pairs (the core-math convention).\n\n\n\n// Convert a nested array whose leaves are numbers or [re, im] pairs into the\n// core-math complex-matrix representation (leaves are always [re, im]).\nconst Z = (rows) => rows.map((r) => r.map((e) => (Array.isArray(e) ? [e[0], e[1]] : [e, 0])));\n\n// ---------------------------------------------------------------------------\n// chart matrices\n// ---------------------------------------------------------------------------\n// candidateY0Chart(z): z is a complex [re, im]. Returns a core-math rep\n// {a, A, b, B} of complex matrices with a_i = [[1],[0]], the three A_i above\n// with A_3 carrying z, and b = B = 0.\nfunction candidateY0Chart(z) {\n  const zc = Array.isArray(z) ? [z[0], z[1]] : [z, 0];\n  const a = [Z([[1], [0]]), Z([[1], [0]]), Z([[1], [0]])];\n  const A = [\n    Z([[1, 0], [0, 1], [0, 1]]),\n    Z([[0, 1], [1, 0], [0, 1]]),\n    Z([[0, 1], [0, zc], [1, 0]]),\n  ];\n  const b = [Z([[0, 0]]), Z([[0, 0]]), Z([[0, 0]])];\n  const B = [\n    Z([[0, 0, 0], [0, 0, 0]]),\n    Z([[0, 0, 0], [0, 0, 0]]),\n    Z([[0, 0, 0], [0, 0, 0]]),\n  ];\n  return makeRep(a, A, b, B);\n}\n\n// ---------------------------------------------------------------------------\n// convenience: the chart parameter z = r exp(i theta)\n// ---------------------------------------------------------------------------\n// chartZ(r, theta) -> the complex [re, im] = r (cos theta, sin theta).\nfunction chartZ(r, theta) {\n  return [r * Math.cos(theta), r * Math.sin(theta)];\n}\n\n// chartAt(r, theta) -> the chart rep at z = r exp(i theta).\nfunction chartAt(r, theta) {\n  return candidateY0Chart(chartZ(r, theta));\n}\n\n// Compact radial coordinate: z = r exp(i theta)/(1-r), 0 <= r <= 1.\n// Scale the second column of A_3 by 1-r before taking the endpoint. The\n// resulting map stays finite and rank two even at z=infinity. For r<1 this\n// is a change of basis in the third C^2, preserving its first basis vector.\nfunction compactChart(r, theta) {\n  if (!Number.isFinite(r) || r < 0 || r > 1 || !Number.isFinite(theta)) {\n    throw new RangeError(\"Expected 0 <= r <= 1 and finite theta.\");\n  }\n  const rep = candidateY0Chart(0);\n  rep.A[2] = Z([[0, 1 - r], [0, chartZ(r, theta)], [1, 0]]);\n  return rep;\n}\n\n// M5 transverse cotangent chart, matching sim/e6sim/transverse.py.\n// The trace pairing <dx/dz,Y>=B_3[1][1]=1 fixes its normalization.\n// BA=ab and sum AB=0 are polynomial identities for every complex z,w.\n// Complex moment-map validity does not assert stability or global coverage.\nfunction transverseChart(z, w = 1) {\n  const zc = Array.isArray(z) ? z : [z, 0];\n  const wc = Array.isArray(w) ? w : [w, 0];\n  if (!zc.concat(wc).every(Number.isFinite)) throw new RangeError(\"Expected finite complex z and w.\");\n  const rep = candidateY0Chart(zc);\n  const zz = cMul(zc, zc), neg = cScale(zc, -1);\n  const d = cSub(zz, zc);\n  rep.b = [Z([[0, cSub(zc, [1, 0])]]), Z([[0, d]]), Z([[0, d]])].map(m => matScale(m, wc));\n  rep.B = [\n    Z([[0, -1, zc], [0, neg, zc]]),\n    Z([[zz, 0, neg], [zc, 0, neg]]),\n    Z([[neg, zc, 0], [neg, 1, 0]])\n  ].map(m => matScale(m, wc));\n  return rep;\n}\n\n// Finite compact-gauge extension of M5. Set s=1-r, u=r exp(i theta),\n// z=u/s and w=s^2 eta, eta=t/(1-t) exp(i phi). Transform middle vertex 3\n// by diag(1,1/s): A_3 -> A_3 diag(1,s), b_3 -> b_3 diag(1,s),\n// B_3 -> diag(1,1/s) B_3. The formulas below are polynomial in s,u;\n// therefore they extend to r=1 without dividing by zero. This is a chosen\n// fiber trivialization, not a global coordinate atlas. Endpoint stability\n// and Morse-limit transitions require separate analysis; t=1 is not finite.\nfunction compactTransverseChart(r, theta, t = 0, phi = 0) {\n  const rep = compactChart(r, theta);\n  if (!Number.isFinite(t) || t < 0 || t >= 1 || !Number.isFinite(phi)) {\n    throw new RangeError(\"Expected 0 <= t < 1 and finite phi; t=1 requires a limit chart.\");\n  }\n  const s = 1 - r, u = chartZ(r, theta), su = cScale(u, s);\n  const uu = cMul(u, u), minusSU = cScale(su, -1), d = cSub(uu, su);\n  const eta = chartZ(t / (1 - t), phi);\n  rep.b = [Z([[0, cSub(su, [s * s, 0])]]), Z([[0, d]]), Z([[0, cScale(d, s)]])]\n    .map(m => matScale(m, eta));\n  rep.B = [\n    Z([[0, -s * s, su], [0, minusSU, su]]),\n    Z([[uu, 0, minusSU], [su, 0, minusSU]]),\n    Z([[minusSU, su, 0], [cScale(u, -1), s, 0]])\n  ].map(m => matScale(m, eta));\n  return rep;\n}\n\nreturn { candidateY0Chart, chartZ, chartAt, compactChart, transverseChart, compactTransverseChart };\n})();\n\nconst __ek_mod_limit_chart = (function () {\nconst { makeRep, cMul } = __ek_mod_core_math;\n// An actual E6 gauge-renormalized limit at z=1 (compact r=1/2, theta=0).\n// L=(1,1,1), p_i=e_i-L/3. In middle bases (e1,e1+e2),\n// g=P_L/lambda+(I-P_L), h=diag(1,1/lambda), q=1 give\n// lim lambda->infinity of z=1+v/lambda^2, w=lambda:\n// a=e1, A=[p_i,L], b=(0,v), B=[v L*/3; ell_i].\n// Multiplying every vertex gauge by lambda^(1/3) makes det(g)=1\n// without changing its action. Complex moment maps vanish identically.\n// v=0 is the fixed point; v is a new complex one-dimensional stratum\n// coordinate. This is one chart, not a global atlas or stability theorem.\n\n\nfunction concurrencyLimitChart(phi = 0, coordinate = [0, 0]) {\n  const v = Array.isArray(coordinate) ? coordinate : [coordinate, 0];\n  if (!Number.isFinite(phi) || v.length !== 2 || !v.every(Number.isFinite)) {\n    throw new RangeError(\"Expected finite phase and complex stratum coordinate.\");\n  }\n  const phase = [Math.cos(phi), Math.sin(phi)];\n  const value = cMul(v, phase);\n  const ell = [[0, -1, 1], [1, 0, -1], [-1, 1, 0]];\n  const a = ell.map(() => [[[1, 0]], [[0, 0]]]);\n  const A = ell.map((_, i) => ell.map((__, j) => [[(i === j ? 1 : 0) - 1 / 3, 0], [1, 0]]));\n  const b = ell.map(() => [[[0, 0], value.slice()]]);\n  const B = ell.map((row) => [row.map(() => [value[0] / 3, value[1] / 3]), row.map((x) => [x * phase[0], x * phase[1]])]);\n  return makeRep(a, A, b, B);\n}\n\nreturn { concurrencyLimitChart };\n})();\n\nconst __ek_mod_branch_charts = (function () {\nconst { makeRep, cMul, cSub, cScale } = __ek_mod_core_math;\n// Exact E6 long-arm atlas. Coordinates and gauges are derived in\n// journal/2026-10-21-stable-branches.txt. These charts satisfy mu_C=0;\n// their stable endpoints require the generic chamber gamma=(1,2.1,3).\n\nconst C = x => {\n  if (typeof x === 'number' && Number.isFinite(x)) return [x,0];\n  if (Array.isArray(x) && x.length===2 && x.every(v=>typeof v==='number' && Number.isFinite(v))) return [x[0],x[1]];\n  throw new RangeError('Expected a finite number or complex [real, imaginary] pair.');\n};\nfunction validateSide(side) {\n  if(side!==0 && side!==1 && side!=='zero' && side!=='infinity') throw new RangeError('Expected side 0, 1, zero, or infinity.');\n}\nconst M = rows => rows.map(row => row.map(C));\nconst mul = (a,b) => cMul(C(a), C(b));\nconst neg = a => cScale(C(a), -1);\nconst sub1 = a => cSub(C(a), [1,0]);\nfunction assemble(side, A, b, B) {\n  validateSide(side);\n  const rep = makeRep([M([[1],[0]]),M([[1],[0]]),M([[1],[0]])], A.map(M), b.map(M), B.map(M));\n  if (side === 'infinity' || side === 1) {\n    for (const key of ['a','A','b','B']) [rep[key][1],rep[key][2]]=[rep[key][2],rep[key][1]];\n    rep.A.forEach(m => { [m[1],m[2]]=[m[2],m[1]]; });\n    rep.B.forEach(m => m.forEach(row => { [row[1],row[2]]=[row[2],row[1]]; }));\n    // The reciprocal cotangent fiber has opposite sign. Keep this same\n    // normalization in every infinity chart so positive real gauges glue\n    // their reverse-arrow decorations continuously at the fixed endpoints.\n    for (const key of ['b','B']) rep[key]=rep[key].map(m=>m.map(row=>row.map(neg)));\n  }\n  return rep;\n}\n\n// z is the original z on side zero, and 1/z on side infinity.\n// Infinity swaps branches 2/3 and central e2/e3; its signed fiber convention\n// agrees with compactFirstLineChart at both real radial endpoints.\nfunction stableBranchChart(side, z=0, w=0) {\n  z=C(z); w=C(w); const zm=sub1(z), zz=mul(z,z);\n  const B=[[[0,neg(z),z],[0,neg(z),1]],[[z,0,-1],[z,0,neg(z)]],[[neg(z),zz,0],[neg(z),z,0]]];\n  return assemble(side,\n    [[[1,0],[0,1],[0,z]],[[0,1],[1,0],[0,1]],[[0,1],[0,1],[1,0]]],\n    [[[0,mul(mul(z,zm),w)]],[[0,mul(zm,w)]],[[0,mul(mul(z,zm),w)]]],\n    B.map(m=>m.map(row=>row.map(a=>mul(a,w)))));\n}\n\n// Blow-up chart s=1/w, v=z*w^2. C* weights: s=-1, v=2.\nfunction branchMiddleChart(side, s=0, v=0) {\n  s=C(s); v=C(v); const vs=mul(v,s), z=mul(vs,s), zm=sub1(z);\n  return assemble(side,\n    [[[1,0],[0,1],[0,vs]],[[0,1],[1,0],[0,1]],[[0,1],[0,s],[1,0]]],\n    [[[0,mul(v,zm)]],[[0,zm]],[[0,mul(vs,zm)]]],\n    [[[0,neg(v),vs],[0,neg(vs),1]],[[z,0,-1],[vs,0,neg(vs)]],[[neg(vs),mul(vs,vs),0],[neg(vs),v,0]]]);\n}\n\n// Next blow-up chart h=1/v, p=s*v^2. C* weights: h=-2, p=3.\nfunction branchTipChart(side, h=0, p=0) {\n  h=C(h); p=C(p); const ph=mul(p,h), ph2=mul(ph,h), p2h2=mul(ph,ph), z=mul(p2h2,h), zm=sub1(z);\n  return assemble(side,\n    [[[1,0],[0,1],[0,ph]],[[0,h],[1,0],[0,1]],[[0,1],[0,ph],[1,0]]],\n    [[[0,zm]],[[0,zm]],[[0,mul(p,zm)]]],\n    [[[0,-1,ph2],[0,neg(ph),1]],[[p2h2,0,-1],[p,0,neg(ph)]],[[neg(p),p2h2,0],[neg(ph),1,0]]]);\n}\n\n// Convention: g(lambda).rep=(x,lambda*y), including every vertex.\nfunction branchFixedGrading(side, stage=1) {\n  validateSide(side);\n  if(stage!==1 && stage!==2) throw new RangeError('Expected fixed-point stage 1 or 2.');\n  let center=stage===1?[0,1,0]:[2,1,0];\n  let middle=stage===1?[[0,1],[1,0],[0,0]]:[[2,1],[1,0],[0,2]];\n  let outer=stage===1?[0,1,0]:[2,1,0];\n  if(side==='infinity'||side===1) {\n    [center[1],center[2]]=[center[2],center[1]];\n    [middle[1],middle[2]]=[middle[2],middle[1]];\n    [outer[1],outer[2]]=[outer[2],outer[1]];\n  }\n  const result={center:{weights:center}};\n  for(let i=0;i<3;i++){ result['middle'+i]={weights:middle[i]};result['outer'+i]={weights:[outer[i]]}; }\n  return result;\n}\n\n// Homogeneous moving-first-line chart. A middle-1 basis change makes both\n// radial endpoints finite, including the reverse arrows. At the infinity\n// pole the side-1 local fiber is exp(2i theta) eta.\nfunction compactFirstLineChart(r, theta, t=0, phi=0) {\n  if(![r,theta,t,phi].every(Number.isFinite)||r<0||r>1||t<0||t>=1) throw new RangeError('Invalid compact coordinates.');\n  const s=1-r,u=[r*Math.cos(theta),r*Math.sin(theta)], su=mul(s,u), uu=mul(u,u), d=cSub(u,C(s));\n  const eta=[t/(1-t)*Math.cos(phi),t/(1-t)*Math.sin(phi)];\n  return assemble(0,\n    [[[1,0],[0,s],[0,u]],[[0,1],[1,0],[0,1]],[[0,1],[0,1],[1,0]]],\n    [[[0,mul(mul(mul(u,d),s),eta)]],[[0,mul(mul(s,d),eta)]],[[0,mul(mul(u,d),eta)]]],\n    [[[0,neg(su),su],[0,neg(u),s]],[[su,0,-s*s],[su,0,neg(su)]],[[neg(su),uu,0],[neg(su),su,0]]].map(m=>m.map(row=>row.map(a=>mul(a,eta)))));\n}\n\nreturn { stableBranchChart, branchMiddleChart, branchTipChart, branchFixedGrading, compactFirstLineChart };\n})();\n\nconst __ek_mod_fixed_point = (function () {\nconst { eyeZ, zerosZ, matMul, cAdd, cSub, cMul, cAbs2 } = __ek_mod_core_math;\n// C* fixedness witnesses for E6 representations, independent of stability.\n// Convention: g(lambda).rep = (a,A,lambda b,lambda B). In eigenbases of\n// g_v(lambda)=S_v diag(lambda^weights_v) S_v^-1, each nonzero arrow entry\n// has target weight minus source weight equal to its degree (x:0, y:1).\n// This integer grading proves equality for EVERY nonzero complex lambda,\n// not only sampled circle phases. Floating-point evaluation below checks\n// a supplied algebraic witness; small residuals alone are not exact proofs.\n// Common shifts of all vertex weights have no action. GL(3) at the center\n// modulo simultaneous scalars gives the same effective complex gauge as\n// SL(3); determinant normalization may require a finite covering parameter.\n\n\nconst divide = (a, b) => {\n  const d = cAbs2(b);\n  return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];\n};\nconst vertices = ['center', 'middle0', 'middle1', 'middle2', 'outer0', 'outer1', 'outer2'];\nconst dimensions = [3, 2, 2, 2, 1, 1, 1];\nfunction arrows(rep) {\n  const result = [];\n  for (let i = 0; i < 3; i++) {\n    result.push({ name: 'a' + i, source: 'outer' + i, target: 'middle' + i, degree: 0, matrix: rep.a[i] });\n    result.push({ name: 'A' + i, source: 'middle' + i, target: 'center', degree: 0, matrix: rep.A[i] });\n    result.push({ name: 'b' + i, source: 'middle' + i, target: 'outer' + i, degree: 1, matrix: rep.b[i] });\n    result.push({ name: 'B' + i, source: 'center', target: 'middle' + i, degree: 1, matrix: rep.B[i] });\n  }\n  return result;\n}\n\nfunction inverse(matrix) {\n  const n = matrix.length, identity = eyeZ(n);\n  const rows = matrix.map((row, i) => row.map(z => z.slice()).concat(identity[i]));\n  for (let col = 0; col < n; col++) {\n    let pivot = col;\n    for (let i = col + 1; i < n; i++) if (cAbs2(rows[i][col]) > cAbs2(rows[pivot][col])) pivot = i;\n    if (cAbs2(rows[pivot][col]) < 1e-28) throw new RangeError('Singular grading basis.');\n    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];\n    const value = rows[col][col];\n    rows[col] = rows[col].map(z => divide(z, value));\n    for (let i = 0; i < n; i++) if (i !== col) {\n      const factor = rows[i][col];\n      rows[i] = rows[i].map((z, j) => cSub(z, cMul(factor, rows[col][j])));\n    }\n  }\n  return rows.map(row => row.slice(n));\n}\n\nfunction zeroSectionGrading() {\n  const grading = {};\n  vertices.forEach((v, i) => { grading[v] = { weights: Array(dimensions[i]).fill(0), basis: eyeZ(dimensions[i]) }; });\n  return grading;\n}\n\nfunction concurrencyGrading() {\n  const grading = zeroSectionGrading();\n  grading.center = {\n    weights: [0, 0, 1],\n    basis: [[2 / 3, -1 / 3, 1], [-1 / 3, 2 / 3, 1], [-1 / 3, -1 / 3, 1]].map(row => row.map(x => [x, 0]))\n  };\n  for (let i = 0; i < 3; i++) grading['middle' + i].weights = [0, 1];\n  return grading;\n}\n\nfunction checkFixedPointGrading(rep, grading, tolerance = 1e-10) {\n  if (!(tolerance >= 0) || !Number.isFinite(tolerance)) throw new RangeError('Invalid tolerance.');\n  const bases = {}, inverses = {};\n  vertices.forEach((v, i) => {\n    const spec = grading[v], n = dimensions[i];\n    if (!spec || !Array.isArray(spec.weights) || spec.weights.length !== n || !spec.weights.every(Number.isSafeInteger)) {\n      throw new RangeError('Expected integer weights at ' + v);\n    }\n    const basis = spec.basis || eyeZ(n);\n    if (basis.length !== n || !basis.every(row => row.length === n && row.every(z => Array.isArray(z) && z.length === 2 && z.every(Number.isFinite)))) {\n      throw new RangeError('Invalid grading basis at ' + v);\n    }\n    bases[v] = basis;\n    inverses[v] = inverse(basis);\n  });\n  let residualSquared = 0, scaleSquared = 0;\n  const arrowResiduals = {};\n  for (const arrow of arrows(rep)) {\n    const transformed = matMul(matMul(inverses[arrow.target], arrow.matrix), bases[arrow.source]);\n    let squared = 0;\n    transformed.forEach((row, i) => row.forEach((value, j) => {\n      const mismatch = grading[arrow.target].weights[i] - grading[arrow.source].weights[j] - arrow.degree;\n      squared += mismatch * mismatch * cAbs2(value);\n      scaleSquared += cAbs2(value);\n    }));\n    arrowResiduals[arrow.name] = Math.sqrt(squared);\n    residualSquared += squared;\n  }\n  const residual = Math.sqrt(residualSquared), relativeResidual = residual / Math.max(1, Math.sqrt(scaleSquared));\n  return { passes: Number.isFinite(relativeResidual) && relativeResidual <= tolerance, residual, relativeResidual, arrowResiduals };\n}\n\n// Necessary condition, not a sufficient certificate: differentiation at 1\n// gives H_target M - M H_source = degree*M. Inconsistency rules out even\n// an arbitrary non-diagonal compensating gauge. Consistency need not supply\n// semisimple integral generators and is deliberately NOT called fixedness.\nfunction fixedPointInfinitesimalTest(rep, tolerance = 1e-10) {\n  if (!(tolerance > 0) || !Number.isFinite(tolerance)) throw new RangeError('Invalid tolerance.');\n  const offsets = {}, dims = {};\n  let count = 0;\n  vertices.forEach((v, i) => { offsets[v] = count; dims[v] = dimensions[i]; count += dimensions[i] ** 2; });\n  const equations = [];\n  for (const arrow of arrows(rep)) {\n    const M = arrow.matrix, nt = dims[arrow.target], ns = dims[arrow.source];\n    for (let i = 0; i < nt; i++) for (let j = 0; j < ns; j++) {\n      const row = zerosZ(1, count + 1)[0];\n      for (let k = 0; k < nt; k++) {\n        const index = offsets[arrow.target] + i * nt + k;\n        row[index] = cAdd(row[index], M[k][j]);\n      }\n      for (let k = 0; k < ns; k++) {\n        const index = offsets[arrow.source] + k * ns + j;\n        row[index] = cSub(row[index], M[i][k]);\n      }\n      row[count] = arrow.degree ? M[i][j].slice() : [0, 0];\n      const norm = Math.sqrt(row.reduce((s, z) => s + cAbs2(z), 0));\n      equations.push(norm > 0 ? row.map(z => [z[0] / norm, z[1] / norm]) : row);\n    }\n  }\n  let rank = 0;\n  for (let col = 0; col < count; col++) {\n    let pivot = rank;\n    for (let i = rank; i < equations.length; i++) if (cAbs2(equations[i][col]) > cAbs2(equations[pivot][col])) pivot = i;\n    if (Math.sqrt(cAbs2(equations[pivot][col])) <= tolerance) continue;\n    [equations[rank], equations[pivot]] = [equations[pivot], equations[rank]];\n    const value = equations[rank][col];\n    equations[rank] = equations[rank].map(z => divide(z, value));\n    for (let i = rank + 1; i < equations.length; i++) {\n      const factor = equations[i][col];\n      equations[i] = equations[i].map((z, j) => cSub(z, cMul(factor, equations[rank][j])));\n    }\n    rank++;\n  }\n  const obstruction = equations.slice(rank).reduce((max, row) => Math.max(max, Math.sqrt(cAbs2(row[count]))), 0);\n  return { consistent: Number.isFinite(obstruction) && obstruction <= tolerance, rank, obstruction };\n}\n\nreturn { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading, fixedPointInfinitesimalTest };\n})();\n\nconst __ek_mod_e6_levels = (function () {\n// The frozen solver fixture and the nearby regular chamber are deliberately\n// separate. A zero complex moment map or a fixed grading does not imply stability.\nconst E6_FIXTURE_LEVELS = [[3, 1], [3, 2], [3, 3]];\nconst E6_REGULAR_LEVEL_NUMERATORS = [[30, 10], [30, 21], [30, 30]];\nconst E6_REGULAR_LEVEL_DENOMINATOR = 10;\nconst E6_REGULAR_LEVELS = E6_REGULAR_LEVEL_NUMERATORS.map(row => row.map(value => value / E6_REGULAR_LEVEL_DENOMINATOR));\n\n// Positive real roots d bounded by the affine null root (3;2,2,2;1,1,1).\n// q(d)=1 is the simply-laced real-root condition here. The 72 roots occur in\n// complementary pairs d,delta-d, describing 36 finite E6 root hyperplanes.\nfunction e6BoundedRealRoots() {\n  const roots = [];\n  for (let center = 0; center <= 3; center++) {\n    for (let bits = 0; bits < 8; bits++) for (let ternary = 0; ternary < 27; ternary++) {\n      const outer = [bits & 1, (bits >> 1) & 1, (bits >> 2) & 1];\n      const middle = [ternary % 3, Math.floor(ternary / 3) % 3, Math.floor(ternary / 9)];\n      let q = center * center;\n      for (let i = 0; i < 3; i++) q += outer[i] ** 2 + middle[i] ** 2 - middle[i] * (outer[i] + center);\n      if (q === 1) roots.push({ center, middle, outer });\n    }\n  }\n  return roots;\n}\n\nfunction e6RootWallAudit(levels, tolerance = 1e-10) {\n  if (!Array.isArray(levels) || levels.length !== 3 || levels.some(row =>\n    !Array.isArray(row) || row.length !== 2 || !row.every(Number.isFinite)) ||\n    !Number.isFinite(tolerance) || tolerance < 0) throw new RangeError('Expected three finite outer/middle levels and a nonnegative tolerance.');\n  const total = levels.reduce((s, row) => s + row[0] + 2 * row[1], 0);\n  const roots = e6BoundedRealRoots().map(root => {\n    const weight = levels.reduce((s, row, i) => s + row[0] * root.outer[i] + row[1] * root.middle[i], -total * root.center / 3);\n    return { center: root.center, middle: root.middle, outer: root.outer, weight };\n  });\n  const walls = roots.filter(root => Math.abs(root.weight) <= tolerance);\n  return { roots, walls, regular: walls.length === 0, minAbsWeight: Math.min(...roots.map(root => Math.abs(root.weight))) };\n}\n\nreturn { E6_FIXTURE_LEVELS, E6_REGULAR_LEVEL_NUMERATORS, E6_REGULAR_LEVEL_DENOMINATOR, E6_REGULAR_LEVELS, e6BoundedRealRoots, e6RootWallAudit };\n})();\n\nconst __ek_mod_e6_atlas = (function () {\nconst { concurrencyLimitChart } = __ek_mod_limit_chart;\nconst { compactFirstLineChart, branchMiddleChart, branchTipChart, branchFixedGrading } = __ek_mod_branch_charts;\nconst { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading } = __ek_mod_fixed_point;\n// Pure control-to-chart dispatch, shared by the widget and endpoint tests.\n// The explicit long-arm charts use E6_REGULAR_LEVELS; frozen fixture levels\n// remain a separate wall-level test case. Portrait coordinates are schematic.\n\n\n\n\n// Exact endpoint availability in this atlas, shared with the compact t control.\nfunction e6HasInfinityLimit(parameters) {\n  const {r, theta, outgoing} = parameters;\n  const sphere = parameters.sphere === undefined ? 0 : parameters.sphere;\n  return !outgoing && (((r === 0 || r === 1) && (sphere === 0 || sphere === 1)) ||\n    (r === .5 && theta === 0 && sphere === 0));\n}\n\nfunction e6AtlasPoint(parameters) {\n  const { r, theta, t, phi } = parameters;\n  const sphere = parameters.sphere === undefined ? 0 : parameters.sphere, outgoing = !!parameters.outgoing;\n  if (![r, theta, t, phi].every(Number.isFinite) || r < 0 || r > 1 || t < 0 || t > 1 ||\n    !Number.isInteger(sphere) || sphere < 0 || sphere > 1) throw new RangeError('Invalid E6 coordinates.');\n  const longArm = r === 0 || r === 1;\n  const shortArm = r === 0.5 && theta === 0;\n  let rep, grading = null, view = { firstLine: true };\n  const localPhase = r === 1 ? phi + 2 * theta : phi;\n  const polar = power => {\n    const magnitude = Math.pow(t / (1 - t), power);\n    return [magnitude * Math.cos(power * localPhase), magnitude * Math.sin(power * localPhase)];\n  };\n  if (longArm) {\n    const side = r === 0 ? 'zero' : 'infinity';\n    view.realFlags = sphere > 0 || outgoing || t === 1;\n    if (outgoing) {\n      if (sphere !== 1 || t === 1) throw new RangeError('No finite chart beyond the outgoing tip.');\n      rep = branchTipChart(side, 0, polar(3));\n      if (t === 0) grading = branchFixedGrading(side, 2);\n    } else if (t === 1) {\n      rep = sphere === 0 ? branchMiddleChart(side) : branchTipChart(side);\n      grading = branchFixedGrading(side, sphere + 1);\n    } else if (sphere === 0) {\n      rep = compactFirstLineChart(r, theta, t, phi);\n      view.centralFlow = { r, t };\n      if (t === 0) grading = zeroSectionGrading();\n    } else {\n      rep = branchMiddleChart(side, 0, polar(2));\n      view.branchGauge = { side, stage: 1, magnitude: Math.pow(t / (1 - t), 2) };\n      if (t === 0) grading = branchFixedGrading(side, 1);\n    }\n  } else if (shortArm && (outgoing || t === 1)) {\n    if (sphere !== 0 || (outgoing && t === 1)) throw new RangeError('No finite chart beyond the outgoing tip.');\n    rep = concurrencyLimitChart(0, outgoing ? polar(2) : 0);\n    view.concurrencyProgress = 1;\n    if (!outgoing || t === 0) grading = concurrencyGrading();\n  } else {\n    if (sphere !== 0 || outgoing || t === 1) throw new RangeError('No chart at this flow coordinate.');\n    rep = compactFirstLineChart(r, theta, t, phi);\n    view.centralFlow = { r, t };\n    if (shortArm) view.concurrencyProgress = t;\n    if (t === 0) grading = zeroSectionGrading();\n  }\n  // No endpoint is accepted solely because a marker reached a drawn tip.\n  if (grading && !checkFixedPointGrading(rep, grading).passes) throw new Error('Invalid fixed-point grading.');\n  return { rep, grading, view };\n}\n\nreturn { e6HasInfinityLimit, e6AtlasPoint };\n})();\n\nconst __ek_mod_solver = (function () {\nconst { NB, N_GAUGE_REAL, CENTER_BASIS, MIDDLE_BASIS, OUTER_BASIS, zerosZ, eyeZ, matMul, matScale, matAdj, frob2, frobNorm, unpackHermitian, packRealResidual, complexResidualNorm, realResidual, makeRep } = __ek_mod_core_math;\n// solver.js — dependency-free, Node-safe port of the Milestone-2\n// positive-Hermitian-gauge real-moment-map solver.\n//\n// Mirrors the verified Python reference `sim/e6sim/hermitian_solver.py`. Given\n// an arbitrary complex-moment-map-zero representative and real levels it finds\n// a positive gauge\n//\n//   g   = exp(S_center / 2)   (traceless Hermitian 3x3, det g = 1)\n//   h_i = exp(S_i / 2)        (Hermitian 2x2)\n//   q_i = exp(s_i / 2)        (real scalar)\n//\n// putting the Hermitian real moment map at the level. There are\n// 8 + 3*4 + 3 = 23 real unknowns, packed in the Frobenius-orthonormal Hermitian\n// bases of core-math (8 central, 4 per middle, 1 per outer).\n//\n// The positive gauge is NOT unitary, so core-math's `gaugeAction` (which uses\n// the adjoint as the inverse) is NOT valid here. This module applies the true\n// complex inverses:\n//\n//   a_i -> h_i a_i q_i^{-1},   A_i -> g A_i h_i^{-1},\n//   b_i -> q_i b_i h_i^{-1},   B_i -> h_i B_i g^{-1}.\n//\n// Success is reported only after *directly recomputing* the packed real\n// residual, the complex residual, finite/positive-definite gauge data, and\n// det(H_center) = 1. The optimizer's own flag is never trusted.\n//\n// Complex numbers are 2-element arrays [re, im]; complex matrices are arrays\n// of rows of such pairs (the core-math convention).\n\n\n\n// ---------------------------------------------------------------------------\n// complex scalar helpers (arrays [re, im])\n// ---------------------------------------------------------------------------\nconst sSub = (a, b) => [a[0] - b[0], a[1] - b[1]];\nconst sMul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];\nconst sConj = (a) => [a[0], -a[1]];\nconst sAbs = (a) => Math.hypot(a[0], a[1]);\nconst sInv = (a) => {\n  const d = a[0] * a[0] + a[1] * a[1];\n  return [a[0] / d, -a[1] / d];\n};\n\n// ---------------------------------------------------------------------------\n// complex matrix inverse (general, Gauss-Jordan with partial pivoting)\n// ---------------------------------------------------------------------------\nfunction matInv(M) {\n  const n = M.length;\n  const aug = M.map((row, i) =>\n    row.map((e) => [e[0], e[1]]).concat(eyeZ(n)[i])\n  );\n  for (let col = 0; col < n; col++) {\n    let piv = col;\n    let best = sAbs(aug[col][col]);\n    for (let r = col + 1; r < n; r++) {\n      const v = sAbs(aug[r][col]);\n      if (v > best) {\n        best = v;\n        piv = r;\n      }\n    }\n    if (!(best > 1e-300)) throw new Error(\"matInv: singular matrix\");\n    if (piv !== col) {\n      const t = aug[col];\n      aug[col] = aug[piv];\n      aug[piv] = t;\n    }\n    const pivInv = sInv(aug[col][col]);\n    for (let j = 0; j < 2 * n; j++) aug[col][j] = sMul(aug[col][j], pivInv);\n    for (let r = 0; r < n; r++) {\n      if (r === col) continue;\n      const f = aug[r][col];\n      if (f[0] === 0 && f[1] === 0) continue;\n      for (let j = 0; j < 2 * n; j++)\n        aug[r][j] = sSub(aug[r][j], sMul(f, aug[col][j]));\n    }\n  }\n  return aug.map((row) => row.slice(n));\n}\n\n// ---------------------------------------------------------------------------\n// Hermitian eigendecomposition via complex Jacobi rotations.\n// Returns { vals: number[], U } with H = U diag(vals) U^*.\n// ---------------------------------------------------------------------------\nfunction jacobiHermitian(H) {\n  const n = H.length;\n  let A = H.map((row) => row.map((e) => [e[0], e[1]]));\n  let U = eyeZ(n);\n  for (let sweep = 0; sweep < 80; sweep++) {\n    let off = 0;\n    for (let p = 0; p < n; p++)\n      for (let q = p + 1; q < n; q++) {\n        const h = A[p][q];\n        off += h[0] * h[0] + h[1] * h[1];\n      }\n    if (off < 1e-28) break;\n    for (let p = 0; p < n; p++)\n      for (let q = p + 1; q < n; q++) {\n        const hpq = A[p][q];\n        const abs = sAbs(hpq);\n        if (abs < 1e-300) continue;\n        const a = A[p][p][0];\n        const b = A[q][q][0];\n        const d = abs;\n        const tau = (b - a) / (2 * d);\n        let t;\n        if (tau >= 0) t = 1 / (tau + Math.sqrt(1 + tau * tau));\n        else t = -1 / (-tau + Math.sqrt(1 + tau * tau));\n        const c = 1 / Math.sqrt(1 + t * t);\n        const s = t * c;\n        const phi = [hpq[0] / d, hpq[1] / d];\n        const phic = sConj(phi);\n        const V = eyeZ(n);\n        V[p][p] = [c, 0];\n        V[p][q] = [s, 0];\n        V[q][p] = sMul([-s, 0], phic);\n        V[q][q] = sMul([c, 0], phic);\n        A = matMul(matMul(matAdj(V), A), V);\n        U = matMul(U, V);\n      }\n  }\n  const vals = A.map((row, i) => row[i][0]);\n  return { vals, U };\n}\n\n// exp(H) for Hermitian H (dependency-free, real-symmetric-eigenvalue route).\nfunction expmHermitian(H) {\n  const { vals, U } = jacobiHermitian(H);\n  const n = H.length;\n  const E = eyeZ(n);\n  for (let i = 0; i < n; i++) E[i][i] = [Math.exp(vals[i]), 0];\n  return matMul(matMul(U, E), matAdj(U));\n}\n\n// Eigenvalues of a Hermitian matrix (real, ascending not guaranteed).\nfunction hermitianEigenvalues(H) {\n  return jacobiHermitian(H).vals.slice();\n}\n\n// determinant of a small complex matrix (Gauss elimination)\nfunction matDet(M) {\n  const n = M.length;\n  const A = M.map((row) => row.map((e) => [e[0], e[1]]));\n  let det = [1, 0];\n  for (let col = 0; col < n; col++) {\n    let piv = col;\n    let best = sAbs(A[col][col]);\n    for (let r = col + 1; r < n; r++) {\n      const v = sAbs(A[r][col]);\n      if (v > best) {\n        best = v;\n        piv = r;\n      }\n    }\n    if (best < 1e-300) return [0, 0];\n    if (piv !== col) {\n      const t = A[col];\n      A[col] = A[piv];\n      A[piv] = t;\n      det = [-det[0], -det[1]];\n    }\n    det = sMul(det, A[col][col]);\n    const inv = sInv(A[col][col]);\n    for (let r = col + 1; r < n; r++) {\n      const f = sMul(A[r][col], inv);\n      for (let j = col; j < n; j++) A[r][j] = sSub(A[r][j], sMul(f, A[col][j]));\n    }\n  }\n  return det;\n}\n\n// ---------------------------------------------------------------------------\n// packing / unpacking of the 23 log-gauge unknowns\n//   layout: [center(8)] [middle_i(4) x3] [outer_i(1) x3]\n// (mirrors hermitian_solver.py's slices)\n// ---------------------------------------------------------------------------\nconst CENTER_SLICE = [0, 8];\nconst MIDDLE_START = 8;\nconst OUTER_START = 8 + 4 * NB; // 20\n\nfunction middleSlice(i) {\n  return [MIDDLE_START + 4 * i, MIDDLE_START + 4 * i + 4];\n}\nfunction outerSlice(i) {\n  return [OUTER_START + i, OUTER_START + i + 1];\n}\n\n// Flatten the ``logGauge`` object returned by the solver into a length-23\n// real vector in the same coordinate layout the solver seeds from:\n//   [center(8)] [middle_0(4) middle_1(4) middle_2(4)] [outer_0(1) ... outer_2(1)].\nfunction flatLogGauge(logGauge) {\n  const out = [];\n  out.push(...logGauge.center);\n  for (let i = 0; i < NB; i++) out.push(...logGauge.middle[i]);\n  for (let i = 0; i < NB; i++) out.push(...logGauge.outer[i]);\n  return out;\n}\n\n// Normalize a warm start given as either a flat length-23 array or a solver\n// ``logGauge`` object into a flat array, or null when unusable.\nfunction normalizeWarmGauge(initialLogGauge) {\n  if (initialLogGauge === undefined || initialLogGauge === null) return null;\n  let warm;\n  if (Array.isArray(initialLogGauge)) warm = initialLogGauge.slice();\n  else if (typeof initialLogGauge === \"object\") warm = flatLogGauge(initialLogGauge);\n  else return null;\n  if (warm.length !== N_GAUGE_REAL || !warm.every((v) => isFinite(v))) return null;\n  return warm;\n}\n\nfunction rawFromCoords(x) {\n  const center = unpackHermitian(x.slice(CENTER_SLICE[0], CENTER_SLICE[1]), CENTER_BASIS);\n  const middle = [];\n  const outer = [];\n  for (let i = 0; i < NB; i++) {\n    const [s, e] = middleSlice(i);\n    middle.push(unpackHermitian(x.slice(s, e), MIDDLE_BASIS));\n    outer.push(x[outerSlice(i)[0]]);\n  }\n  return { center, middle, outer };\n}\n\n// positive gauge (g, h, q): g = exp(S/2), h_i = exp(S_i/2), q_i = exp(s_i/2)\nfunction positiveGauge(raw) {\n  const g = expmHermitian(matScale(raw.center, 0.5));\n  const h = raw.middle.map((S) => expmHermitian(matScale(S, 0.5)));\n  const q = raw.outer.map((s) => Math.exp(0.5 * s));\n  return { g, h, q };\n}\n\n// H_v = g_v^* g_v = exp(S_v)\nfunction HMatrices(raw) {\n  return {\n    center: expmHermitian(raw.center),\n    middle: raw.middle.map((S) => expmHermitian(S)),\n    outer: raw.outer.map((s) => Math.exp(s)),\n  };\n}\n\n// true-inverse gauge action (positive gauge is not unitary).\n// `q` is an array of complex scalars (one per branch). Exported so tests and\n// callers can build genuinely complex (non-unitary) gauge transforms.\nfunction applyComplexGauge(rep, g, h, q) {\n  return applyGaugeWithInverses(rep, g, h, q, matInv(g), h.map(matInv));\n}\n\nfunction applyGaugeWithInverses(rep, g, h, q, ginv, hInv) {\n  const a = [];\n  const A = [];\n  const b = [];\n  const B = [];\n  for (let i = 0; i < NB; i++) {\n    const hi = h[i];\n    const hiInv = hInv[i];\n    const qi = Array.isArray(q[i]) ? q[i] : [q[i], 0];\n    const qInv = sInv(qi);\n    a.push(matScale(matMul(hi, rep.a[i]), qInv));\n    A.push(matMul(matMul(g, rep.A[i]), hiInv));\n    b.push(matScale(matMul(rep.b[i], hiInv), qi));\n    B.push(matMul(matMul(hi, rep.B[i]), ginv));\n  }\n  return makeRep(a, A, b, B);\n}\n\n// frobenius_sq of the whole representation\nfunction repFrob2(rep) {\n  let s = 0;\n  for (const list of [rep.a, rep.A, rep.b, rep.B])\n    for (const M of list) s += frob2(M);\n  return s;\n}\n\nfunction allFiniteRep(rep) {\n  for (const list of [rep.a, rep.A, rep.b, rep.B])\n    for (const M of list)\n      for (const row of M) for (const e of row) if (!isFinite(e[0]) || !isFinite(e[1])) return false;\n  return true;\n}\n\n// ---------------------------------------------------------------------------\n// residual\n// ---------------------------------------------------------------------------\nfunction makePackedResidual(rep, levels) {\n  // A finite-difference column changes only one log-gauge block. Reuse the\n  // other exponentials and inverses, with exact keys and solve-local lifetime.\n  const cache = new Array(4);\n  function block(x, slot, start, count, basis) {\n    const old = cache[slot];\n    if (old && old.coords.every((v, i) => v === x[start + i])) return old;\n    const coords = x.slice(start, start + count);\n    const gauge = expmHermitian(matScale(unpackHermitian(coords, basis), .5));\n    const inverse = matInv(gauge);\n    const entry = { coords, gauge, inverse };\n    cache[slot] = entry;\n    return entry;\n  }\n  return function (x) {\n    try {\n      const center = block(x, 0, 0, 8, CENTER_BASIS);\n      const middle = [0, 1, 2].map(i => block(x, i + 1, MIDDLE_START + 4 * i, 4, MIDDLE_BASIS));\n      const q = [0, 1, 2].map(i => Math.exp(.5 * x[OUTER_START + i]));\n      const gauged = applyGaugeWithInverses(rep, center.gauge, middle.map(b => b.gauge), q,\n        center.inverse, middle.map(b => b.inverse));\n      const r = packRealResidual(gauged, levels);\n      if (!r.every((v) => isFinite(v))) return r.map(() => 1e8);\n      return r;\n    } catch (e) {\n      return new Array(N_GAUGE_REAL).fill(1e8);\n    }\n  };\n}\n\nfunction levelScale(rep, levels) {\n  const lvlNorm = Math.sqrt(levels.reduce((s, row) => s + row[0] * row[0] + row[1] * row[1], 0));\n  return Math.max(1.0, lvlNorm, Math.sqrt(repFrob2(rep)));\n}\n\nfunction perVertexResiduals(solved, levels) {\n  const r = realResidual(solved, levels);\n  return {\n    outer: r.outer.map((M) => frobNorm(M)),\n    middle: r.middle.map((M) => frobNorm(M)),\n    center: frobNorm(r.center),\n  };\n}\n\n// ---------------------------------------------------------------------------\n// small dense linear algebra for the LM step\n// ---------------------------------------------------------------------------\nfunction sumsq(v) {\n  let s = 0;\n  for (const x of v) s += x * x;\n  return s;\n}\n\nfunction fdJacobian(f, x, r, baseStep) {\n  const n = x.length;\n  const m = r.length;\n  const J = Array.from({ length: m }, () => new Array(n).fill(0));\n  for (let j = 0; j < n; j++) {\n    const h = baseStep * (1 + Math.abs(x[j]));\n    const xp = x.slice();\n    xp[j] += h;\n    const rp = f(xp);\n    for (let i = 0; i < m; i++) J[i][j] = (rp[i] - r[i]) / h;\n  }\n  return J;\n}\n\n// solve A z = b for a small dense real system (Gaussian elimination)\nfunction solveLinear(A, b) {\n  const n = A.length;\n  const M = A.map((row, i) => row.slice().concat([b[i]]));\n  for (let col = 0; col < n; col++) {\n    let piv = col;\n    let best = Math.abs(M[col][col]);\n    for (let r = col + 1; r < n; r++) {\n      const v = Math.abs(M[r][col]);\n      if (v > best) {\n        best = v;\n        piv = r;\n      }\n    }\n    if (!(best > 1e-300)) return null;\n    if (piv !== col) {\n      const t = M[col];\n      M[col] = M[piv];\n      M[piv] = t;\n    }\n    for (let r = 0; r < n; r++) {\n      if (r === col) continue;\n      const f = M[r][col] / M[col][col];\n      if (f === 0) continue;\n      for (let j = col; j <= n; j++) M[r][j] -= f * M[col][j];\n    }\n  }\n  const z = new Array(n);\n  for (let i = 0; i < n; i++) z[i] = M[i][n] / M[i][i];\n  return z;\n}\n\n// ---------------------------------------------------------------------------\n// Levenberg-Marquardt least squares (finite-difference Jacobian)\n// ---------------------------------------------------------------------------\nfunction levMar(f, x0, opts) {\n  const n = x0.length;\n  let x = x0.slice();\n  let r = f(x);\n  let cost = sumsq(r);\n  let lambda = opts.lambda0;\n  let nfev = 1;\n  let iter = 0;\n  let status = \"iteration_limit\";\n  const maxIter = opts.maxIter;\n  let trust = opts.trust0 || 2.0;\n\n  for (iter = 0; iter < maxIter; iter++) {\n    // Reuse the accepted residual before paying for another full Jacobian.\n    // buildResult still checks complex equations and positivity independently.\n    if (cost <= opts.residualCost) { status = \"residual_tol\"; break; }\n    const J = fdJacobian(f, x, r, opts.fdStep);\n    nfev += n;\n    const g = new Array(n).fill(0);\n    const N = Array.from({ length: n }, () => new Array(n).fill(0));\n    for (let i = 0; i < r.length; i++) {\n      const Ji = J[i];\n      for (let a = 0; a < n; a++) {\n        g[a] += Ji[a] * r[i];\n        for (let b = a; b < n; b++) N[a][b] += Ji[a] * Ji[b];\n      }\n    }\n    for (let a = 0; a < n; a++) for (let b = 0; b < a; b++) N[a][b] = N[b][a];\n\n    let maxDiag = 0;\n    for (let a = 0; a < n; a++) maxDiag = Math.max(maxDiag, N[a][a]);\n    const floor = maxDiag > 0 ? maxDiag * 1e-10 : 1.0;\n\n    const gn = Math.sqrt(sumsq(g));\n    if (gn < opts.gtol) {\n      status = \"gradient_tol\";\n      break;\n    }\n\n    let accepted = false;\n    for (let trial = 0; trial < 24; trial++) {\n      const Nl = N.map((row, a) =>\n        row.map((v, b) => (a === b ? v + lambda * Math.max(N[a][a], floor) : v))\n      );\n      let dx = solveLinear(Nl, g.map((v) => -v));\n      if (!dx || !dx.every((v) => isFinite(v))) {\n        lambda *= 10;\n        if (lambda > 1e16) break;\n        continue;\n      }\n      // trust-region step cap\n      let dn = Math.sqrt(sumsq(dx));\n      if (dn > trust) {\n        const sc = trust / dn;\n        dx = dx.map((v) => v * sc);\n        dn = trust;\n      }\n      const xn = x.map((v, a) => v + dx[a]);\n      const rn = f(xn);\n      nfev++;\n      const cn = sumsq(rn);\n      if (isFinite(cn) && cn < cost) {\n        const relStep = dn / (1 + Math.sqrt(sumsq(x)));\n        const relCost = (cost - cn) / Math.max(cost, 1e-300);\n        x = xn;\n        r = rn;\n        cost = cn;\n        lambda = Math.max(lambda * 0.3, 1e-16);\n        trust = Math.min(trust * 1.5, 5.0);\n        accepted = true;\n        if (relStep < opts.xtol || relCost < opts.ftol) {\n          status = \"converged\";\n          return { x, r, cost, iter: iter + 1, nfev, status };\n        }\n        break;\n      }\n      lambda *= 8;\n      if (lambda > 1e16) break;\n    }\n    if (!accepted) {\n      if (trust > 1e-8) {\n        trust *= 0.25;\n        lambda = opts.lambda0;\n        continue;\n      }\n      status = \"no_descent\";\n      break;\n    }\n  }\n  return { x, r, cost, iter, nfev, status };\n}\n\nfunction multiStartSeeds() {\n  const seeds = [new Array(N_GAUGE_REAL).fill(0)];\n  const modes = [\n    (sc, k) => sc * Math.sin(1.7 * (k + 1)),\n    (sc, k) => sc * Math.cos(0.9 * (k + 2)),\n    (sc, k) => sc * Math.sin(0.4 * (k + 1) * (k + 2)),\n  ];\n  const scales = [0.1, 0.3, 0.6];\n  for (let s = 0; s < scales.length; s++)\n    seeds.push(Array.from({ length: N_GAUGE_REAL }, (_, k) => modes[s](scales[s], k)));\n  return seeds;\n}\n\n// ---------------------------------------------------------------------------\n// public solver\n// ---------------------------------------------------------------------------\nconst DEFAULT_OPTIONS = {\n  abs_tol: 1e-9,\n  rel_tol: 1e-9,\n  complex_tol: 1e-8,\n  det_tol: 1e-8,\n  pos_tol: 0.0,\n  maxIter: 250,\n  max_nfev: 20000,\n  ftol: 1e-14,\n  xtol: 1e-14,\n  gtol: 1e-14,\n  fdStep: 1e-6,\n  lambda0: 1e-3,\n  trust0: 2.0,\n  multistart: true,\n};\n\nfunction solveRealMomentMap(rep, levels, options = {}) {\n  const opts = Object.assign({}, DEFAULT_OPTIONS, options);\n  const levelsArr = levels.map((row) => [Number(row[0]), Number(row[1])]);\n\n  const finiteInput =\n    levelsArr.every((row) => isFinite(row[0]) && isFinite(row[1])) && allFiniteRep(rep);\n\n  if (!finiteInput) {\n    return buildResult(rep, levelsArr, new Array(N_GAUGE_REAL).fill(0), opts, {\n      status: \"invalid_input\",\n      iter: 0,\n      nfev: 0,\n    });\n  }\n\n  const f = makePackedResidual(rep, levelsArr);\n  const seeds = opts.multistart ? multiStartSeeds() : [new Array(N_GAUGE_REAL).fill(0)];\n\n  // Warm start, when supplied, is the FIRST seed; the existing multi-start\n  // seeds remain as fallbacks. Absent option -> behaviour is unchanged.\n  const warm = normalizeWarmGauge(options.initialLogGauge);\n  if (warm) seeds.unshift(warm);\n\n  let best = null;\n  let totalNfev = 0;\n  // Respect both acceptance bars, including callers with a tighter relative\n  // tolerance. Meeting them also makes further fallback seeds redundant.\n  const residualTol = Math.min(opts.abs_tol, opts.rel_tol * levelScale(rep, levelsArr));\n  const successCost = residualTol * residualTol;\n  for (const seed of seeds) {\n    if (totalNfev >= opts.max_nfev) break;\n    const res = levMar(f, seed, {\n      lambda0: opts.lambda0,\n      trust0: opts.trust0,\n      maxIter: opts.maxIter,\n      ftol: opts.ftol,\n      xtol: opts.xtol,\n      gtol: opts.gtol,\n      fdStep: opts.fdStep,\n      residualCost: successCost,\n    });\n    totalNfev += res.nfev;\n    if (best === null || res.cost < best.cost) best = res;\n    if (best.cost <= successCost) break; // residual success bar met\n  }\n\n  return buildResult(rep, levelsArr, best.x, opts, {\n    status: best.status,\n    iter: best.iter,\n    nfev: totalNfev,\n  });\n}\n\nfunction buildResult(rep, levels, x, opts, meta) {\n  let solvedRep;\n  let raw;\n  let H;\n  let realPacked;\n  let complexNorm;\n  let perVertex;\n  let gaugeFinite = false;\n  let gaugePositive = false;\n  let detH = [NaN, NaN];\n\n  try {\n    raw = rawFromCoords(x);\n    const { g, h, q } = positiveGauge(raw);\n    solvedRep = applyComplexGauge(rep, g, h, q);\n    H = HMatrices(raw);\n    realPacked = packRealResidual(solvedRep, levels);\n    complexNorm = complexResidualNorm(solvedRep);\n    perVertex = perVertexResiduals(solvedRep, levels);\n    detH = matDet(H.center);\n    const mats = [H.center, ...H.middle, ...H.outer.map((v) => [[[v, 0]]])];\n    gaugeFinite = mats.every((M) =>\n      M.every((row) => row.every((e) => isFinite(e[0]) && isFinite(e[1])))\n    );\n    gaugePositive = true;\n    for (const M of [H.center, ...H.middle]) {\n      const eigs = hermitianEigenvalues(M);\n      if (!eigs.every((v) => isFinite(v)) || Math.min(...eigs) <= opts.pos_tol) {\n        gaugePositive = false;\n        break;\n      }\n    }\n    if (gaugePositive && H.outer.some((v) => !(v > opts.pos_tol))) gaugePositive = false;\n  } catch (e) {\n    solvedRep = rep;\n    H = { center: zerosZ(3, 3), middle: [eyeZ(2), eyeZ(2), eyeZ(2)], outer: [1, 1, 1] };\n    realPacked = packRealResidual(rep, levels);\n    complexNorm = complexResidualNorm(rep);\n    perVertex = perVertexResiduals(rep, levels);\n  }\n\n  const realNorm = Math.hypot(...realPacked);\n  const scale = levelScale(rep, levels);\n  const realRel = realNorm / scale;\n  const detDev = Math.abs(Math.hypot(detH[0] - 1, detH[1]));\n\n  const success =\n    realNorm <= opts.abs_tol &&\n    realRel <= opts.rel_tol &&\n    complexNorm <= opts.complex_tol &&\n    gaugeFinite &&\n    gaugePositive &&\n    detDev <= opts.det_tol;\n\n  const logGauge = {\n    center: x.slice(CENTER_SLICE[0], CENTER_SLICE[1]),\n    middle: [0, 1, 2].map((i) => x.slice(middleSlice(i)[0], middleSlice(i)[1])),\n    outer: [0, 1, 2].map((i) => x.slice(outerSlice(i)[0], outerSlice(i)[1])),\n  };\n\n  const diagnostics = {\n    status: success ? \"success\" : meta.status,\n    iterations: meta.iter,\n    nfev: meta.nfev,\n    max_log_gauge: x.length ? Math.max(...x.map((v) => Math.abs(v))) : 0,\n    det_H_center: [detH[0], detH[1]],\n    gauge_finite: gaugeFinite,\n    gauge_positive: gaugePositive,\n    abs_tol: opts.abs_tol,\n    rel_tol: opts.rel_tol,\n    complex_tol: opts.complex_tol,\n    det_tol: opts.det_tol,\n    real_norm_scale: scale,\n  };\n\n  return {\n    success,\n    logGauge,\n    H,\n    solvedRep,\n    residuals: {\n      real_norm: realNorm,\n      real_rel: realRel,\n      complex_norm: complexNorm,\n      per_vertex: perVertex,\n      real_packed: realPacked,\n    },\n    diagnostics,\n  };\n}\n\nreturn { expmHermitian, hermitianEigenvalues, flatLogGauge, applyComplexGauge, solveRealMomentMap };\n})();\n\nconst __ek_mod_balanced_model = (function () {\nconst { e6AtlasPoint } = __ek_mod_e6_atlas;\nconst { branchMiddleChart, branchTipChart } = __ek_mod_branch_charts;\nconst { makeRep } = __ek_mod_core_math;\nconst { E6_REGULAR_LEVELS } = __ek_mod_e6_levels;\nconst { solveRealMomentMap } = __ek_mod_solver;\n// Numerical balance of the existing E6 atlas; no UI or shared mutable state.\n\n\n\n\n\n\nfunction family(p) {\n  if (p.r === 0 || p.r === 1) return `${p.r}:${p.outgoing ? 'outgoing' : p.t === 1 ? 'endpoint'+(p.sphere||0) : 'sphere'+(p.sphere||0)}`;\n  return p.r === .5 && p.theta === 0 && (p.outgoing || p.t === 1) ? 'concurrency' : 'central';\n}\nfunction finiteGauge(g) {\n  return g && Array.isArray(g.center) && g.center.length === 8 &&\n    Array.isArray(g.middle) && g.middle.length === 3 && g.middle.every(a=>Array.isArray(a)&&a.length===4) &&\n    Array.isArray(g.outer) && g.outer.length === 3 && g.outer.every(a=>Array.isArray(a)&&a.length===1) &&\n    g.center.concat(...g.middle,...g.outer).every(Number.isFinite);\n}\nfunction failed(atlas, status, message) {\n  return { success:false, solvedRep:null, logGauge:null, residuals:null, atlas,\n    rawRep:atlas ? atlas.rep : null, continuation:null,\n    diagnostics:{status,message,iterations:0,nfev:0} };\n}\n\n// Exact finite-gauge overlap along the incoming concurrency sphere.\n// s=4/eta; at s=0 these matrices equal concurrencyLimitChart(0,0).\nfunction boundedConcurrency(s) {\n  const ell=[[0,-1,1],[1,0,-1],[-1,1,0]];\n  return makeRep(\n    ell.map(()=>[[[1,0]],[[0,0]]]),\n    ell.map((_,i)=>ell.map((__,j)=>[[(i===j?1:0)-1/3+s[0]/3,s[1]/3],[1,0]])),\n    ell.map(()=>[[[0,0],[0,0]]]),\n    ell.map(row=>[row.map(()=>[0,0]),row.map(x=>[x,0])])\n  );\n}\n\n// A previous successful result is an optional continuation token. Seeds are\n// accepted only within the same chart family and at identical real levels.\n// Failed attempts never expose a previous representation as the current solve.\nfunction solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, options = {}) {\n  let atlas;\n  try { atlas = e6AtlasPoint(parameters); }\n  catch(e) { return failed(null,'chart_error',String(e)); }\n  let numericalRep=atlas.rep, chartFamily=family(parameters);\n  // Exact overlap formulas keep coefficients bounded near compact endpoints.\n  if ((parameters.r===0 || parameters.r===1) && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {\n    const phase=parameters.phi+(parameters.r===1 ? 2*parameters.theta : 0);\n    const power=parameters.sphere===1 ? 2 : 1;\n    const magnitude=Math.pow((1-parameters.t)/parameters.t,power);\n    const reciprocal=[magnitude*Math.cos(power*phase),-magnitude*Math.sin(power*phase)];\n    numericalRep=power===2 ? branchTipChart(parameters.r,reciprocal,0) : branchMiddleChart(parameters.r,reciprocal,0);\n    chartFamily+=':overlap';\n  }\n  if (parameters.r===.5 && parameters.theta===0 && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {\n    const magnitude=4*(1-parameters.t)/parameters.t;\n    numericalRep=boundedConcurrency([magnitude*Math.cos(parameters.phi),-magnitude*Math.sin(parameters.phi)]);\n    chartFamily='concurrency:incoming-overlap';\n  }\n  const levelKey=JSON.stringify(levels);\n  const defaults={maxIter:80,max_nfev:4000,multistart:false};\n  const solverOptions=Object.assign(defaults,options.solverOptions||{});\n  const previous=options.previous && (options.previous.continuation || options.previous);\n  let warm=options.initialLogGauge;\n  if (!warm && previous && previous.family===chartFamily && previous.levelKey===levelKey) warm=previous.logGauge;\n  if (!finiteGauge(warm)) warm=null;\n  let result, attempts=0, totalNfev=0;\n  try {\n    attempts++;\n    result=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:warm}));\n    totalNfev+=result.diagnostics.nfev;\n    if (!result.success && warm) {\n      attempts++;\n      const cold=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:null}));\n      totalNfev+=cold.diagnostics.nfev;\n      if(cold.success || cold.residuals.real_norm<result.residuals.real_norm) result=cold;\n    }\n  } catch(e) { return failed(atlas,'solver_exception',String(e)); }\n  const success=!!result.success;\n  return {\n    success, solvedRep:success ? result.solvedRep : null,\n    logGauge:success ? result.logGauge : null, residuals:result.residuals,\n    atlas, rawRep:atlas.rep, numericalRep,\n    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm,chartFamily}),\n    continuation:success ? {family:chartFamily,levelKey,logGauge:result.logGauge} : null,\n  };\n}\r\n\nreturn { solveBalancedAtlas };\n})();\n\nlet previous = null; self.onmessage = function(event) {\ntry { const result = __ek_mod_balanced_model.solveBalancedAtlas(event.data, undefined, { previous });\nif (result.success) previous = result; self.postMessage(result);\n} catch(error) { self.postMessage({success:false, diagnostics:{status:\"worker_error\",message:String(error)}}); } };\n" };
+
+// ---- module: balanced-client ----
+const __ek_mod_balanced_client = (function () {
+const { BALANCED_WORKER_SOURCE } = __ek_mod_balanced_worker_source;
+const { solveBalancedAtlas } = __ek_mod_balanced_model;
+// One solve in flight and at most one queued request: dragging never builds
+// an obsolete solver backlog. The generated worker also works offline.
+
+
+
+function createBalancedClient(options = {}) {
+  let worker = null, active = null, queued = null, revision = 0, epoch = 0, previous = null;
+  if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined') {
+    const url = URL.createObjectURL(new Blob([BALANCED_WORKER_SOURCE], { type: 'text/javascript' }));
+    try { worker = new Worker(url); } catch (_) { worker = null; }
+    finally { URL.revokeObjectURL(url); }
+  }
+  function deliver(result) {
+    const request = active;
+    active = null;
+    if (request && request.id === revision) request.callback(result);
+    else if (request && request.epoch === epoch && result.success && options.onProgress) {
+      options.onProgress(result, request.parameters);
+    }
+    if (queued) { const next = queued; queued = null; start(next); }
+  }
+  if (worker) {
+    worker.onmessage = event => deliver(event.data);
+    worker.onerror = () => {
+      worker.terminate(); worker = null;
+      deliver({ success: false, diagnostics: { status: 'worker_error' } });
+    };
+  }
+  function start(request) {
+    active = request;
+    if (worker) { worker.postMessage(request.parameters); return; }
+    let result;
+    try {
+      result = solveBalancedAtlas(request.parameters, undefined, { previous });
+      if (result.success) previous = result;
+    } catch (error) {
+      result = { success: false, diagnostics: { status: 'solver_error', message: String(error) } };
+    }
+    deliver(result);
+  }
+  return {
+    request(parameters, callback) {
+      const next = { id: ++revision, epoch, parameters, callback };
+      if (active) queued = next; else start(next);
+    },
+    invalidate() { revision++; epoch++; queued = null; },
+    dispose() { revision++; epoch++; queued = null; if (worker) worker.terminate(); worker = null; }
+  };
+}
+
+return { createBalancedClient };
 })();
 
 // ---- module: element-view ----
@@ -4622,343 +5586,65 @@ function elementScreen(view, cam, size) {
 return { viewBasis, projectPoint, projectDepth, fitCamera, elementScreen };
 })();
 
-// ---- module: flag-diagram ----
-const __ek_mod_flag_diagram = (function () {
-// Phase-decorated real skeleton of the E6 candidate flag chart.
-// Homogeneous points are e1,e2,e3 and dual lines are
-// (0,-1,1), (1,0,-1), (-z,1,0). Replacing z by |z| gives the
-// real skeleton; the phase on line 3 recovers the original complex flag.
-// This is a chart-specific encoding, not a projection of arbitrary CP2 flags.
-const SCALE = 1.125;
-const LIMIT = 0.9;
-const CHART_TOLERANCE = 1e-9;
-const abs = (z) => Math.hypot(z[0], z[1]);
-const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-function unit(v) {
-  if (!Array.isArray(v) || v.length !== 3 || v.some((z) =>
-    !Array.isArray(z) || z.length !== 2 || !z.every(Number.isFinite))) return null;
-  const scale = Math.max(...v.map(abs));
-  if (!(scale > 0)) return null;
-  const scaled = v.map((z) => z.map((x) => x / scale));
-  const length = Math.hypot(...scaled.map(abs));
-  return scaled.map((z) => z.map((x) => x / length));
-}
-function projectiveResidual(a, b) {
-  let sum = 0;
-  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
-    const p = mul(a[i], b[j]), q = mul(a[j], b[i]);
-    sum += (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2;
-  }
-  return Math.sqrt(sum);
-}
-// Clip an infinite line to the fixed viewport by a continuous parametric
-// interval. Endpoint order follows its direction, including at corner hits.
-function segment(equation) {
-  const [a, b, c] = equation;
-  const length = Math.hypot(a, b);
-  const normal = [a / length, b / length];
-  const anchor = normal.map((v) => -v * c / length);
-  const direction = [normal[1], -normal[0]];
-  let low = -Infinity, high = Infinity;
-  for (let k = 0; k < 2; k++) {
-    if (direction[k] === 0) {
-      if (Math.abs(anchor[k]) > LIMIT) return null;
-    } else {
-      const first = (-LIMIT - anchor[k]) / direction[k];
-      const second = (LIMIT - anchor[k]) / direction[k];
-      low = Math.max(low, Math.min(first, second));
-      high = Math.min(high, Math.max(first, second));
-    }
-  }
-  if (!(low <= high && Number.isFinite(low) && Number.isFinite(high))) return null;
-  return [low, high].map((t) => anchor.map((v, k) => v + t * direction[k]));
-}
-
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-
-// Homogeneous normal normalization may reverse a line at a chart change.
-// Keep its label at the same end while retaining the exact same segment.
-function firstLineOrientation(diagram) {
-  if (!diagram.valid) return diagram;
-  const directions = [[1, 1], [2, -1], [1, -2]];
-  return { ...diagram, lines: diagram.lines.map((line, i) => {
-    const d = directions[i];
-    return (line[1][0] - line[0][0]) * d[0] + (line[1][1] - line[0][1]) * d[1] < 0 ? [line[1], line[0]] : line;
-  }) };
-}
-
-// The compact transverse chart uses w=t/[4(1-t)] at r=1/2.
-// Thus G=I-s P_L with s=w/(1+w) has a unit-normalized finite limit.
-const concurrencyGaugeProgress = (t) => t / (4 - 3 * t);
-
-function centralDiagonal(options) {
-  const { r, t } = options;
-  if (![r, t].every(Number.isFinite) || r < 0 || r > 1 || t < 0 || t >= 1) throw new RangeError('Finite central display coordinates required');
-  return [1, Math.pow(1 - t, Math.max(0, 1 - 2 * r)), Math.pow(1 - t, Math.max(0, 2 * r - 1))];
-}
-
-// Extend the endpoint gauges continuously over the central chart. The same
-// positive central gauge acts on the flags and their cotangent operators.
-function centralDisplayGauge(data, operators, options) {
-  const d = centralDiagonal(options);
-  return { data: { ...data,
-    points: data.points.map(p => p.map((z, j) => z.map(v => v * d[j]))),
-    dualLines: data.dualLines.map(p => p.map((z, j) => z.map(v => v / d[j]))),
-  }, operators: operators && operators.map(K => K.map((row, j) => row.map((z, k) => z.map(v => v * d[j] / d[k])))), diagonal: d };
-}
-
-// The exact overlap gauges of the long-arm atlas, softened at zero so that
-// each animation starts in its current chart. Points and cotangent operators
-// undergo the same central change of basis.
-function branchDisplayGauge(data, operators, options) {
-  if (!options) return { data, operators };
-  const m = options.magnitude;
-  if (!(Number.isFinite(m) && m >= 0)) throw new RangeError('Finite branch magnitude required');
-  const d = options.firstLine ? (options.stage === 0 ? [1, 1 / (1 + m), 1] : [1 / (1 + m), 1, 1]) :
-    (options.stage === 0 ? [1 / (1 + m), 1 / (1 + m), 1] : [1 + m, 1, 1]);
-  if (options.side === 'infinity' || options.side === 1) {
-    if (options.firstLine) [d[1], d[2]] = [d[2], d[1]];
-    else [d[0], d[1]] = [d[1], d[0]];
-  }
-  return {
-    data: { ...data,
-      points: data.points.map((p) => p.map((z, j) => z.map((v) => v * d[j]))),
-      dualLines: data.dualLines.map((p) => p.map((z, j) => z.map((v) => v / d[j]))),
-    },
-    operators: operators && operators.map((K) => K.map((row, j) => row.map((z, k) => z.map((v) => v * d[j] / d[k])))),
-    diagonal: d,
-  };
-}
-
-// Project actual real projective flags in the same affine camera used by the
-// central chart. No modulus substitution is made: non-real flags are rejected.
-function realFlagDiagram(data) {
-  function real(v) {
-    const u = unit(v);
-    if (!u) return null;
-    let pivot = 0;
-    for (let i = 1; i < 3; i++) if (abs(u[i]) > abs(u[pivot])) pivot = i;
-    const phase = [u[pivot][0] / abs(u[pivot]), -u[pivot][1] / abs(u[pivot])];
-    const rotated = u.map((z) => mul(z, phase));
-    return rotated.every((z) => Math.abs(z[1]) < CHART_TOLERANCE) ? rotated.map((z) => z[0]) : null;
-  }
-  const points = data.points.map(real), dual = data.dualLines.map(real);
-  if (points.concat(dual).some((p) => !p)) return { valid: false, reason: 'Real incidence camera requires real projective flags.' };
-  const homogeneousPoints = points.map((p) => {
-    const sum = p[0] + p[1] + p[2];
-    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum];
-  });
-  const homogeneousLines = dual.map(([a, b, c]) => [b - a, c - a, SCALE * (b + c) / 2]);
-  const lines = homogeneousLines.map(segment);
-  if (lines.some((line) => !line) || homogeneousPoints.some((p) => Math.abs(p[2]) < 1e-12)) {
-    return { valid: false, reason: 'Flags are outside this affine camera.' };
-  }
-  const affine = homogeneousPoints.map((p) => p.slice(0, 2).map((v) => v / p[2]));
-  if (affine.some((p) => p.some((v) => Math.abs(v) > LIMIT))) return { valid: false, reason: 'Flag point is outside this affine camera.' };
-  return { valid: true, points: affine, lines, compactRadius: 0.5,
-    linePhases: [0, 0, 0], pointPhases: [0, 0, 0], phaseMatchedConcurrency: data.concurrent,
-    reconstruction: { homogeneousPoints, homogeneousLines, chart: 'Actual real flags; X=S(y-sum/2), Y=S(z-sum/2), W=sum' } };
-}
-
-// A continuous projective camera for the concurrency degeneration. Its
-// determinant is SCALE^2 (1+t), so it never collapses an incidence. Two
-// points genuinely pass through infinity; boundary markers retain their
-// identity rather than moving them through the concurrency point.
-function concurrencyDiagram(progress) {
-  const t = Math.max(0, Math.min(1, progress));
-  function camera(p) {
-    const sum = p[0] + p[1] + p[2];
-    return [SCALE * (p[1] - sum / 2), SCALE * (p[2] - sum / 2), sum + 3 * t * p[2]];
-  }
-  const homogeneousPoints = [0, 1, 2].map((i) => camera([0, 1, 2].map((j) => (i === j ? 1 : 0) - t / 3)));
-  const center = camera([1, 1, 1]);
-  const equations = homogeneousPoints.map((p) => cross(p, center));
-  const centerPoint = center.slice(0, 2).map((v) => v / center[2]);
-  const pointMarkers = homogeneousPoints.map((p, i) => {
-    const finite = Math.abs(p[2]) > 1e-12;
-    const q = finite ? p.slice(0, 2).map((v) => v / p[2]) : null;
-    if (q && q.every((v) => Math.abs(v) <= LIMIT)) return { point: q, clipped: false };
-    // Choose the boundary intersection on the correct affine ray. Exactly
-    // at infinity either antipodal boundary endpoint represents the point.
-    const direction = [p[0] * center[2] - center[0] * p[2], p[1] * center[2] - center[1] * p[2]];
-    const sign = p[2] < 0 ? -1 : 1;
-    const ray = direction.map((v) => v * sign);
-    const endpoints = segment(equations[i]);
-    const scores = endpoints.map((v) => (v[0] - centerPoint[0]) * ray[0] + (v[1] - centerPoint[1]) * ray[1]);
-    const point = endpoints[scores[0] > scores[1] ? 0 : 1];
-    const norm = Math.hypot(...ray);
-    return { point, clipped: true, direction: ray.map((v) => v / norm), atInfinity: !finite };
-  });
-  return {
-    valid: true, points: pointMarkers.map((p) => p.point), pointMarkers,
-    lines: equations.map(segment), linePhases: [0, 0, 0], pointPhases: [0, 0, 0],
-    compactRadius: 0.5, phaseMatchedConcurrency: true, concurrencyProgress: t,
-    transversal: t === 1 ? segment([0, 1, -SCALE / 3]) : null,
-    reconstruction: { homogeneousPoints, homogeneousLines: equations, center,
-      chart: "p_i=e_i-t(1,1,1)/3; X=S(y-sum/2), Y=S(z-sum/2), W=sum+3tz" },
-  };
-}
-
-// Three complex cotangent coefficients in a deterministic orthonormal flag
-// basis. This is a display gauge, not three complex-gauge invariants.
-function cotangentGlyphs(data, operators, progress) {
-  if (!data || !data.valid || !Array.isArray(operators)) return [];
-  const conj = (z) => [z[0], -z[1]];
-  const inner = (a, b) => a.reduce((sum, v, i) => {
-    const z = mul(conj(v), b[i]); return [sum[0] + z[0], sum[1] + z[1]];
-  }, [0, 0]);
-  return operators.map((K, i) => {
-    const incoming = Number.isFinite(progress) && progress < 1;
-    const s = incoming ? concurrencyGaugeProgress(progress) : 0;
-    const point = incoming ? [0, 1, 2].map((j) => [(i === j ? 1 : 0) - s / 3, 0]) : data.points[i];
-    // At this exact attachment K is a multiple of L ell_i, ell_i(L)=0.
-    // Conjugation by G therefore multiplies K by 1-s, without cancellation.
-    const operator = incoming ? K.map((row) => row.map((z) => z.map((v) => v * (1 - s)))) : K;
-    const e1 = unit(point);
-    const e3 = unit(data.dualLines[i].map(conj));
-    if (!e1 || !e3) return null;
-    // A conjugated cross product avoids switching a Gram-Schmidt seed
-    // when a line approaches a coordinate plane at a fixed point.
-    const e2 = unit([0, 1, 2].map(j => {
-      const a = mul(e3[(j + 1) % 3], e1[(j + 2) % 3]);
-      const b = mul(e3[(j + 2) % 3], e1[(j + 1) % 3]);
-      return conj([a[0] - b[0], a[1] - b[1]]);
-    }));
-    if (!e2) return null;
-    const action = (v) => operator.map((row) => row.reduce((sum, z, j) => {
-      const w = mul(z, v[j]); return [sum[0] + w[0], sum[1] + w[1]];
-    }, [0, 0]));
-    const coefficients = [inner(e1, action(e2)), inner(e1, action(e3)), inner(e2, action(e3))];
-    return { coefficients, basis: [e1, e2, e3] };
-  });
-}
-
-function flagDiagram(data, options = {}) {
-  const fail = (reason) => ({ valid: false, reason });
-  if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
-  if (!Array.isArray(data.points) || !Array.isArray(data.dualLines) ||
-      data.points.length !== 3 || data.dualLines.length !== 3) {
-    return fail("The decorated diagram requires three finite flags.");
-  }
-  const points = data.points.map(unit), normals = data.dualLines.map(unit);
-  if (points.concat(normals).some((v) => !v)) return fail("The decorated diagram requires finite nonzero homogeneous coordinates.");
-  if (options.firstLine && !options.realFlags && !Number.isFinite(options.concurrencyProgress)) {
-    // The chamber chart has l1=(0,-z,1), l2=(1,0,-1),
-    // l3=(-1,1,0). Work homogeneously so both radial poles are
-    // genuine finite flag configurations, independent of theta.
-    const numerator = normals[0][1], denominator = normals[0][2];
-    const size = abs(numerator) + abs(denominator);
-    if (!(size > 0)) return fail('The first line is outside the chamber chart.');
-    const expectedPoints = [0, 1, 2].map(i => [0, 1, 2].map(j => [i === j ? 1 : 0, 0]));
-    const expectedNormals = [
-      [[0, 0], numerator, denominator],
-      [[1, 0], [0, 0], [-1, 0]],
-      [[-1, 0], [1, 0], [0, 0]],
-    ].map(unit);
-    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expectedPoints[i])),
-      ...normals.map((p, i) => projectiveResidual(p, expectedNormals[i])));
-    if (residual > CHART_TOLERANCE) return fail('These flags are outside the first-line chamber chart.');
-    const r = abs(numerator) / size;
-    const phaseProduct = mul([-numerator[0], -numerator[1]], [denominator[0], -denominator[1]]);
-    const phase = r === 0 || r === 1 ? null : Math.atan2(phaseProduct[1], phaseProduct[0]);
-    const diagonal = options.centralFlow ? centralDiagonal(options.centralFlow) : [1, 1, 1];
-    const equations = [[0, -r, 1 - r], [-1, 0, 1], [-1, 1, 0]].map(n => {
-      const [a, b, c] = n.map((v, j) => v / diagonal[j]);
-      return [b - a, c - a, SCALE * (b + c) / 2];
-    });
-    const lines = equations.map(segment);
-    if (lines.some(line => !line)) return fail('The chamber lines cannot be clipped to the viewport.');
-    return firstLineOrientation({ valid: true, points: [[0, 0], [1, 0], [0, 1]].map(p => p.map(x => SCALE * (x - 0.5))),
-      lines, compactRadius: r, linePhases: [phase, 0, 0], pointPhases: [0, 0, 0],
-      phaseMatchedConcurrency: data.concurrent === true,
-      phaseRadii: [4 * r * (1 - r), 1, 1],
-      phaseVectors: [phase === null ? [0, 0] : [4 * r * (1 - r) * Math.cos(phase), 4 * r * (1 - r) * Math.sin(phase)], [1, 0], [1, 0]],
-      reconstruction: { homogeneousPoints: expectedPoints.map(p => { const s = p.reduce((v, z) => v + z[0], 0); return [SCALE * (p[1][0] - s / 2), SCALE * (p[2][0] - s / 2), s]; }),
-        homogeneousLines: equations, maxChartResidual: residual, chart: 'E6 first-line chamber: p=e1,e2,e3; n=(0,-z,1),(1,0,-1),(-1,1,0)' } });
-  }
-  if (options.realFlags) {
-    const diagram = realFlagDiagram(data);
-    return options.firstLine ? firstLineOrientation(diagram) : diagram;
-  }
-  if (Number.isFinite(options.concurrencyProgress)) {
-    const t = Math.max(0, Math.min(1, options.concurrencyProgress));
-    const expected = [0, 1, 2].map((i) => unit([0, 1, 2].map((j) => [
-      (i === j ? 1 : 0) - (t === 1 ? 1 / 3 : 0), 0])));
-    const dual = [[[0, 0], [-1, 0], [1, 0]], [[1, 0], [0, 0], [-1, 0]], [[-1, 0], [1, 0], [0, 0]]].map(unit);
-    const residual = Math.max(...points.map((p, i) => projectiveResidual(p, expected[i])),
-      ...normals.map((p, i) => projectiveResidual(p, dual[i])));
-    if (residual > CHART_TOLERANCE) return fail("These flags are outside the concurrency chart.");
-    const diagram = concurrencyDiagram(concurrencyGaugeProgress(t));
-    return options.firstLine ? firstLineOrientation(diagram) : diagram;
-  }
-  const denominator = normals[2][1];
-  const den = denominator[0] ** 2 + denominator[1] ** 2;
-  const numerator = normals[2][0];
-  const atInfinity = !(den > 0);
-  if (atInfinity && !options.compact) return fail("These flags are outside the supported E6 candidate chart.");
-  const homogeneousSize = abs(numerator) + abs(denominator);
-  if (!(homogeneousSize > 0)) return fail("The third line is outside the candidate chart.");
-  const compactRadius = abs(numerator) / homogeneousSize;
-  const z = atInfinity ? null :
-    [-(numerator[0] * denominator[0] + numerator[1] * denominator[1]) / den,
-      -(numerator[1] * denominator[0] - numerator[0] * denominator[1]) / den];
-  const magnitude = atInfinity ? Infinity : abs(z);
-  if (!atInfinity && !Number.isFinite(magnitude)) return fail("The candidate chart coordinate is not finite.");
-  const expectedPoints = [0, 1, 2].map((i) => [0, 1, 2].map((j) => [i === j ? 1 : 0, 0]));
-  const expectedNormals = [
-    [[0, 0], [-1, 0], [1, 0]],
-    [[1, 0], [0, 0], [-1, 0]],
-    [numerator, denominator, [0, 0]],
-  ].map(unit);
-  const maxChartResidual = Math.max(...points.map((p, i) => projectiveResidual(p, expectedPoints[i])),
-    ...normals.map((n, i) => projectiveResidual(n, expectedNormals[i])));
-  if (maxChartResidual > CHART_TOLERANCE) return fail("These flags are outside the supported E6 candidate chart; no chart change has been applied.");
-  // In x+y+w=1 use (X,Y)=(y,w). With compact radial coordinate r,
-  // the third real line is X+rY=r, including both projective endpoints.
-  const size = Math.max(1, magnitude);
-  const affineLineEquations = [[-1, 1, 0], [1, 2, -1],
-    options.compact ? [1, compactRadius, -compactRadius] :
-      [1 / size + magnitude / size, magnitude / size, -magnitude / size]];
-  const lines = affineLineEquations.map(([a, b, c]) => segment([a, b, SCALE * (0.5 * a + 0.5 * b + c)]));
-  if (lines.some((line) => !line)) return fail("The chart lines cannot be clipped to the viewport.");
-  const phase = magnitude === 0 || atInfinity ? null : Math.atan2(z[1], z[0]);
-  return {
-    valid: true,
-    points: [[0, 0], [1, 0], [0, 1]].map((p) => p.map((x) => SCALE * (x - 0.5))),
-    lines, linePhases: [0, 0, phase], pointPhases: [0, 0, 0],
-    phaseVectors: [[1, 0], [1, 0], options.compact ?
-      (phase === null ? [0, 0] : [4 * compactRadius * (1 - compactRadius) * Math.cos(phase),
-        4 * compactRadius * (1 - compactRadius) * Math.sin(phase)]) : z.slice()],
-    phaseRadii: [1, 1, options.compact ? 4 * compactRadius * (1 - compactRadius) : magnitude],
-    parameter: z, magnitude, compactRadius, atInfinity,
-    homogeneousParameter: [[-numerator[0], -numerator[1]], denominator.slice()],
-    phaseMatchedConcurrency: data.concurrent === true,
-    reconstruction: {
-      chart: "E6 candidate: p=e1,e2,e3; n=(0,-1,1),(1,0,-1),(-z,1,0)",
-      affineViewport: [-0.3, 1.3], coordinateScale: SCALE,
-      affineLineEquations, maxChartResidual, chartTolerance: CHART_TOLERANCE,
-      // For the third equation ax+by+c=0, r=b/(a-b), then z=r exp(i phase).
-      magnitudeFromLine: options.compact ? "b/(a-b); compact r=b/a" : "b/(a-b)",
-      recoveredParameter: atInfinity ? null : phase === null ? [0, 0] :
-        [magnitude * Math.cos(phase), magnitude * Math.sin(phase)],
-    },
-  };
-}
-
-return { concurrencyGaugeProgress, centralDisplayGauge, branchDisplayGauge, realFlagDiagram, concurrencyDiagram, cotangentGlyphs, flagDiagram };
-})();
-
 // ---- module: element-render ----
 const __ek_mod_element_render = (function () {
 const { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } = __ek_mod_flag_diagram;
-﻿// The real flag skeleton records magnitude; line hue records phase.
+const { balancedDiagram } = __ek_mod_balanced_diagram;
+// Balanced flags use hue for cross-incidence; legacy charts use phase.
 
 
-const POINT = ["p₁", "p₂", "p₃"];
-const LINE = ["ℓ₁", "ℓ₂", "ℓ₃"];
+
+const LINE = ["P₁", "P₂", "P₃"];
+const ARROW_LENGTH = 16;
+
+// React to mathematical incidence gains, never to accidental screen crossings.
+function newIncidenceHighlights(previous, current) {
+  const points = [];
+  if (!previous || !previous.valid || !current || !current.valid) return { points, concurrency: false };
+  for (let i = 0; i < 3; i++) {
+    const gained = [0, 1, 2].some(j => j !== i &&
+      ((current.incident[i][j] && !previous.incident[i][j]) ||
+       (current.pointEqual[i][j] && !previous.pointEqual[i][j])));
+    if (gained || (current.collinear && !previous.collinear)) points.push(i);
+  }
+  return { points, concurrency: current.concurrent && !previous.concurrent };
+}
+
+function incidenceFlashStrength(elapsed) {
+  return elapsed >= 0 && elapsed < 750 ? Math.pow(Math.sin(Math.PI * elapsed / 750), 2) : 0;
+}
+
+// Fixed pixel lengths: geometry indicates the matrix component, not magnitude.
+function cotangentArrowGeometry(point, line, target) {
+  const d=line[1].map((v,j)=>v-line[0][j]),length=Math.hypot(...d);
+  if(length<1e-8)return [null,null,null];
+  const tangent=d.map(v=>v/length),normal=[-tangent[1],tangent[0]];
+  const toward=target||line[0];
+  const sign=toward.reduce((s,v,j)=>s+(v-point[j])*tangent[j],0)>=0?1:-1;
+  function arrow(p,offset,gap) {
+    return {start:p.map((v,j)=>v+offset[j]*(gap+ARROW_LENGTH)),end:p.map((v,j)=>v+offset[j]*gap)};
+  }
+  const close=target&&Math.hypot(...target.map((v,j)=>v-point[j]))<64/3;
+  return [arrow(point,tangent.map(v=>v*sign),7),arrow(point,normal,7),
+    target?arrow(target,normal.map(v=>close?-v:v),2):null];
+}
+
+function cotangentArrowColor(z, dark) {
+  const magnitude=Math.hypot(z[0],z[1]);
+  if(magnitude<1e-10)return null;
+  const hue=(210+Math.atan2(z[1],z[0])*180/Math.PI+360)%360;
+  return 'hsl('+hue+', '+85*magnitude/(1+magnitude)+'%, '+(dark?55:28)+'%)';
+}
+
+// Quadratic extinction near zero; normal-sized coefficients remain legible.
+function cotangentArrowOpacity(z) {
+  const magnitude=Math.hypot(z[0],z[1]);
+  return magnitude*magnitude/(magnitude*magnitude+.15*.15);
+}
 
 // Shared by the canvas and the atlas integration checks.
 function elementFrame(view) {
+  if (view && view.balancedRep) return balancedDiagram(view.balancedRep, { previous: view.previous });
   let data = view && view.incidence ? view.incidence : null;
   let operators = view && view.cotangentOperators;
   if (data && data.valid && view.branchGauge) {
@@ -4985,6 +5671,16 @@ function phaseColor(phase, compactRadius, dark) {
   return "hsl(" + hue + ", " + saturation + "%, " + (dark ? 70 : 40) + "%)";
 }
 
+function balancedPhaseColor(phase, vector, dark) {
+  const strength = Math.min(1, Math.hypot(vector[0], vector[1]));
+  const hue = ((210 + (phase || 0) * 180 / Math.PI) % 360 + 360) % 360;
+  return 'hsl(' + hue + ', ' + 70 * strength + '%, ' + (dark ? 70 : 40) + '%)';
+}
+
+function incidenceColor(hue, strength, dark) {
+  return 'hsl(' + (hue === null ? 0 : hue) + ', ' + 70 * strength + '%, ' + (dark ? 70 : 40) + '%)';
+}
+
 function makeElementView(host, opts) {
   opts = opts || {};
   const canvas = document.createElement("canvas");
@@ -4994,9 +5690,29 @@ function makeElementView(host, opts) {
   canvas.style.cursor = "default";
   if (canvas.setAttribute) {
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "Flag incidence. Line positions show magnitude; line colors show phase. Boundary arrows mark points outside the projective viewport. Three small phase rings at each point encode its cotangent coefficients in a display basis.");
+    canvas.setAttribute("aria-label", "Flag incidence. A dot matching another line's hue indicates numerical incidence. A dot incident to both other lines is neutral. Own-line hue need not match. Boundary arrows mark points outside the projective viewport. Cotangent arrows encode three matrix components; hue shows phase and saturation shows magnitude.");
   }
   host.appendChild(canvas);
+  let showYData = false;
+  const yToggleLabel = document.createElement('label');
+  yToggleLabel.style.position = 'absolute';
+  yToggleLabel.style.top = '10px';
+  yToggleLabel.style.left = '10px';
+  yToggleLabel.style.display = 'flex';
+  yToggleLabel.style.alignItems = 'center';
+  yToggleLabel.style.gap = '5px';
+  yToggleLabel.style.fontSize = '12px';
+  yToggleLabel.style.cursor = 'pointer';
+  const yToggle = document.createElement('input');
+  yToggle.id = 'ek-y-data';
+  yToggle.type = 'checkbox';
+  yToggle.checked = false;
+  yToggle.addEventListener('change', function () { showYData = yToggle.checked; draw(); });
+  yToggleLabel.appendChild(yToggle);
+  const yToggleText = document.createElement('span');
+  yToggleText.textContent = 'y data';
+  yToggleLabel.appendChild(yToggleText);
+  host.appendChild(yToggleLabel);
   const ctx = canvas.getContext ? canvas.getContext("2d") : null;
   const status = document.createElement("div");
   status.className = "ek-elem-status";
@@ -5012,6 +5728,8 @@ function makeElementView(host, opts) {
   let layout = null;
   let glyphs = [];
   let statusKind = "";
+  let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+  let animationFrame = null;
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -5026,6 +5744,8 @@ function makeElementView(host, opts) {
 
   function draw() {
     const pal = palette();
+    yToggleLabel.style.color = pal.text;
+    canvas.setAttribute('data-y-data', String(showYData));
     status.style.color = statusKind === "error" ? "#d64545" : "#b27c22";
     if (!ctx) return;
     const w = host.clientWidth || 0;
@@ -5045,6 +5765,22 @@ function makeElementView(host, opts) {
     }
     const scale = Math.max(1, Math.min(w / 2 - 36, h / 2 - 27));
     function pixel(p) { return [w / 2 + p[0] * scale, h / 2 - p[1] * scale]; }
+    const now = Date.now();
+    const flashing = flashStarts.map((start, i) => now - start < 750 ? i : -1).filter(i => i >= 0);
+    canvas.setAttribute('data-incidence-flash', flashing.join(','));
+    function glow(p, index, color) {
+      const strength = incidenceFlashStrength(now - flashStarts[index]);
+      if (!strength) return;
+      ctx.globalAlpha = .8 * strength;
+      ctx.shadowColor = color; ctx.shadowBlur = 18;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = .7 * strength;
+      ctx.fillStyle = pal.dark ? '#ffffff' : '#fff6cc';
+      ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.lineCap = "round";
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "left";
@@ -5058,10 +5794,11 @@ function makeElementView(host, opts) {
     for (let i = 0; i < 3; i++) {
       const a = pixel(layout.lines[i][0]);
       const b = pixel(layout.lines[i][1]);
-      const color = phaseColor(layout.linePhases[i], layout.compactRadius, pal.dark);
+      const color = layout.incidenceColors ? incidenceColor(layout.incidenceColors.lineHues[i], layout.incidenceColors.lineStrengths[i], pal.dark) : layout.phaseVectors ? balancedPhaseColor(layout.linePhases[i], layout.phaseVectors[i], pal.dark) :
+        phaseColor(layout.linePhases[i], layout.compactRadius, pal.dark);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      if (ctx.setLineDash) ctx.setLineDash(i === 0 ? [] : i === 1 ? [8, 5] : [2, 5]);
+      if (ctx.setLineDash) ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       let coincidentBefore = 0;
       for (let j = 0; j < i; j++) if (data.lineEqual && data.lineEqual[i][j]) coincidentBefore++;
@@ -5070,6 +5807,15 @@ function makeElementView(host, opts) {
       ctx.fillText(LINE[i], a[0] + (b[0] - a[0]) * t + 5, a[1] + (b[1] - a[1]) * t - 6);
     }
     if (ctx.setLineDash) ctx.setLineDash([]);
+    if (layout.concurrencyPoint) {
+      const q = pixel(layout.concurrencyPoint);
+      glow(q, 3, pal.point);
+      ctx.fillStyle = pal.point;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = pal.point; ctx.lineWidth = 1; ctx.globalAlpha = 0.45;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     for (let i = 0; i < 3; i++) {
       const p = pixel(layout.points[i]);
       const marker = layout.pointMarkers && layout.pointMarkers[i];
@@ -5077,7 +5823,9 @@ function makeElementView(host, opts) {
       for (let j = 0; j < i; j++) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
-      ctx.strokeStyle = pal.point; ctx.lineWidth = 2;
+      ctx.strokeStyle = layout.incidenceColors ? incidenceColor(layout.incidenceColors.pointHues[i], layout.incidenceColors.pointStrengths[i], pal.dark) : layout.pointPhaseVectors ? balancedPhaseColor(layout.pointPhases[i], layout.pointPhaseVectors[i], pal.dark) : pal.point;
+      glow(p, i, ctx.strokeStyle);
+      ctx.lineWidth = 2;
       if (marker && marker.clipped) {
         const d = [marker.direction[0], -marker.direction[1]];
         ctx.beginPath();
@@ -5090,34 +5838,47 @@ function makeElementView(host, opts) {
         if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
         ctx.stroke();
       }
-      ctx.fillStyle = pal.point;
-      const labelX = marker && marker.clipped && p[0] > w / 2 ? p[0] - 44 : p[0] + 12;
-      const labelY = marker && marker.clipped && p[1] < h / 2 ? p[1] + 18 : p[1] - 9 + groupIndex * 15;
-      ctx.fillText(POINT[i], labelX, labelY);
-      // A single quiet, three-ring glyph: radius identifies the coefficient,
-      // opacity its bounded magnitude and the short hand its complex phase.
+      // Tangential c12 and normal c13 arrows approach the marked point;
+      // normal c23 approaches the projected orthogonal flag direction.
       const glyph = glyphs[i];
-      if (glyph) glyph.coefficients.forEach((z, k) => {
-        const magnitude = Math.hypot(z[0], z[1]);
-        if (magnitude < 1e-10) return;
-        const cx = labelX + 27, cy = labelY - 4, radius = 3 + 3 * k;
-        const phase = Math.atan2(z[1], z[0]);
-        ctx.globalAlpha = 0.2 + 0.8 * magnitude / (1 + magnitude);
-        ctx.lineWidth = 1; ctx.strokeStyle = pal.point;
-        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx + (radius - 2) * Math.cos(phase), cy - (radius - 2) * Math.sin(phase));
-        ctx.lineTo(cx + (radius + 1) * Math.cos(phase), cy - (radius + 1) * Math.sin(phase));
-        ctx.stroke(); ctx.globalAlpha = 1;
+      const target=layout.cotangentTargets&&layout.cotangentTargets[i];
+      const arrows=cotangentArrowGeometry(p,layout.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
+      if(showYData&&glyph)glyph.coefficients.forEach((z,k)=>{
+        const color=cotangentArrowColor(z,pal.dark),arrow=arrows[k];
+        if(!color||!arrow)return;
+        const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
+        const perpendicular=[-direction[1],direction[0]];
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=cotangentArrowOpacity(z);
+        ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
+        for(const side of [-1,1]) {
+          ctx.moveTo(...arrow.end);
+          ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
+        }
+        ctx.stroke();
       });
+      ctx.globalAlpha=1;
+    }
+    if (flashing.length && animationFrame === null && typeof requestAnimationFrame === 'function') {
+      animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
 
   function setData(view) {
     const frame = elementFrame(view);
+    const highlights = newIncidenceHighlights(data, frame.data);
+    const now = Date.now();
+    if (!frame.data || !frame.data.valid) {
+      flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+      canvas.setAttribute('data-incidence-flash', '');
+    } else {
+      highlights.points.concat(highlights.concurrency ? [3] : []).forEach(i => {
+        // Do not prolong an active pulse when several incidences arrive together.
+        if (now - flashStarts[i] >= 750) flashStarts[i] = now;
+      });
+    }
     data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
     draw();
+    return frame;
   }
   function setStatus(text, kind) {
     const failed = kind === "error" || kind === "warn";
@@ -5139,176 +5900,7 @@ function makeElementView(host, opts) {
   };
 }
 
-return { elementFrame, phaseColor, makeElementView };
-})();
-
-// ---- module: flag-incidence ----
-const __ek_mod_flag_incidence = (function () {
-// Numerical incidence of E6 flags L_i = im(A_i a_i) in P_i = im(A_i).
-// Points and dual lines are complex homogeneous vectors. The dual pairing is
-// BILINEAR (not Hermitian). This forgets gauge-dependent lengths and angles.
-// Unit-norm residuals <= tolerance are classified as zero; this is a numerical
-// diagnostic, not an exact certificate. Very ill-conditioned gauges can change
-// a tolerance-based classification.
-const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
-const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
-const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
-const cross = (a, b) => [
-  sub(mul(a[1], b[2]), mul(a[2], b[1])),
-  sub(mul(a[2], b[0]), mul(a[0], b[2])),
-  sub(mul(a[0], b[1]), mul(a[1], b[0])),
-];
-const dot = (a, b) => a.reduce((s, z, i) => add(s, mul(z, b[i])), [0, 0]);
-const norm = (v) => Math.hypot(...v.reduce((a, z) => a.concat(z), []));
-function unit(v) {
-  const scale = Math.max(...v.reduce((a, z) => a.concat(z.map(Math.abs)), []));
-  if (!(scale > 0) || !Number.isFinite(scale)) return null;
-  const w = v.map((z) => z.map((x) => x / scale));
-  const n = norm(w);
-  return w.map((z) => z.map((x) => x / n));
-}
-const matrix = (f) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => f(i, j)));
-
-function flagIncidence(rep, tolerance = 1e-8) {
-  const fail = (reason) => ({ valid: false, reason, tolerance, numerical: true });
-  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid incidence tolerance.");
-  const points = [], dualLines = [];
-  try {
-    for (let i = 0; i < 3; i++) {
-      const A = rep.A[i], a = rep.a[i];
-      if (A.length !== 3 || A.some((r) => r.length !== 2) ||
-          a.length !== 2 || a.some((r) => r.length !== 1)) {
-        return fail("Incidence requires three flags of dimensions 1 and 2 in C³.");
-      }
-      const u = unit(A.map((r) => r[0])), v = unit(A.map((r) => r[1]));
-      if (!u || !v) return fail(`Flag ${i + 1}: the plane map has rank below two.`);
-      const n = cross(u, v);
-      if (!(norm(n) > tolerance)) return fail(`Flag ${i + 1}: the plane map is numerically rank deficient.`);
-      // Scale the maps before multiplication to avoid overflow/underflow.
-      const flatA = unit(A.reduce((out, row) => out.concat(row), []));
-      const av = unit(a.map((r) => r[0]));
-      if (!flatA || !av) return fail(`Flag ${i + 1}: no projective point is defined.`);
-      const p = [0, 1, 2].map((r) => add(mul(flatA[2 * r], av[0]), mul(flatA[2 * r + 1], av[1])));
-      if (!(norm(p) > tolerance)) return fail(`Flag ${i + 1}: the point map is numerically zero.`);
-      points.push(unit(p));
-      dualLines.push(unit(n));
-    }
-  } catch (_) {
-    return fail("The representation does not supply three finite E6 flags.");
-  }
-  const residuals = matrix((i, j) => norm([dot(dualLines[j], points[i])]));
-  return {
-    valid: true, numerical: true, tolerance, points, dualLines, residuals,
-    incident: matrix((i, j) => residuals[i][j] <= tolerance),
-    pointEqual: matrix((i, j) => norm(cross(points[i], points[j])) <= tolerance),
-    lineEqual: matrix((i, j) => norm(cross(dualLines[i], dualLines[j])) <= tolerance),
-    concurrent: norm([dot(dualLines[0], cross(dualLines[1], dualLines[2]))]) <= tolerance,
-    collinear: norm([dot(points[0], cross(points[1], points[2]))]) <= tolerance,
-  };
-}
-
-// Cyclic triple ratio of three complex flags. Each point/dual-line scale and
-// the central complex gauge cancel between numerator and denominator.
-// Near-zero denominator pairings are undefined at the incidence tolerance;
-// numerator pairings are retained, including an exactly zero ratio.
-function flagTripleRatio(data) {
-  const tolerance = data && data.tolerance;
-  const fail = (reason) => ({ valid: false, numerical: true, tolerance,
-    reason, value: null, magnitude: null, phase: null });
-  if (!data || !data.valid) return fail(data && data.reason || "Flag data is unavailable.");
-  if (!(tolerance > 0 && tolerance < 0.01)) return fail("Invalid triple-ratio tolerance.");
-  try {
-    const p = data.points.map(unit), n = data.dualLines.map(unit);
-    if (p.length !== 3 || n.length !== 3 || p.concat(n).some((v) => !v || v.length !== 3)) {
-      return fail("The triple ratio requires three finite flags.");
-    }
-    const numerator = [dot(n[0], p[1]), dot(n[1], p[2]), dot(n[2], p[0])];
-    const denominator = [dot(n[0], p[2]), dot(n[2], p[1]), dot(n[1], p[0])];
-    if (numerator.concat(denominator).some((z) => !z.every(Number.isFinite))) {
-      return fail("The triple ratio requires finite pairings.");
-    }
-    if (denominator.some((z) => Math.hypot(...z) <= tolerance)) {
-      return fail("The triple ratio is undefined: a denominator pairing is zero or below the incidence tolerance.");
-    }
-    const num = numerator.reduce(mul, [1, 0]), den = denominator.reduce(mul, [1, 0]);
-    const denNorm2 = den[0] * den[0] + den[1] * den[1];
-    const value = [(num[0] * den[0] + num[1] * den[1]) / denNorm2,
-      (num[1] * den[0] - num[0] * den[1]) / denNorm2];
-    const magnitude = Math.hypot(...value);
-    if (!Number.isFinite(magnitude)) return fail("The numerical triple ratio is not finite.");
-    return { valid: true, numerical: true, tolerance, value, magnitude,
-      phase: magnitude === 0 ? null : Math.atan2(value[1], value[0]) };
-  } catch (_) {
-    return fail("The triple ratio requires three finite flags.");
-  }
-}
-
-// A combinatorial REAL diagram, not a real projection of CP² and not a complete
-// projective invariant. Preserves the nine incidences, equal points, equal lines,
-// and concurrency of the lines. Additional point collinearity is not encoded.
-// All coordinates are in [-1,1]. Inconsistent numerical classifications produce
-// an explicit unavailable result rather than an inaccurate drawing.
-function incidenceLayout(data) {
-  const fail = (reason) => ({ valid: false, reason });
-  if (!data || !data.valid) return fail(data && data.reason || "Flag incidence is unavailable.");
-  const ids = [], reps = [];
-  for (let i = 0; i < 3; i++) {
-    let k = reps.findIndex((j) => data.lineEqual[i][j]);
-    if (k < 0) { k = reps.length; reps.push(i); }
-    ids.push(k);
-  }
-  const equations = reps.length === 3 && !data.concurrent ?
-    [[0, 1, -0.45], [1.5, 1, 0.55], [-1.5, 1, 0.55]] :
-    [[0, 1, 0], [-1, 1, 0], [1, 1, 0]];
-  function segment(l) {
-    const hits = [];
-    [-0.92, 0.92].forEach((v) => {
-      if (l[1]) hits.push([v, -(l[0] * v + l[2]) / l[1]]);
-      if (l[0]) hits.push([-(l[1] * v + l[2]) / l[0], v]);
-    });
-    const inside = hits.filter((p, i) => p.every((v) => Math.abs(v) <= 0.9200001) &&
-      hits.slice(0, i).every((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-8));
-    return [inside[0], inside[1]];
-  }
-  const uniqueLines = equations.slice(0, reps.length);
-  const lines = ids.map((k) => segment(uniqueLines[k]));
-  const points = [];
-  const on = (p, l) => Math.abs(l[0] * p[0] + l[1] * p[1] + l[2]) < 1e-7;
-  const equal = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-7;
-  for (let i = 0; i < 3; i++) {
-    const same = points.findIndex((_, j) => data.pointEqual[i][j]);
-    if (same >= 0) { points.push(points[same].slice()); continue; }
-    const through = uniqueLines.filter((_, k) => data.incident[i][reps[k]]);
-    if (!through.length) return fail("The numerical incidence pattern has no containing flag line.");
-    let candidates;
-    if (through.length > 1) {
-      const a = through[0], b = through[1], det = a[0] * b[1] - a[1] * b[0];
-      if (Math.abs(det) < 1e-10) return fail("The numerical line classes are inconsistent.");
-      candidates = [[(a[1] * b[2] - a[2] * b[1]) / det,
-        (a[2] * b[0] - a[0] * b[2]) / det]];
-    } else {
-      const ends = segment(through[0]);
-      candidates = [0.28, 0.68, 0.42, 0.82, 0.15, 0.56].map((t) =>
-        ends[0].map((v, k) => v + t * (ends[1][k] - v)));
-    }
-    const p = candidates.find((p) =>
-      ids.every((k, j) => on(p, uniqueLines[k]) === data.incident[i][j]) &&
-      points.every((q, j) => equal(p, q) === data.pointEqual[i][j]));
-    if (!p) return fail("The numerical incidence pattern cannot be drawn consistently at this tolerance.");
-    points.push(p);
-  }
-  // Validate the entire realization, including equivalence-class transitivity.
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-    if (on(points[i], uniqueLines[ids[j]]) !== data.incident[i][j] ||
-        equal(points[i], points[j]) !== data.pointEqual[i][j] ||
-        (ids[i] === ids[j]) !== data.lineEqual[i][j]) {
-      return fail("The numerical incidence classification is internally inconsistent.");
-    }
-  }
-  return { valid: true, points, lines, schematic: true };
-}
-
-return { flagIncidence, flagTripleRatio, incidenceLayout };
+return { newIncidenceHighlights, incidenceFlashStrength, cotangentArrowGeometry, cotangentArrowColor, cotangentArrowOpacity, elementFrame, phaseColor, makeElementView };
 })();
 
 // ---- module: representation-readout ----
@@ -5334,27 +5926,54 @@ function formatComplex(z) {
 
 function makeRepresentationReadout(host) {
   const style = document.createElement("style");
-  style.textContent = [
-    ".ek-rep-readout { min-width:0; color:var(--ek-box-tx,inherit); }",
-    ".ek-rep-readout .ek-rep-row { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px 22px; padding:8px 0; }",
-    ".ek-rep-readout .ek-rep-row + .ek-rep-row { border-top:1px solid var(--ek-box-bd,#cfd4da); }",
-    ".ek-rep-readout .ek-rep-matrix { display:flex; align-items:center; gap:6px; min-width:0; }",
-    ".ek-rep-readout .ek-rep-label { white-space:nowrap; font-family:Georgia,serif; font-style:italic; }",
-    ".ek-rep-readout .ek-rep-grid { display:grid; gap:3px 10px; font:0.75rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }",
-    ".ek-rep-readout .ek-rep-cell { text-align:right; white-space:nowrap; }",
-    ".ek-rep-readout .ek-rep-bracket { align-self:stretch; width:5px; box-sizing:border-box; border-top:1px solid; border-bottom:1px solid; flex-shrink:0; }",
-    ".ek-rep-readout .ek-rep-bracket-left { border-left:1px solid; }",
-    ".ek-rep-readout .ek-rep-bracket-right { border-right:1px solid; }",
-    "@media(max-width:440px) { .ek-rep-readout .ek-rep-row { gap:12px 16px; } .ek-rep-readout .ek-rep-grid { font-size:0.68rem; column-gap:7px; } }"
-  ].join("\n");
+  style.textContent = `
+.ek-rep-readout { display:grid; gap:10px; min-width:0; color:var(--ek-box-tx,inherit); }
+.ek-rep-readout .ek-rep-card { min-width:0; border:1px solid var(--ek-box-bd,#cfd4da); border-radius:6px; overflow:hidden; }
+.ek-rep-readout .ek-rep-header { display:flex; align-items:center; justify-content:space-between; gap:8px; height:34px; padding:0 10px; border-bottom:1px solid var(--ek-box-bd,#cfd4da); font:600 0.75rem ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.ek-rep-readout .ek-rep-copy { color:inherit; background:transparent; border:1px solid var(--ek-box-bd,#cfd4da); border-radius:4px; padding:2px 6px; font:inherit; font-size:0.68rem; width:64px; cursor:pointer; }
+.ek-rep-readout .ek-rep-copy:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+.ek-rep-readout .ek-rep-body { height:244px; box-sizing:border-box; overflow-x:auto; overflow-y:hidden; padding:12px 10px 18px; }
+.ek-rep-readout .ek-rep-code { display:flex; flex-direction:column; gap:12px; width:max-content; min-width:100%; font:0.75rem/18px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; user-select:text; }
+.ek-rep-readout .ek-rep-matrix { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.ek-rep-readout .ek-rep-label { width:45px; flex-shrink:0; white-space:nowrap; }
+.ek-rep-readout .ek-rep-label sub,.ek-rep-readout .ek-rep-label sup { font-size:0.72em; line-height:0; }
+.ek-rep-readout .ek-rep-grid { display:grid; grid-auto-rows:18px; column-gap:10px; }
+.ek-rep-readout .ek-rep-cell { text-align:right; white-space:pre; min-width:3ch; }
+.ek-rep-readout .ek-rep-bracket { align-self:stretch; width:4px; box-sizing:border-box; border-top:1px solid; border-bottom:1px solid; flex-shrink:0; }
+.ek-rep-readout .ek-rep-bracket-left { border-left:1px solid; }
+.ek-rep-readout .ek-rep-bracket-right { border-right:1px solid; }
+`;
   host.appendChild(style);
   const root = document.createElement("div");
   root.className = "ek-rep-readout";
   host.appendChild(root);
+  function fitCards() {
+    root.style.gridTemplateColumns = host.clientWidth >= 760 ? "repeat(3,minmax(0,1fr))" : "minmax(0,1fr)";
+  }
+  fitCards();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitCards).observe(host);
+  else if (typeof window !== "undefined") window.addEventListener("resize", fitCards);
   const matrices = [];
-  function matrix(row, letter, level, branch, key, rows, cols) {
+  function fallbackCopy(text) {
+    const previous = document.activeElement;
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    document.body.appendChild(field);
+    let copied = false;
+    try { field.select(); copied = document.execCommand("copy"); }
+    finally {
+      document.body.removeChild(field);
+      if (previous && previous.focus) previous.focus();
+    }
+    if (!copied) throw new Error("Copy failed");
+  }
+  function matrix(parent, letter, level, branch, key, rows, cols) {
     const wrap = document.createElement("div");
     wrap.className = "ek-rep-matrix";
+    wrap.style.height = rows * 18 + "px";
     const label = document.createElement("span");
     label.className = "ek-rep-label";
     label.textContent = letter;
@@ -5376,7 +5995,7 @@ function makeRepresentationReadout(host) {
     bracket("left");
     const grid = document.createElement("div");
     grid.className = "ek-rep-grid";
-    grid.style.gridTemplateColumns = "repeat(" + cols + ", auto)";
+    grid.style.gridTemplateColumns = "repeat(" + cols + ", max-content)";
     wrap.appendChild(grid);
     const cells = [];
     for (let k = 0; k < rows * cols; k++) {
@@ -5387,17 +6006,58 @@ function makeRepresentationReadout(host) {
       grid.appendChild(cell);
     }
     bracket("right");
-    row.appendChild(wrap);
-    matrices.push({ branch, key, rows, cols, cells });
+    parent.appendChild(wrap);
+    const view = { branch, key, rows, cols, cells, letter, level };
+    matrices.push(view);
+    return view;
+  }
+  function branchText(views) {
+    return views.map(function(view) {
+      const lines = [];
+      for (let i = 0; i < view.rows; i++) {
+        lines.push("[ " + view.cells.slice(i * view.cols, (i + 1) * view.cols).map(function(cell) { return cell.textContent; }).join(", ") + " ]");
+      }
+      return view.letter + "_" + (view.branch + 1) + "^(" + view.level + ") =\n" + lines.join("\n");
+    }).join("\n\n");
   }
   for (let i = 0; i < 3; i++) {
-    const row = document.createElement("div");
-    row.className = "ek-rep-row";
-    root.appendChild(row);
-    matrix(row, "x", 1, i, "a", 2, 1);
-    matrix(row, "x", 2, i, "A", 3, 2);
-    matrix(row, "y", 1, i, "b", 1, 2);
-    matrix(row, "y", 2, i, "B", 2, 3);
+    const card = document.createElement("div");
+    card.className = "ek-rep-card";
+    const header = document.createElement("div");
+    header.className = "ek-rep-header";
+    const title = document.createElement("span");
+    title.textContent = "Branch " + (i + 1);
+    header.appendChild(title);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ek-rep-copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy Branch " + (i + 1) + " matrices");
+    header.appendChild(button);
+    card.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "ek-rep-body";
+    body.tabIndex = 0;
+    body.setAttribute("aria-label", "Branch " + (i + 1) + " matrices");
+    const code = document.createElement("div");
+    code.className = "ek-rep-code";
+    body.appendChild(code);
+    card.appendChild(body);
+    root.appendChild(card);
+    const views = [matrix(code,"x",1,i,"a",2,1), matrix(code,"x",2,i,"A",3,2), matrix(code,"y",1,i,"b",1,2), matrix(code,"y",2,i,"B",2,3)];
+    let feedbackTimer;
+    button.addEventListener("click", function() {
+      const text = branchText(views);
+      Promise.resolve().then(function() {
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text).catch(function() { fallbackCopy(text); });
+        }
+        fallbackCopy(text);
+      }).then(function() { button.textContent = "Copied"; }, function() { button.textContent = "Retry"; }).then(function() {
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(function() { button.textContent = "Copy"; }, 1400);
+      });
+    });
   }
   return {
     setData(rep) {
@@ -5422,15 +6082,13 @@ return { formatComplex, makeRepresentationReadout };
 const __ek_mod_widget = (function () {
 const { AFFINE_ADE } = __ek_mod_quiver_data;
 const { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } = __ek_mod_core_view;
-const { e6AtlasPoint } = __ek_mod_e6_atlas;
+const { e6AtlasPoint, e6HasInfinityLimit } = __ek_mod_e6_atlas;
+const { createBalancedClient } = __ek_mod_balanced_client;
 const { E6_REGULAR_LEVELS } = __ek_mod_e6_levels;
-const { matMul } = __ek_mod_core_math;
 const { makeRepresentationReadout } = __ek_mod_representation_readout;
-const { flagIncidence } = __ek_mod_flag_incidence;
 const { makeElementView } = __ek_mod_element_render;
 // E6 complex representatives and simultaneous flag/moduli views.
 // Compact representatives and the schematic core flow share coordinate controls.
-
 
 
 
@@ -5581,7 +6239,7 @@ function activate(container) {
   container.appendChild(matrixHost);
   const matrixLabel = document.createElement("div");
   matrixLabel.className = "ek-sec";
-  matrixLabel.textContent = "Complex representative";
+  matrixLabel.textContent = "Balanced representative";
   matrixHost.appendChild(matrixLabel);
   const matrices = makeRepresentationReadout(matrixHost);
 
@@ -5688,6 +6346,22 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
+  const balancedClient = createBalancedClient({ onProgress: function (result, parameters) {
+    displayBalanced(result, parameters);
+    // This is a validated intermediate representation, not the latest request.
+    incidenceFrame.setAttribute('aria-busy', 'true');
+    incidenceFrame.setAttribute('data-balanced', 'pending');
+  } });
+  let balancedFrame = null;
+  let lastBalancedKey = null;
+  function displayBalanced(result, parameters) {
+    matrices.setData(result.solvedRep);
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
+    if (frame && frame.valid) balancedFrame = frame.continuation;
+    incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
+    incidenceFrame.setAttribute('data-real-residual', String(result.residuals.real_norm));
+    incidenceView.setStatus('', 'info');
+  }
   let lastFlow = null;
   function limitMode(t) {
     if (!lastFlow) return null;
@@ -5706,7 +6380,7 @@ function activate(container) {
     update();
     const mode = limitMode(Number(tControl.input.value));
     if (mode === "outgoing") { state.outgoing = true; tControl.input.value = "0"; }
-    else if (mode === "return") { state.outgoing = false; tControl.input.value = "1"; }
+    else if (mode === "return") { state.outgoing = false; tControl.input.max = "1"; tControl.input.value = "1"; }
     else if (mode === "up") { state.sphere++; tControl.input.value = "0"; }
     else if (mode === "down") { state.sphere--; tControl.input.value = "1"; }
     else if (mode === "enter") {
@@ -5730,10 +6404,13 @@ function activate(container) {
   function update() {
     const r = Number(rControl.input.value);
     const theta = Number(thetaControl.input.value);
-    const t = Number(tControl.input.value);
     const phi = Number(phiControl.input.value);
     const arm = armAt(layout, r, theta);
     if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
+    const tMax = state.key !== 'E6' || e6HasInfinityLimit({r, theta, sphere:state.sphere, outgoing:state.outgoing}) ? 1 : .99;
+    tControl.input.max = String(tMax);
+    if (Number(tControl.input.value) > tMax) tControl.input.value = String(tMax);
+    const t = Number(tControl.input.value);
     rControl.refresh();
     thetaControl.refresh();
     tControl.refresh();
@@ -5746,6 +6423,9 @@ function activate(container) {
     coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
     coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
+      balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+      incidenceFrame.setAttribute('aria-busy', 'false');
+      incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);
@@ -5753,15 +6433,30 @@ function activate(container) {
       return;
     }
     try {
-      const point = e6AtlasPoint({ r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing });
-      const rep = point.rep;
+      const parameters = { r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing };
+      const point = e6AtlasPoint(parameters);
       coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
-      matrices.setData(rep);
-      const viewData = Object.assign({ incidence: flagIncidence(rep),
-        cotangentOperators: rep.A.map(function (A, i) { return matMul(A, rep.B[i]); }) }, point.view);
-      incidenceView.setData(viewData);
-      incidenceView.setStatus("", "info");
+      const key = JSON.stringify(parameters);
+      if (key === lastBalancedKey) return;
+      lastBalancedKey = key;
+      incidenceFrame.setAttribute('aria-busy', 'true');
+      incidenceFrame.setAttribute('data-balanced', 'pending');
+      balancedClient.request(parameters, function (result) {
+        incidenceFrame.setAttribute('aria-busy', 'false');
+        if (!result.success) {
+          incidenceFrame.setAttribute('data-balanced', 'false');
+          matrices.setData(null);
+          incidenceView.setData(null);
+          incidenceView.setStatus('Balanced representation unavailable', 'error');
+          return;
+        }
+        displayBalanced(result, parameters);
+        incidenceFrame.setAttribute('data-balanced', 'true');
+      });
     } catch (error) {
+      balancedClient.invalidate(); lastBalancedKey = null;
+      incidenceFrame.setAttribute('aria-busy', 'false');
+      incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
       matrices.setData(null);
       incidenceView.setData(null);

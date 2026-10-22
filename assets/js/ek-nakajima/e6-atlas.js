@@ -5,6 +5,14 @@ import { concurrencyLimitChart } from './limit-chart.js';
 import { compactFirstLineChart, branchMiddleChart, branchTipChart, branchFixedGrading } from './branch-charts.js';
 import { zeroSectionGrading, concurrencyGrading, checkFixedPointGrading } from './fixed-point.js';
 
+// Exact endpoint availability in this atlas, shared with the compact t control.
+export function e6HasInfinityLimit(parameters) {
+  const {r, theta, outgoing} = parameters;
+  const sphere = parameters.sphere === undefined ? 0 : parameters.sphere;
+  return !outgoing && (((r === 0 || r === 1) && (sphere === 0 || sphere === 1)) ||
+    (r === .5 && theta === 0 && sphere === 0));
+}
+
 export function e6AtlasPoint(parameters) {
   const { r, theta, t, phi } = parameters;
   const sphere = parameters.sphere === undefined ? 0 : parameters.sphere, outgoing = !!parameters.outgoing;

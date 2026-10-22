@@ -42,10 +42,18 @@ the gate to run after any change to the geometry layers.
 
 ## Not covered
 
+Balanced-view batteries cover solver continuation and bounded limit charts,
+unitary display-frame invariance, real concurrency, short-arm endpoint
+continuity, incidence hue soundness and its neutral double-incidence limit,
+and worker request coalescing, intermediate-result delivery, and cancellation
+across tab changes. They do not establish global
+convergence or a continuous planar projection of all complex flags.
+
 `smoke-widget.mjs` exercises the controls and view wiring using DOM/canvas/THREE
 stubs. It does not test real WebGL rendering. Complex-chart residual tests
 verify the equations and coordinate transformations, not stability or global
 coverage of the moduli space. The real moment-map solver has its own numerical
-battery; the widget's complex representatives do not require that solve.
+battery; the live widget additionally requires a successful balance before
+displaying its matrices.
 
 The moving-first-line batteries check both radial endpoint limits at nonzero transverse amplitude, including complex phases and the displayed cotangent coefficients. They also check the exact stability of every central-sphere incidence stratum in the display chamber.
