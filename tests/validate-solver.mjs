@@ -271,7 +271,23 @@ function sortedSpectra(rep) {
 }
 
 // ---------------------------------------------------------------------------
-// F. result structure
+// F. cached residual stopping respects acceptance and avoids redundant work
+// ---------------------------------------------------------------------------
+{
+  const base = symmetricFixture(1.4, 2.1);
+  const exact = solveRealMomentMap(base.rep, base.levels);
+  check("balanced input: accepted without a Jacobian", exact.success && exact.diagnostics.nfev === 1);
+  const rep = complexGaugeTransform(base.rep);
+  const solved = solveRealMomentMap(rep, base.levels, {multistart:false});
+  const warm = solveRealMomentMap(rep, base.levels, {initialLogGauge:solved.logGauge});
+  check("accepted warm seed: no redundant Jacobian or fallback", warm.success && warm.diagnostics.nfev === 1);
+  const strict = solveRealMomentMap(rep, base.levels, {abs_tol:1,rel_tol:1e-11,multistart:false});
+  check("residual stop honors tighter relative tolerance", strict.success && strict.residuals.real_rel <= 1e-11,
+    `relative=${strict.residuals.real_rel}`);
+}
+
+// ---------------------------------------------------------------------------
+// G. result structure
 // ---------------------------------------------------------------------------
 {
   const { rep, levels } = symmetricFixture(1.0, 1.0);

@@ -259,14 +259,17 @@ function HMatrices(raw) {
 // `q` is an array of complex scalars (one per branch). Exported so tests and
 // callers can build genuinely complex (non-unitary) gauge transforms.
 export function applyComplexGauge(rep, g, h, q) {
-  const ginv = matInv(g);
+  return applyGaugeWithInverses(rep, g, h, q, matInv(g), h.map(matInv));
+}
+
+function applyGaugeWithInverses(rep, g, h, q, ginv, hInv) {
   const a = [];
   const A = [];
   const b = [];
   const B = [];
   for (let i = 0; i < NB; i++) {
     const hi = h[i];
-    const hiInv = matInv(hi);
+    const hiInv = hInv[i];
     const qi = Array.isArray(q[i]) ? q[i] : [q[i], 0];
     const qInv = sInv(qi);
     a.push(matScale(matMul(hi, rep.a[i]), qInv));
@@ -296,11 +299,26 @@ function allFiniteRep(rep) {
 // residual
 // ---------------------------------------------------------------------------
 function makePackedResidual(rep, levels) {
+  // A finite-difference column changes only one log-gauge block. Reuse the
+  // other exponentials and inverses, with exact keys and solve-local lifetime.
+  const cache = new Array(4);
+  function block(x, slot, start, count, basis) {
+    const old = cache[slot];
+    if (old && old.coords.every((v, i) => v === x[start + i])) return old;
+    const coords = x.slice(start, start + count);
+    const gauge = expmHermitian(matScale(unpackHermitian(coords, basis), .5));
+    const inverse = matInv(gauge);
+    const entry = { coords, gauge, inverse };
+    cache[slot] = entry;
+    return entry;
+  }
   return function (x) {
     try {
-      const raw = rawFromCoords(x);
-      const { g, h, q } = positiveGauge(raw);
-      const gauged = applyComplexGauge(rep, g, h, q);
+      const center = block(x, 0, 0, 8, CENTER_BASIS);
+      const middle = [0, 1, 2].map(i => block(x, i + 1, MIDDLE_START + 4 * i, 4, MIDDLE_BASIS));
+      const q = [0, 1, 2].map(i => Math.exp(.5 * x[OUTER_START + i]));
+      const gauged = applyGaugeWithInverses(rep, center.gauge, middle.map(b => b.gauge), q,
+        center.inverse, middle.map(b => b.inverse));
       const r = packRealResidual(gauged, levels);
       if (!r.every((v) => isFinite(v))) return r.map(() => 1e8);
       return r;
@@ -395,6 +413,9 @@ function levMar(f, x0, opts) {
   let trust = opts.trust0 || 2.0;
 
   for (iter = 0; iter < maxIter; iter++) {
+    // Reuse the accepted residual before paying for another full Jacobian.
+    // buildResult still checks complex equations and positivity independently.
+    if (cost <= opts.residualCost) { status = "residual_tol"; break; }
     const J = fdJacobian(f, x, r, opts.fdStep);
     nfev += n;
     const g = new Array(n).fill(0);
@@ -529,11 +550,10 @@ export function solveRealMomentMap(rep, levels, options = {}) {
 
   let best = null;
   let totalNfev = 0;
-  // A packed residual at the success bar has cost = ||r||^2 <= abs_tol^2; once a
-  // seed reaches that, the remaining fallback seeds are redundant. (The previous
-  // `cost < 1e-24` test almost never fired, so a warm-started solve still ran
-  // every multistart seed.)
-  const successCost = opts.abs_tol * opts.abs_tol;
+  // Respect both acceptance bars, including callers with a tighter relative
+  // tolerance. Meeting them also makes further fallback seeds redundant.
+  const residualTol = Math.min(opts.abs_tol, opts.rel_tol * levelScale(rep, levelsArr));
+  const successCost = residualTol * residualTol;
   for (const seed of seeds) {
     if (totalNfev >= opts.max_nfev) break;
     const res = levMar(f, seed, {
@@ -544,10 +564,11 @@ export function solveRealMomentMap(rep, levels, options = {}) {
       xtol: opts.xtol,
       gtol: opts.gtol,
       fdStep: opts.fdStep,
+      residualCost: successCost,
     });
     totalNfev += res.nfev;
     if (best === null || res.cost < best.cost) best = res;
-    if (best.cost < successCost) break; // residual success bar met
+    if (best.cost <= successCost) break; // residual success bar met
   }
 
   return buildResult(rep, levelsArr, best.x, opts, {
