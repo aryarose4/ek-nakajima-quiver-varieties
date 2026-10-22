@@ -15,7 +15,7 @@ export function createBalancedClient(options = {}) {
     active = null;
     if (request && request.id === revision) request.callback(result);
     else if (request && request.epoch === epoch && result.success && options.onProgress) {
-      options.onProgress(result, request.parameters);
+      options.onProgress(result, request.parameters, request.levels);
     }
     if (queued) { const next = queued; queued = null; start(next); }
   }
@@ -28,10 +28,10 @@ export function createBalancedClient(options = {}) {
   }
   function start(request) {
     active = request;
-    if (worker) { worker.postMessage(request.parameters); return; }
+    if (worker) { worker.postMessage({ parameters: request.parameters, levels: request.levels }); return; }
     let result;
     try {
-      result = solveBalancedAtlas(request.parameters, undefined, { previous });
+      result = solveBalancedAtlas(request.parameters, request.levels, { previous });
       if (result.success) previous = result;
     } catch (error) {
       result = { success: false, diagnostics: { status: 'solver_error', message: String(error) } };
@@ -39,8 +39,9 @@ export function createBalancedClient(options = {}) {
     deliver(result);
   }
   return {
-    request(parameters, callback) {
-      const next = { id: ++revision, epoch, parameters, callback };
+    request(parameters, callback, levels) {
+      const next = { id: ++revision, epoch, parameters: { ...parameters }, callback,
+        levels: levels && levels.map(row => row.slice()) };
       if (active) queued = next; else start(next);
     },
     invalidate() { revision++; epoch++; queued = null; },

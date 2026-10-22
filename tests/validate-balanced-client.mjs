@@ -22,13 +22,18 @@ import(uri(source)).then(({createBalancedClient}) => {
   assert.strictEqual(instance.requests.length, 1);
   instance.finish({ success: true, value: 'obsolete' });
   assert.deepStrictEqual(displayed, []);
-  assert.deepStrictEqual(instance.requests, [{ r: 0 }, { r: .8 }]);
+  assert.deepStrictEqual(instance.requests.map(request => request.parameters), [{ r: 0 }, { r: .8 }]);
   instance.finish({ success: true, value: 'latest' });
   assert.deepStrictEqual(displayed, [{ success: true, value: 'latest' }]);
   client.request({ r: 1 }, result => displayed.push(result));
   client.invalidate();
   instance.finish({ success: true, value: 'wrong tab' });
   assert.strictEqual(displayed.length, 1);
+  const levels = [[3,1],[3,2.1],[3,3]];
+  client.request({r:.5}, result => displayed.push(result), levels);
+  levels[0][0] = 9;
+  assert.strictEqual(instance.requests[instance.requests.length-1].levels[0][0],3);
+  instance.finish({success:true});
   client.dispose();
   assert.ok(instance.terminated);
   const previews=[], final=[];
@@ -53,4 +58,17 @@ import(uri(source)).then(({createBalancedClient}) => {
   assert.strictEqual(final.length,2);
   streaming.dispose();
   console.log('Balanced client: latest-request coalescing, stale-result rejection, tab cancellation, and cleanup passed.');
+}).then(async () => {
+  delete global.Worker;
+  const fallbackSource = source.replace(
+    JSON.stringify(uri('export function solveBalancedAtlas(){throw Error("unexpected main-thread solve");}')),
+    JSON.stringify(uri('export function solveBalancedAtlas(parameters,levels){return {success:true,parameters,levels};}')));
+  const {createBalancedClient} = await import(uri(fallbackSource));
+  const client = createBalancedClient();
+  let received;
+  client.request({r:.25}, result => { received = result; }, [[3.02,1],[3,2.1],[3,3]]);
+  assert.strictEqual(received.levels[0][0],3.02);
+  assert.strictEqual(received.parameters.r,.25);
+  client.dispose();
+  console.log('Balanced client: main-thread fallback receives selected levels.');
 }).catch(error => { console.error(error); process.exitCode = 1; });

@@ -35,7 +35,7 @@ function makeCtx() {
 function makeEl(tag) {
   const el = {
     tagName: String(tag).toUpperCase(),
-    style: {},
+    style: { setProperty(k, v) { this[k] = v; } },
     children: [],
     parentNode: null,
     _classes: [],
@@ -196,7 +196,7 @@ async function main() {
   check("one compact radius slider", radius && radius.min === "0" && radius.max === "1");
   check("one theta slider", !!theta);
   const ranges = all.filter(function(e) { return e.tagName === "INPUT" && e.type === "range"; });
-  check("all four coordinate sliders are enabled", ranges.length === 4 && ranges.every(function(e) { return !e.disabled; }));
+  check("four coordinate and six beta sliders are enabled", ranges.length === 10 && ranges.every(function(e) { return !e.disabled; }));
   const t = all.find(function(e) { return e.id === "ek-t"; });
   const phi = all.find(function(e) { return e.id === "ek-phi"; });
   const limit = all.find(function(e) { return e.id === "ek-limit"; });
