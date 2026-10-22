@@ -1,0 +1,85 @@
+// Numerical balance of the existing E6 atlas; no UI or shared mutable state.
+import { e6AtlasPoint } from './e6-atlas.js';
+import { branchMiddleChart, branchTipChart } from './branch-charts.js';
+import { makeRep } from './core-math.js';
+import { E6_REGULAR_LEVELS } from './e6-levels.js';
+import { solveRealMomentMap } from './solver.js';
+
+function family(p) {
+  if (p.r === 0 || p.r === 1) return `${p.r}:${p.outgoing ? 'outgoing' : p.t === 1 ? 'endpoint'+(p.sphere||0) : 'sphere'+(p.sphere||0)}`;
+  return p.r === .5 && p.theta === 0 && (p.outgoing || p.t === 1) ? 'concurrency' : 'central';
+}
+function finiteGauge(g) {
+  return g && Array.isArray(g.center) && g.center.length === 8 &&
+    Array.isArray(g.middle) && g.middle.length === 3 && g.middle.every(a=>Array.isArray(a)&&a.length===4) &&
+    Array.isArray(g.outer) && g.outer.length === 3 && g.outer.every(a=>Array.isArray(a)&&a.length===1) &&
+    g.center.concat(...g.middle,...g.outer).every(Number.isFinite);
+}
+function failed(atlas, status, message) {
+  return { success:false, solvedRep:null, logGauge:null, residuals:null, atlas,
+    rawRep:atlas ? atlas.rep : null, continuation:null,
+    diagnostics:{status,message,iterations:0,nfev:0} };
+}
+
+// Exact finite-gauge overlap along the incoming concurrency sphere.
+// s=4/eta; at s=0 these matrices equal concurrencyLimitChart(0,0).
+function boundedConcurrency(s) {
+  const ell=[[0,-1,1],[1,0,-1],[-1,1,0]];
+  return makeRep(
+    ell.map(()=>[[[1,0]],[[0,0]]]),
+    ell.map((_,i)=>ell.map((__,j)=>[[(i===j?1:0)-1/3+s[0]/3,s[1]/3],[1,0]])),
+    ell.map(()=>[[[0,0],[0,0]]]),
+    ell.map(row=>[row.map(()=>[0,0]),row.map(x=>[x,0])])
+  );
+}
+
+// A previous successful result is an optional continuation token. Seeds are
+// accepted only within the same chart family and at identical real levels.
+// Failed attempts never expose a previous representation as the current solve.
+export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, options = {}) {
+  let atlas;
+  try { atlas = e6AtlasPoint(parameters); }
+  catch(e) { return failed(null,'chart_error',String(e)); }
+  let numericalRep=atlas.rep, chartFamily=family(parameters);
+  // Exact overlap formulas keep coefficients bounded near compact endpoints.
+  if ((parameters.r===0 || parameters.r===1) && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {
+    const phase=parameters.phi+(parameters.r===1 ? 2*parameters.theta : 0);
+    const power=parameters.sphere===1 ? 2 : 1;
+    const magnitude=Math.pow((1-parameters.t)/parameters.t,power);
+    const reciprocal=[magnitude*Math.cos(power*phase),-magnitude*Math.sin(power*phase)];
+    numericalRep=power===2 ? branchTipChart(parameters.r,reciprocal,0) : branchMiddleChart(parameters.r,reciprocal,0);
+    chartFamily+=':overlap';
+  }
+  if (parameters.r===.5 && parameters.theta===0 && !parameters.outgoing && parameters.t>.5 && parameters.t<1) {
+    const magnitude=4*(1-parameters.t)/parameters.t;
+    numericalRep=boundedConcurrency([magnitude*Math.cos(parameters.phi),-magnitude*Math.sin(parameters.phi)]);
+    chartFamily='concurrency:incoming-overlap';
+  }
+  const levelKey=JSON.stringify(levels);
+  const defaults={maxIter:80,max_nfev:4000,multistart:false};
+  const solverOptions=Object.assign(defaults,options.solverOptions||{});
+  const previous=options.previous && (options.previous.continuation || options.previous);
+  let warm=options.initialLogGauge;
+  if (!warm && previous && previous.family===chartFamily && previous.levelKey===levelKey) warm=previous.logGauge;
+  if (!finiteGauge(warm)) warm=null;
+  let result, attempts=0, totalNfev=0;
+  try {
+    attempts++;
+    result=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:warm}));
+    totalNfev+=result.diagnostics.nfev;
+    if (!result.success && warm) {
+      attempts++;
+      const cold=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:null}));
+      totalNfev+=cold.diagnostics.nfev;
+      if(cold.success || cold.residuals.real_norm<result.residuals.real_norm) result=cold;
+    }
+  } catch(e) { return failed(atlas,'solver_exception',String(e)); }
+  const success=!!result.success;
+  return {
+    success, solvedRep:success ? result.solvedRep : null,
+    logGauge:success ? result.logGauge : null, residuals:result.residuals,
+    atlas, rawRep:atlas.rep, numericalRep,
+    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm,chartFamily}),
+    continuation:success ? {family:chartFamily,levelKey,logGauge:result.logGauge} : null,
+  };
+}
