@@ -208,6 +208,12 @@ async function main() {
   const balanced = () => incidence.getAttribute('data-balanced') === 'true' && Number(incidence.getAttribute('data-real-residual')) < 1e-7;
   const matrixText = () => cells.map(e => e.textContent).join(',');
   check('initial displayed matrices are balanced', balanced());
+  const beta0 = all.find(e => e.id === 'ek-beta-0');
+  const matricesBeforeBeta = matrixText();
+  set(beta0, 1.52);
+  check('beta slider rebalances displayed representation', balanced() && matrixText() !== matricesBeforeBeta);
+  check('displayed levels identify current balanced result', JSON.parse(incidence.getAttribute('data-displayed-levels'))[0][0] === 3.04);
+  set(beta0, 1.5);
   const initialMatrices = matrixText();
   const yCells = matrices.filter((_, i) => i % 4 >= 2).reduce((out, el) => out.concat(walk(el, []).filter(e => e.className === 'ek-rep-cell')), []);
   check('reverse arrows vanish on the zero section', yCells.length === 24 && yCells.every(e => e.textContent === '0'));

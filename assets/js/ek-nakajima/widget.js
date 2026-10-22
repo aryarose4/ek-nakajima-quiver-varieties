@@ -6,6 +6,7 @@ import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from
 import { e6AtlasPoint, e6HasInfinityLimit } from "./e6-atlas.js";
 import { createBalancedClient } from './balanced-client.js';
 import { E6_REGULAR_LEVELS } from "./e6-levels.js";
+import { e6CoreAreas } from "./e6-areas.js";
 import { createParametersPanel } from "./parameters-panel.js";
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
@@ -260,8 +261,8 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
-  const balancedClient = createBalancedClient({ onProgress: function (result, parameters) {
-    displayBalanced(result, parameters);
+  const balancedClient = createBalancedClient({ onProgress: function (result, parameters, levels) {
+    displayBalanced(result, parameters, levels);
     // This is a validated intermediate representation, not the latest request.
     incidenceFrame.setAttribute('aria-busy', 'true');
     incidenceFrame.setAttribute('data-balanced', 'pending');
@@ -269,16 +270,17 @@ function activate(container) {
   let balancedFrame = null;
   let lastBalancedKey = null;
   const parametersPanel = createParametersPanel(right, { onChange: function (beta, levels) {
-    balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+    lastBalancedKey = null;
     container.setAttribute('data-e6-levels', JSON.stringify(levels));
-    matrices.setData(null); incidenceView.setData(null);
+    refreshCoreLayout();
     apply();
   } });
-  function displayBalanced(result, parameters) {
+  function displayBalanced(result, parameters, levels) {
     matrices.setData(result.solvedRep);
     const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
+    incidenceFrame.setAttribute('data-displayed-levels', JSON.stringify(levels));
     incidenceFrame.setAttribute('data-real-residual', String(result.residuals.real_norm));
     incidenceView.setStatus('', 'info');
   }
@@ -371,7 +373,7 @@ function activate(container) {
           incidenceView.setStatus('Balanced representation unavailable', 'error');
           return;
         }
-        displayBalanced(result, parameters);
+        displayBalanced(result, parameters, levels);
         incidenceFrame.setAttribute('data-balanced', 'true');
       }, levels);
     } catch (error) {
@@ -384,16 +386,20 @@ function activate(container) {
       incidenceView.setStatus("Representation unavailable", "error");
     }
   }
+  function refreshCoreLayout() {
+    const options = state.key === "E6" ? { radii: e6CoreAreas(parametersPanel.getBeta()).radii } : {};
+    layout = buildSideLayout(AFFINE_ADE[state.key], options);
+    if (coreView) coreView.setLayout(layout);
+  }
   function sync() {
     parametersPanel.setEnabled(state.key === "E6");
     Object.keys(tabButtons).forEach(function (key) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
     });
-    layout = buildSideLayout(AFFINE_ADE[state.key]);
+    refreshCoreLayout();
     state.arm = -1;
     state.sphere = 0;
     state.outgoing = false;
-    if (coreView) coreView.setLayout(layout);
     apply();
   }
   function resize() {

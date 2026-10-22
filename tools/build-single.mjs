@@ -50,6 +50,7 @@ const MODULES = [
   "balanced-worker-source",
   "balanced-client",
   "e6-parameters",
+  "e6-areas",
   "parameters-panel",
   "element-view",
   "element-model",

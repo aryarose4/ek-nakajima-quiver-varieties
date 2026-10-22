@@ -301,7 +301,12 @@ The Parameters panel uses the real coefficients of the paper's compact
 levels: write `a_i = beta_i^(1)`, `g_i = beta_i^(2)`, and
 `T = sum_i(a_i + 2*g_i)`. The Hermitian solver levels are **twice** these
 beta values. The default beta pairs are `(1.5,.5), (1.5,1.05), (1.5,1.5)`.
-All six sliders update the balanced representation. Red boundaries show
+All six sliders update the balanced representation. Same-chart beta changes
+reuse the previous balancing gauge and retain the incidence frame while a
+new solve is pending. If the ordinary solve fails near a wall, a recovery
+solve uses an analytic Jacobian and QR least squares with weaker damping;
+the real and complex residual acceptance criteria are unchanged. Difficult
+cold wall approaches can take several seconds. Red boundaries show
 nearest root walls; input is clipped strictly inside the current chamber.
 There is no chamber crossing or two-dimensional chamber view yet.
 
@@ -317,8 +322,12 @@ In the current chamber the following periods are the symplectic areas
 | r=1, second | `(-2*a_1+a_2+a_3-g_1-g_2+2*g_3)/3` | `29/60` |
 | r=1/2, short | `(sum_i a_i - sum_i g_i)/3` | `29/60` |
 
-These are symplectic areas; the rendered round-sphere packing still has
-schematic radii. They are not computed from that drawing.
+The rendered spheres use radii `sqrt(Area/(4*pi))`, so their surface areas
+match these symplectic areas. Roundness and the surrounding embedding are
+schematic; the drawing does not represent the intrinsic metric. At extreme
+allowed beta values, the fixed attachment directions can make nonadjacent
+round spheres overlap; those apparent intersections do not change the E6
+incidence graph. Adjacent tangencies remain exact.
 
 ### Moment-map derivation
 
