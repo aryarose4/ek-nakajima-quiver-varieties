@@ -5777,6 +5777,66 @@ function createParametersPanel(host, options = {}) {
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px';
   panel.appendChild(grid); host.appendChild(panel);
   const controls = [];
+  // Optional host adapter. Actions never mutate beta or assume solver support.
+  // Descriptors: {id, label, atWall, canApproach, canCross}. Cross changes the
+  // chamber at the pinned wall; transport and chamber areas belong to the host.
+  const wallActions = options.wallActions;
+  const wallRow = wallActions ? document.createElement('div') : null;
+  let wallRevision = 0;
+  let wallPending = false;
+  if (wallRow) {
+    wallRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:.85em';
+    panel.appendChild(wallRow);
+  }
+  function wallOptions() {
+    return wallActions && typeof wallActions.getOptions === 'function'
+      ? wallActions.getOptions(getBeta()) || [] : [];
+  }
+  function permitted(wall, action) {
+    return enabled && !wallPending && wall &&
+      typeof wallActions[action === 'cross' ? 'onCross' : 'onApproach'] === 'function' &&
+      (action === 'cross' ? wall.atWall === true && wall.canCross === true
+        : wall.atWall !== true && wall.canApproach === true);
+  }
+  function refreshWallActions() {
+    if (!wallRow) return;
+    const revision = ++wallRevision;
+    wallRow.textContent = '';
+    let count = 0;
+    wallOptions().forEach(wall => {
+      ['approach', 'cross'].forEach(action => {
+        if (!permitted(wall, action)) return;
+        const box = document.createElement('span');
+        box.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid currentColor;border-radius:4px;padding:3px 6px';
+        if (wall.atWall === true) box.style.background = 'rgba(245,180,40,.2)';
+        const label = document.createElement('span'); label.textContent = wall.label || wall.id;
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'ek-btn';
+        button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
+        button.addEventListener('click', () => {
+          // Recheck live capability; detached buttons and double clicks are inert.
+          if (revision !== wallRevision) return;
+          const current = wallOptions().find(item => item.id === wall.id);
+          if (!permitted(current, action)) { refreshWallActions(); return; }
+          wallPending = true; refreshWallActions();
+          function finish(error) {
+            wallPending = false; refreshWallActions();
+            if (error) {
+              wallRow.title = String(error.message || error);
+              if (typeof wallActions.onError === 'function') wallActions.onError(error);
+            }
+          }
+          try {
+            const result = wallActions[action === 'cross' ? 'onCross' : 'onApproach'](current, getBeta());
+            if (result && typeof result.then === 'function') result.then(() => finish(), finish);
+            else finish();
+          } catch (error) { finish(error); }
+        });
+        box.appendChild(label); box.appendChild(button); wallRow.appendChild(box); count++;
+      });
+    });
+    wallRow.style.display = count ? 'flex' : 'none';
+  }
   for (let index = 0; index < 6; index++) {
     const box = document.createElement('div');
     box.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;color:var(--ek-box-tx);font-size:.9em';
@@ -5811,10 +5871,11 @@ function createParametersPanel(host, options = {}) {
       control.input.style.setProperty('--ek-beta-hi', pct(iv.hi));
       control.input.disabled = !enabled;
     });
+    refreshWallActions();
   }
   function getBeta() { return beta.map(row => row.slice()); }
   refresh();
-  return { getBeta, getLevels: () => betaToLevels(beta), setEnabled(value) {
+  return { getBeta, refreshWallActions, getLevels: () => betaToLevels(beta), setEnabled(value) {
     enabled = !!value; panel.style.display = enabled ? '' : 'none'; refresh();
   } };
 }
