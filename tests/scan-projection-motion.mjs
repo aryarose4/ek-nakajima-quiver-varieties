@@ -11,8 +11,8 @@ import {structuralDefects} from './structural-screen-features.mjs';
  const {E6_DEFAULT_BETA,betaToLevels}=await import(source('e6-parameters.js'));
  const levels=betaToLevels(E6_DEFAULT_BETA);
  let solves=0;
- function sample(p){
-  const s=solveBalancedAtlas({theta:0,phi:0,t:0,sphere:0,...p},levels);
+ function sample(p,sampleLevels=levels){
+  const s=solveBalancedAtlas({theta:0,phi:0,t:0,sphere:0,...p},sampleLevels);
   solves++;assert(s.success,'strict solve '+JSON.stringify(p));
   assert(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8,'moment residual');
   const d=balancedTensorDiagram(s.solvedRep);assert(d.valid,d.reason);
@@ -27,12 +27,16 @@ import {structuralDefects} from './structural-screen-features.mjs';
   // opacity, which can change quickly without moving a point or physical line.
   const features=renderedFeatures(d);
   const raw=renderedFeatures({...d,layout:{...d.layout,pointOpacities:[1,1,1],lineOpacities:[1,1,1]}});
-  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),rawScreen:[0,1,2].flatMap(i=>raw.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,diagnostics:d.diagnostics,defects,physicalDefects}};
+  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),rawScreen:[0,1,2].flatMap(i=>raw.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,points:d.layout.points,markers:d.layout.pointMarkers,arrowOpacities:d.layout.arrowOpacities,diagnostics:d.diagnostics,defects,physicalDefects}};
  }
  const rows=[];
  if(process.argv.includes('--visibility')){
   for(const r of [0,.5,1])for(const sphere of(r===.5?[0]:[0,1]))for(const t of [0,.4,1])rows.push({p:{r,sphere,t},...sample({r,sphere,t}).visibility});
   for(const r of [.2,.35,.78])rows.push({p:{r},...sample({r}).visibility});
+  if(process.argv.includes('--wall'))for(const gamma of [.1,.001,1e-6])for(const r of [.2,.5,.78]){
+   const beta=E6_DEFAULT_BETA.map(row=>row.slice());beta[0][1]=gamma;
+   rows.push({p:{r,gamma},...sample({r},betaToLevels(beta)).visibility});
+  }
   console.log(JSON.stringify({solves,rows}));return;
  }
  function scan(label,at,lo,hi,n){
