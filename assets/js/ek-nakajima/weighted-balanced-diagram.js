@@ -1,4 +1,4 @@
-// Experimental partial-flag picture. One fixed tensor camera for every input,
+// Weighted partial-flag picture. One fixed tensor camera for every input,
 // never a beta-dependent reference switch. This is NOT a complete invariant.
 // Real flags retain affine incidence. Complex flags use projected normals and
 // a marked-point anchor; their cross-incidences are encoded by hue, not claimed
@@ -6,6 +6,7 @@
 import { matMul,matAdj,matTrace,matAdd,matSub,matScale,eyeZ,cAdd,cSub,cMul,cConj,cScale } from './core-math.js';
 import { eigvalsHermitian3 } from './element-view.js';
 import { balancedObservables } from './balanced-observables.js';
+import { cotangentGlyphs } from './flag-diagram.js';
 import { incidenceColors } from './balanced-diagram.js';
 
 const abs=z=>Math.hypot(...z), norm=v=>Math.hypot(...v.map(abs));
@@ -28,7 +29,7 @@ function clip(anchor,direction) {
   return lo<=hi&&Number.isFinite(lo)&&Number.isFinite(hi)?[lo,hi].map(t=>anchor.map((x,j)=>x+t*direction[j])):null;
 }
 
-export function experimentalBalancedDiagram(rep) {
+export function balancedTensorDiagram(rep) {
   const observables=balancedObservables(rep),bs=observables.branches;
   const H=sum(bs.map((b,i)=>matScale(b.H,[1,2,4][i])));
   const T=sum(bs.map((b,i)=>matAdd(matScale(b.J,[3,1,2][i]),
@@ -47,9 +48,13 @@ export function experimentalBalancedDiagram(rep) {
     const columns=[0,1,2].map(j=>P.map(row=>row[j]));
     return unit(columns.reduce((a,b)=>norm(a)>norm(b)?a:b));
   });
-  const anchors=[inner(frame[0],apply(T,frame[1])),inner(frame[1],apply(T,frame[2]))];
-  const tSize=Math.max(1,Math.abs(matTrace(T)[0]));
-  if(anchors.some(z=>abs(z)<1e-9*tSize))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
+  // A fixed polynomial includes two-step correlations. Direct correlations
+  // vanish at regular tips even though the tensor coupling graph is connected.
+  // Each summand has the same phase covariance; there is no endpoint switch.
+  const tSize=Math.max(1,Math.hypot(...T.flat().map(abs)));
+  const phaseTensor=matAdd(T,matScale(matMul(T,T),.1/tSize));
+  const anchors=[inner(frame[0],apply(phaseTensor,frame[1])),inner(frame[1],apply(phaseTensor,frame[2]))];
+  if(anchors.some(z=>abs(z)<1e-11*tSize))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
   const phases=[[1,0],cScale(cConj(anchors[0]),1/abs(anchors[0]))];
   phases.push(cMul(phases[1],cScale(cConj(anchors[1]),1/abs(anchors[1]))));
   frame.forEach((v,i)=>{frame[i]=v.map(z=>cMul(z,phases[i]));});
@@ -61,8 +66,25 @@ export function experimentalBalancedDiagram(rep) {
   const lineOpacities=lineWeights.map(w=>Math.min(1,Math.max(0,w)/.15));
   const ps=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
   const ns=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
-  const data={valid:true,tolerance:1e-8,residuals:ps.map(p=>ns.map(n=>norm(p)>0&&norm(n)>0?
-    abs(n.reduce((s,z,j)=>cAdd(s,cMul(z,p[j])),[0,0]))/(norm(n)*norm(p)):0))};
+  const tolerance=1e-8;
+  const pointPresent=pointWeights.map(w=>w>1e-24),linePresent=lineWeights.map(w=>w>1e-24);
+  const zero=()=>[[0,0],[0,0],[0,0]];
+  const homogeneousPoints=ps.map((p,i)=>pointPresent[i]?coordinates(frame,unit(p)):zero());
+  const homogeneousLines=ns.map((n,i)=>linePresent[i]?coordinates(frame,unit(n).map(cConj)).map(cConj):zero());
+  const pairing=(p,n)=>abs(p.reduce((s,z,j)=>cAdd(s,cMul(z,n[j])),[0,0]));
+  const matrix=f=>[0,1,2].map(i=>[0,1,2].map(j=>f(i,j)));
+  const residuals=matrix((i,j)=>pointPresent[i]&&linePresent[j]?pairing(homogeneousPoints[i],homogeneousLines[j]):null);
+  const data={valid:true,numerical:true,tolerance,pointPresent,linePresent,points:homogeneousPoints,dualLines:homogeneousLines,residuals,
+    incident:matrix((i,j)=>residuals[i][j]!==null&&residuals[i][j]<=tolerance),
+    pointEqual:matrix((i,j)=>pointPresent[i]&&pointPresent[j]&&norm(cross(homogeneousPoints[i],homogeneousPoints[j]))<=tolerance),
+    lineEqual:matrix((i,j)=>linePresent[i]&&linePresent[j]&&norm(cross(homogeneousLines[i],homogeneousLines[j]))<=tolerance),
+    collinear:pointPresent.every(Boolean)&&pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]))<=tolerance,
+    concurrent:linePresent.every(Boolean)&&pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]))<=tolerance};
+  const F=[0,1,2].map(j=>frame.map(v=>v[j])),FH=matAdj(F);
+  const operators=bs.map(b=>matMul(matMul(FH,b.K),F));
+  // Fix homogeneous vector phases in the same affine chart as the picture.
+  const affinePhase=v=>{const w=v.reduce(cAdd,[0,0]);return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):v;};
+  const glyphs=cotangentGlyphs({...data,points:homogeneousPoints.map(affinePhase),dualLines:homogeneousLines.map(affinePhase)},operators);
   const points=[],rawPoints=[],lines=[],pointMarkers=[],cameraDefects=[],phaseVectors=[];
   for(let i=0;i<3;i++) {
     const p=norm(ps[i])>0?coordinates(frame,unit(ps[i])):null;
@@ -107,13 +129,42 @@ export function experimentalBalancedDiagram(rep) {
     const z=observables.cyclic[i];
     phaseVectors.push(cScale(z,1/Math.hypot(...z,1)));
   }
-  const colors=incidenceColors(data,phaseVectors);
+  const colors=incidenceColors({...data,residuals:residuals.map(row=>row.map(r=>r===null?1:r))},phaseVectors);
   colors.pointStrengths=colors.pointStrengths.map((s,i)=>s*[0,1,2].filter(j=>j!==i).reduce((p,j)=>p*lineOpacities[j],1));
-  return {valid:true,frame,observables,data,glyphs:[],operators:bs.map(b=>b.K),source:'experimental-weighted-tensors',
+  const cotangentTargets=glyphs.map((g,i)=>{
+    if(!g)return null;
+    const homogeneous=g.basis[1],W=homogeneous.reduce(cAdd,[0,0]);
+    if(abs(W)<1e-10)return {point:null,homogeneous,atInfinity:true,clipped:false};
+    const target=homogeneous.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
+    const a=lines[i][0],d=lines[i][1].map((v,j)=>v-a[j]),length2=d.reduce((s,x)=>s+x*x,0);
+    if(length2<1e-20)return {point:null,homogeneous,atInfinity:false,clipped:true};
+    const t=target.reduce((s,x,j)=>s+(x-a[j])*d[j],0)/length2,clipped=t<0||t>1;
+    return {point:clipped?null:a.map((x,j)=>x+t*d[j]),homogeneous,atInfinity:false,clipped};
+  });
+  // A true complex incidence need not survive this real projection. Show
+  // geometric guides only when both classifications and screen equations agree.
+  const pairs=[[0,1],[0,2],[1,2]];
+  const equations=lines.map(([a,b])=>[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]]);
+  let concurrencyPoint=null,transversal=null;
+  if(data.concurrent)for(const [i,j]of pairs){
+    const a=equations[i],b=equations[j],det=a[0]*b[1]-a[1]*b[0];
+    if(Math.abs(det)<1e-10)continue;
+    const p=[(a[1]*b[2]-a[2]*b[1])/det,(a[2]*b[0]-a[0]*b[2])/det];
+    if(p.every(v=>Math.abs(v)<=LIMIT)&&equations.every(e=>Math.hypot(e[0],e[1])>1e-10&&Math.abs(e[0]*p[0]+e[1]*p[1]+e[2])<1e-8))concurrencyPoint=p;
+    break;
+  }
+  if(data.collinear&&!pointMarkers.some(m=>m.clipped)){
+    const pair=pairs.reduce((best,p)=>Math.hypot(...rawPoints[p[0]].map((v,j)=>v-rawPoints[p[1]][j]))>Math.hypot(...rawPoints[best[0]].map((v,j)=>v-rawPoints[best[1]][j]))?p:best,pairs[0]);
+    const a=rawPoints[pair[0]],d=rawPoints[pair[1]].map((v,j)=>v-a[j]),length=Math.hypot(...d);
+    if(length>1e-8&&rawPoints.every(p=>Math.abs(d[0]*(p[1]-a[1])-d[1]*(p[0]-a[0]))<1e-8*length))transversal=clip(a,d);
+  }
+  return {valid:true,frame,observables,data,glyphs,operators,source:'balanced-weighted-tensors',
     diagnostics:{eigenvalues,eigenvalueGap:gap,phaseAnchorMagnitudes:anchors.map(abs)},
     layout:{valid:true,points,rawPoints,lines,pointMarkers,pointOpacities,lineOpacities,pointWeights,lineWeights,
       incidenceColors:colors,phaseVectors,pointPhaseVectors:[[0,0],[0,0],[0,0]],cameraDefects,
-      cotangentTargets:[null,null,null],transversal:null,concurrencyPoint:null,
-      reconstruction:{chart:'Experimental fixed tensor eigenframe; partial flags',camera:frame}}};
+      cotangentTargets,transversal,concurrencyPoint,
+      reconstruction:{chart:'Fixed tensor eigenframe; partial flags',camera:frame}}};
 }
 function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
+
+export const experimentalBalancedDiagram=balancedTensorDiagram;
