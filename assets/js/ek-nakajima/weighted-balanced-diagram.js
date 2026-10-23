@@ -16,7 +16,9 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
-const LIMIT=.9,SCALE=.65;
+// One fixed affine scale keeps the default comparison's surviving points in
+// view. It is never fitted to the current flags or their visibility weights.
+const LIMIT=.9,SCALE=.085;
 function clip(anchor,direction) {
   let lo=-Infinity,hi=Infinity;
   for(let j=0;j<2;j++) {
