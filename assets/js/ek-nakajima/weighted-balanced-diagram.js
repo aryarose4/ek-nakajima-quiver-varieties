@@ -31,7 +31,11 @@ export function balancedTensorDiagram(rep) {
   // A complex reference records the signed phase of each intrinsic K block.
   // No division by a reference correlation: a zero simply has zero contrast.
   const C=matAdd(sum(j.map((J,i)=>matScale(J,[1,2,4][i]))),matScale(Y,[0,1]));
-  const project=P=>[.65*Math.tanh(pair(P,X)[0]),.65*Math.tanh(pair(P,Y)[0])];
+  // Marked-point information can differ even when every H has the same
+  // plane restriction; include J in the point targets to retain that motion.
+  const PX=matAdd(X,matScale(matSub(j[0],j[1]),.5));
+  const PY=matAdd(Y,matScale(sum(j.map((J,i)=>matScale(J,[1,2,4][i]))),.25));
+  const project=P=>[.65*Math.tanh(pair(P,PX)[0]),.65*Math.tanh(pair(P,PY)[0])];
   const E=bs.map((b,i)=>{
     const P=normalized(b.J,pointWeights[i]),N=normalized(b.plane,lineWeights[i]);
     return [P,matSub(matSub(eyeZ(3),P),N),N];
@@ -59,10 +63,15 @@ export function balancedTensorDiagram(rep) {
   targets.push(...E.map((e,i)=>.35*lineOpacities[i]*Math.tanh(pair(e[2],matAdd(X,Y))[0])));
   targets.push(0,0,0);
   const psum=sum(E.map(e=>e[0])),psum2=matMul(psum,psum),pt=tr(psum);
-  const carrier=bounded(matAdd(matSub(psum2,matScale(psum,pt)),matScale(eyeZ(3),.5*(pt*pt-tr(psum2)))));
+  const adj=matAdd(matSub(psum2,matScale(psum,pt)),matScale(eyeZ(3),.5*(pt*pt-tr(psum2))));
+  const carrierMass=Math.max(0,tr(adj)),carrier=normalized(adj,carrierMass);
+  // For a genuine rank-two span this is its NORMALIZED normal projector:
+  // the carrier and an equal physical plane must select the same angle.
+  // At rank one no carrier is distinguished, so its constraint and ink fade.
+  const carrierStrength=Math.pow(opacity(carrierMass),2);
   const ca=Math.PI*Math.tanh(pair(carrier,D)[0]),cn=[Math.cos(ca),Math.sin(ca)];
   const cweight=incidenceWeight(pairing(hn[0],cross(hn[1],hn[2])))*Math.pow(lineOpacities.reduce((a,b)=>a*b,1),2);
-  const pweight=incidenceWeight(pairing(hp[0],cross(hp[1],hp[2])))*Math.pow(pointOpacities.reduce((a,b)=>a*b,1),2);
+  const pweight=carrierStrength*incidenceWeight(pairing(hp[0],cross(hp[1],hp[2])))*Math.pow(pointOpacities.reduce((a,b)=>a*b,1),2);
   const fit=fitIncidences(targets,normals,residuals,pointOpacities,lineOpacities,cn,cweight,pweight,E);
   // Common smooth scale preserves incidence and guarantees line anchors lie
   // strictly inside the clipping square. There is no viewport-fit switch.
