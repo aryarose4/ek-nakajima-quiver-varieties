@@ -98,39 +98,29 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   const solverOptions=Object.assign(defaults,options.solverOptions||{});
   const previous=options.previous && (options.previous.continuation || options.previous);
   const parameterKey=JSON.stringify(parameters);
-  const audit=e6RootWallAudit(levels);
-  const wallIndex=audit.roots.findIndex(root=>Math.abs(root.weight)<=audit.minAbsWeight+1e-12);
-  const wallLog=Math.log(audit.minAbsWeight);
   let warm=options.initialLogGauge;
-  if (!warm && previous && (!previous.chamberId || previous.chamberId==='default') && previous.family===chartFamily) warm=previous.logGauge;
-  let predicted=false;
-  // At a collapsing sphere the positive gauge grows logarithmically in the
-  // vanishing period. Reusing its last value leaves a poorly conditioned LM
-  // solve; a secant in log(period) gives a much closer initial gauge. This is
-  // only a seed: all moment maps and positivity are still checked directly.
-  if (!options.initialLogGauge && warm && previous.parameterKey===parameterKey &&
-      previous.wallIndex===wallIndex && previous.history && finiteGauge(previous.history.logGauge) && audit.minAbsWeight<.1 &&
-      wallLog<previous.wallLog && previous.wallLog<previous.history.wallLog) {
-    const ratio=(wallLog-previous.wallLog)/(previous.wallLog-previous.history.wallLog);
-    if(Number.isFinite(ratio) && ratio<=32) {
-      const old=previous.history.logGauge;
-      warm={center:warm.center.map((v,i)=>v+ratio*(v-old.center[i])),
-        middle:warm.middle.map((row,j)=>row.map((v,i)=>v+ratio*(v-old.middle[j][i]))),
-        outer:warm.outer.map((row,j)=>row.map((v,i)=>v+ratio*(v-old.outer[j][i])))};
-      predicted=true;
-    }
-  }
+  if (!warm && previous && !previous.rebased && (!previous.chamberId || previous.chamberId==='default') && previous.family===chartFamily) warm=previous.logGauge;
+  const canRebase=!options.initialLogGauge && !options.solverOptions && previous &&
+    previous.parameterKey===parameterKey && previous.levelKey!==levelKey && previous.family===chartFamily && previous.balancedRep;
+  let rebased=false;
   if (!finiteGauge(warm)) warm=null;
   let result, attempts=0, totalNfev=0;
   try {
-    attempts++;
-    result=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:warm}));
-    totalNfev+=result.diagnostics.nfev;
-    if (!result.success && predicted) {
+    if(canRebase) {
       attempts++;
-      const unpredicted=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:previous.logGauge}));
-      totalNfev+=unpredicted.diagnostics.nfev;
-      if(unpredicted.success || unpredicted.residuals.real_norm<result.residuals.real_norm) result=unpredicted;
+      // With the atlas coordinates fixed, the previous balanced representative
+      // is an exact complex-gauge rebase. Solve the correction for new levels
+      // near identity instead of a degenerating logarithm in the raw chart.
+      result=solveRealMomentMap(previous.balancedRep,levels,Object.assign({},solverOptions,{
+        analytic:true,lambda0:1e-12,initialLogGauge:null,maxIter:40
+      }));
+      totalNfev+=result.diagnostics.nfev;
+      if(result.success){numericalRep=previous.balancedRep;rebased=true;}
+    }
+    if(!result || !result.success) {
+      attempts++;
+      result=solveRealMomentMap(numericalRep,levels,Object.assign({},solverOptions,{initialLogGauge:warm}));
+      totalNfev+=result.diagnostics.nfev;
     }
     if (!result.success && warm) {
       attempts++;
@@ -155,10 +145,8 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
     success, solvedRep:success ? result.solvedRep : null,
     logGauge:success ? result.logGauge : null, residuals:result.residuals,
     atlas, rawRep:atlas.rep, numericalRep,
-    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm,predicted,chartFamily}),
+    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm || !!canRebase,rebased,chartFamily}),
     continuation:success ? {family:chartFamily,levelKey,chamberId:'default',logGauge:result.logGauge,
-      parameterKey,wallIndex,wallLog,
-      history:previous && previous.parameterKey===parameterKey && previous.wallIndex===wallIndex ?
-        {wallLog:previous.wallLog,logGauge:previous.logGauge} : null} : null,
+      parameterKey,rebased,balancedRep:result.solvedRep} : null,
   };
 }
