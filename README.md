@@ -93,23 +93,20 @@ the matrix readout instead of leaving matrices from a different point visible.
 The flag panel records the forward-arrow flags, with plane labels P1/P2/P3
 and unlabelled marked points. Its top-left "y data" toggle starts checked.
 When enabled, three fixed-length 16px arrows
-encode the upper-triangular coefficients of `K_i=A_i B_i` in an orthonormal
-flag basis: hue encodes phase and saturation encodes magnitude. The `c12`
+show the three intrinsic blocks of `K_i=A_i B_i` in the orthogonal flag
+decomposition. Opacity follows the physical block magnitude; hue and saturation
+follow a continuous complex correlation with the other balanced tensors. The `c12`
 arrow is tangential toward the marked point; `c13` is normal toward it;
 `c23` is normal toward the projected orthogonal direction in the flag plane.
 That target is the orthogonal complement of the marked point within its flag
 plane, equivalent projectively to removing the point component from an
-independent column of balanced `A_i`. Coefficient phases use the current
-camera's affine convention. Targets outside the viewport or at affine infinity
-are explicitly recorded and their `c23` arrow is omitted; no artificial target
-is substituted. Zero coefficients are hidden. Screen arrows are schematic
-matrix components, not literal displacements in complex projective space.
-The signed dual-affine line equation fixes arrow sides: the tangential arrow
-uses its oriented tangent, and the two normal arrows occupy opposite sides.
-They no longer flip when a target crosses the dot or a distance threshold.
-These are display-basis coefficients, not complex-gauge invariants;
-their phases are measured in the current camera frame. The full reverse
-arrows remain visible in the matrix readout.
+independent column of balanced `A_i`. The schematic projects this direction
+onto the corresponding displayed line. A vanishing phase correlation turns an
+arrow gray while its nonzero physical magnitude stays visible. Zero blocks are
+hidden. Screen arrows are schematic matrix blocks, not literal displacements
+in complex projective space. The continuously oriented line fixes arrow sides;
+the two normal arrows occupy opposite sides. The full reverse arrows remain
+visible in the matrix readout.
 
 At the concurrency attachment (`r=1/2`, `theta=0`), the first outward limit
 has a concrete E6 representation. Its next chart is obtained from the coupled
@@ -124,15 +121,14 @@ the outgoing paraboloid at the short arm's tip, rather than a second sphere.
 The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
-The live incidence view uses a stateless unitary frame extracted from a fixed
-weighted sum of the balanced tensors `H_i = x_i^(2) x_i^(2)*`, mixed with
-one eighth of a fixed Hermitian point/cotangent correlation tensor. The mixing
-resolves an ordered-axis exchange on the real outgoing stratum. These same
-point and cotangent tensors supply the phase references. A leading spectral
-projector synchronizes all surviving correlations, avoiding a prescribed
-chain of references that can disappear at a wall. The same rule is
-used throughout the current chamber, without camera switches based on beta
-or on which sphere is selected. The viewport has fixed scale.
+The live incidence view is a stateless, gauge-invariant tensor schematic.
+Bounded traces of the balanced point and plane projectors determine coordinate
+priors and continuously oriented line normals. A strictly positive definite
+12-variable fit aligns incidences, equal flags, collinearity and concurrency.
+A common smooth bound keeps its geometry inside the panel. This removes the
+ordered eigenvectors, phase anchoring and affine divisions that caused the
+earlier jumps; it uses the same rule throughout the supported chambers.
+See [the continuous incidence construction](docs/e6-continuous-incidence.md).
 
 Point visibility follows `||x_i^(2) x_i^(1)||^2`; plane visibility follows
 `||wedge^2 x_i^(2)||^2`. Both reach full opacity at weight `.15` (a display
@@ -149,13 +145,14 @@ Disappearing planes also lose their influence on dot color. These cues are
 separate from the cotangent arrows. Nearly incident configurations can have
 perceptually indistinguishable hues, so color is not an exact certificate.
 
-The three-dimensional complex flags are still projected into a real plane.
-Viewport clipping, affine infinity, repeated camera eigenvalues and vanishing
-phase references remain possible defects; no global continuity or faithful
-planar-incidence theorem is claimed. The formerly undefined outer-tip samples
-now have valid frames and are regression-tested. The previous camera remains
-available in the side-by-side development preview, not as a hidden fallback
-in the live view. No additional on-page explanation accompanies this change.
+The diagram is a continuous schematic, rather than an exact embedding of
+complex projective flags in a real affine plane. Fully visible equal objects
+match by symmetry; true incidences are fitted to subpixel accuracy. Exact
+complex classifications and hues still come from the representation itself.
+The construction avoids the old camera singularities, while finite numerical
+tests cannot certify every solver input or all floating-point behavior.
+Historical camera code remains solely as a regression fixture. No additional
+on-page explanation accompanies this change.
 The outgoing coordinate has weight two under reverse-arrow scaling:
 `v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
 meaning of the controls; the outgoing circle action has a half-turn stabilizer.

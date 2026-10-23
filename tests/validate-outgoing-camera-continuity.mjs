@@ -10,12 +10,11 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
  // Rounded screenshot beta, independently reconstructed physical chamber.
  const beta=[[1.338,2.225],[1.550,.557],[.792,1.362]];
  const chamber='weyl:2.5.0.3.2.0.1.4.1.0.2.3.0.5.2.5.1.4.3.2.0.1.4.1.0.2.3.4.1.2.0.1.4.1.4.1.4.1.0.2.1.0.3.2.0.1.4.1.0.2.3.0.1.5.3.0.1.4.1.0.3.2.0.1.4.1.0.2.3.2.0.1.4.1.4.1.4.1.0.2.3';
- let solves=0,minGap=Infinity;
+ let solves=0;
  function sample(p={},b=beta){
   const s=solveBalancedAtlas({r:1,theta:0,phi:0,sphere:1,outgoing:true,t:.534,...p},b.map(r=>r.map(x=>2*x)),{chamber});solves++;
   assert(s.success,'strict transported solve '+JSON.stringify({p,diagnostics:s.diagnostics}));assert(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8,'moment residual');
   const o=balancedObservables(s.solvedRep),d=balancedTensorDiagram(s.solvedRep);assert(d.valid,d.reason);
-  minGap=Math.min(minGap,d.diagnostics.eigenvalueGap);
   const old=eigvalsHermitian3(o.branches.map((b,i)=>matScale(b.H,[1,2,4][i])).reduce(matAdd));
   const features=[invariantFeatures(o),renderedFeatures(d),glyphFeatures(d),arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity)];assert(features.every(f=>f.every(Number.isFinite)));
   return {features,gap:old[0]-old[1]};
@@ -31,9 +30,9 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
   for(const key of ['phi'])convergence(key+' '+t,h=>[-1,1].map(s=>({p:{t,[key]:s*h}})));
   for(let j=0;j<6;j++)convergence('beta '+j+' t '+t,h=>[-1,1].map(s=>({p:{t},beta:beta.map((r,i)=>r.map((v,k)=>v+(2*i+k===j?s*h:0)))})));
  }
- // Sweep outgoing t as well: a fixed mixed tensor must not just move the jump.
+ // Sweep outgoing t as well, so a replacement cannot just move the jump.
  for(let i=1;i<40;i++)convergence('outgoing sweep '+i,h=>[-1,1].map(s=>({p:{t:i/40+s*h}})));
- console.log(JSON.stringify({collision,physicalT:collision/(1-collision),minGap,solves,cases:rows.length,rows}));
+ console.log(JSON.stringify({collision,physicalT:collision/(1-collision),solves,cases:rows.length,rows}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
 
