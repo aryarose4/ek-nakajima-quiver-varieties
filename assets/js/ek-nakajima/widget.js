@@ -8,6 +8,7 @@ import { createBalancedClient } from './balanced-client.js';
 import { E6_REGULAR_LEVELS } from "./e6-levels.js";
 import { e6CoreAreas } from "./e6-areas.js";
 import { createParametersPanel } from "./parameters-panel.js";
+import { betaToLevels, e6DisplayBeta, e6AtCrossingWall, E6_CROSSING_WORD } from './e6-parameters.js';
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
 
@@ -261,6 +262,8 @@ function activate(container) {
     coreFrame.addEventListener("pointerleave", function () { coreView.setHover(false); });
   }
   let layout = null;
+  let chamberId = 'default';
+  let chamberEpoch = 0;
   const balancedClient = createBalancedClient({ onProgress: function (result, parameters, levels) {
     displayBalanced(result, parameters, levels);
     // This is a validated intermediate representation, not the latest request.
@@ -269,7 +272,22 @@ function activate(container) {
   } });
   let balancedFrame = null;
   let lastBalancedKey = null;
-  const parametersPanel = createParametersPanel(right, { onChange: function (beta, levels) {
+  const parametersPanel = createParametersPanel(right, {
+    getChamberId: () => chamberId,
+    wallActions: {
+      getOptions: beta => [{ id: 'side-zero-second', atWall: e6AtCrossingWall(beta), canCross: true }],
+      onCross: function () {
+        // Keep beta and the dot's chart coordinates pinned. At the collapsed
+        // component these coordinates denote the selected side's regular
+        // limit; data-requested/displayed-levels report the interior sample.
+        chamberId = chamberId === 'default' ? 'side-zero-second' : 'default';
+        chamberEpoch++;
+        balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
+        container.setAttribute('data-e6-chamber', chamberId);
+        container.setAttribute('data-e6-chamber-epoch', String(chamberEpoch));
+        parametersPanel.refresh(); refreshCoreLayout(); apply();
+      }
+    }, onChange: function (beta, levels) {
     lastBalancedKey = null;
     container.setAttribute('data-e6-levels', JSON.stringify(levels));
     refreshCoreLayout();
@@ -358,13 +376,20 @@ function activate(container) {
       const parameters = { r, theta, t, phi, sphere: state.sphere, outgoing: state.outgoing };
       const point = e6AtlasPoint(parameters);
       coreFrame.setAttribute("data-fixed", point.grading ? "true" : "false");
-      const levels = parametersPanel.getLevels();
-      const key = JSON.stringify({ parameters, levels });
+      const requestedLevels = parametersPanel.getLevels();
+      const levels = betaToLevels(e6DisplayBeta(parametersPanel.getBeta(), chamberId));
+      const epoch = chamberEpoch;
+      const chamber = { id: chamberId, word: chamberId === 'default' ? [] : E6_CROSSING_WORD.slice() };
+      container.setAttribute('data-e6-chamber', chamberId);
+      incidenceFrame.setAttribute('data-requested-levels', JSON.stringify(requestedLevels));
+      incidenceFrame.setAttribute('data-wall-approximation', JSON.stringify(levels) !== JSON.stringify(requestedLevels) ? 'true' : 'false');
+      const key = JSON.stringify({ parameters, levels, chamberId });
       if (key === lastBalancedKey) return;
       lastBalancedKey = key;
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
       balancedClient.request(parameters, function (result) {
+        if (epoch !== chamberEpoch || key !== lastBalancedKey) return;
         incidenceFrame.setAttribute('aria-busy', 'false');
         if (!result.success) {
           incidenceFrame.setAttribute('data-balanced', 'false');
@@ -375,7 +400,7 @@ function activate(container) {
         }
         displayBalanced(result, parameters, levels);
         incidenceFrame.setAttribute('data-balanced', 'true');
-      }, levels);
+      }, levels, chamber);
     } catch (error) {
       balancedClient.invalidate(); lastBalancedKey = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
@@ -387,7 +412,7 @@ function activate(container) {
     }
   }
   function refreshCoreLayout() {
-    const options = state.key === "E6" ? { radii: e6CoreAreas(parametersPanel.getBeta()).radii } : {};
+    const options = state.key === "E6" ? { radii: e6CoreAreas(e6DisplayBeta(parametersPanel.getBeta(), chamberId), chamberId).radii } : {};
     layout = buildSideLayout(AFFINE_ADE[state.key], options);
     if (coreView) coreView.setLayout(layout);
   }

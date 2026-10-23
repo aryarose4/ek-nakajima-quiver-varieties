@@ -2,7 +2,8 @@
 // beta[i] = [beta_i^(1), beta_i^(2)]. Period = integral(omega)/(2*pi).
 // Finite-tree IDs: central 2; r=0 arm 1,0; r=1 arm 3,4; r=1/2 arm 5.
 // Round spheres represent surface area, so 4*pi*radius^2 = integral(omega).
-export function e6CoreAreas(beta) {
+export function e6CoreAreas(beta, chamberId = 'default') {
+  if (chamberId !== 'default' && chamberId !== 'side-zero-second') throw new RangeError('Unsupported E6 chamber.');
   if (!Array.isArray(beta) || beta.length !== 3 || beta.some(row =>
     !Array.isArray(row) || row.length !== 2 || !row.every(Number.isFinite))) {
     throw new RangeError('Expected three finite beta pairs.');
@@ -18,6 +19,7 @@ export function e6CoreAreas(beta) {
     (-2*a[0]+a[1]+a[2]-g[0]-g[1]+2*g[2])/3,
     (sumA-sumG)/3,
   ];
+  if (chamberId === 'side-zero-second') { periods[1] += periods[0]; periods[0] = -periods[0]; }
   if (periods.some(value => !Number.isFinite(value) || value <= 0)) {
     throw new RangeError('E6 compact curve periods must be positive in the regular chamber.');
   }

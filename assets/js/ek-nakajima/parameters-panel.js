@@ -11,6 +11,7 @@ export function createParametersPanel(host, options = {}) {
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px';
   panel.appendChild(grid); host.appendChild(panel);
   const controls = [];
+  function chamberId() { return options.getChamberId ? options.getChamberId() : undefined; }
   // Optional host adapter. Actions never mutate beta or assume solver support.
   // Descriptors: {id, label, atWall, canApproach, canCross}. Cross changes the
   // chamber at the pinned wall; transport and chamber areas belong to the host.
@@ -43,7 +44,7 @@ export function createParametersPanel(host, options = {}) {
         const box = document.createElement('span');
         box.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid currentColor;border-radius:4px;padding:3px 6px';
         if (wall.atWall === true) box.style.background = 'rgba(245,180,40,.2)';
-        const label = document.createElement('span'); label.textContent = wall.label || wall.id;
+        const label = document.createElement('span'); label.textContent = wall.label || '';
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ek-btn';
         button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
@@ -66,7 +67,8 @@ export function createParametersPanel(host, options = {}) {
             else finish();
           } catch (error) { finish(error); }
         });
-        box.appendChild(label); box.appendChild(button); wallRow.appendChild(box); count++;
+        if (label.textContent) box.appendChild(label);
+        box.appendChild(button); wallRow.appendChild(box); count++;
       });
     });
     wallRow.style.display = count ? 'flex' : 'none';
@@ -86,7 +88,7 @@ export function createParametersPanel(host, options = {}) {
     readout.className = 'ek-readout'; readout.style.minWidth = '3.5em';
     function change() {
       if (!enabled) { refresh(); return; }
-      const next = constrainE6Beta(beta, index, Number(input.value));
+      const next = constrainE6Beta(beta, index, Number(input.value), chamberId());
       const changed = next.some((row, i) => row.some((value, j) => value !== beta[i][j]));
       beta = next; refresh();
       if (changed && options.onChange) options.onChange(getBeta(), betaToLevels(beta));
@@ -98,7 +100,7 @@ export function createParametersPanel(host, options = {}) {
   function refresh() {
     controls.forEach((control, index) => {
       const value = beta[Math.floor(index / 2)][index % 2];
-      const iv = e6BetaInterval(beta, index);
+      const iv = e6BetaInterval(beta, index, chamberId());
       const pct = wall => Math.max(0, Math.min(100, 100 * wall / E6_BETA_DISPLAY_MAX)) + '%';
       control.input.value = String(value); control.readout.textContent = value.toFixed(3);
       control.input.style.setProperty('--ek-beta-lo', pct(iv.lo));
@@ -109,7 +111,7 @@ export function createParametersPanel(host, options = {}) {
   }
   function getBeta() { return beta.map(row => row.slice()); }
   refresh();
-  return { getBeta, refreshWallActions, getLevels: () => betaToLevels(beta), setEnabled(value) {
+  return { getBeta, refresh, refreshWallActions, getLevels: () => betaToLevels(beta), setEnabled(value) {
     enabled = !!value; panel.style.display = enabled ? '' : 'none'; refresh();
   } };
 }
