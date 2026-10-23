@@ -302,8 +302,14 @@ solve uses an analytic Jacobian and QR least squares with weaker damping;
 the real and complex residual acceptance criteria are unchanged. Difficult
 cold wall approaches can take several seconds. Red boundaries show
 nearest root walls; input is clipped strictly inside the current chamber.
-The second sphere on the r=0 branch now has a Cross Wall button at its
-boundary. Clicking retains beta and the dot coordinates, changes the selected
+With fixed moduli coordinates, beta updates balance directly from the previous
+balanced representative. This avoids a poorly conditioned solve in the
+original chart near a collapsing sphere. Analytic derivatives share a cached
+eigensystem per gauge block. Continuation and cold solves are checked against
+the same residual tolerances and rendered-data comparisons.
+The second sphere on the r=0 branch has an always-visible Cross Wall button
+with its current beta inequality. The button enables at the boundary.
+Clicking retains beta and the dot coordinates, changes the selected
 chamber, and allows dragging into the adjacent chamber or crossing back.
 For example, increase beta_1^(1) from 1.5 to its boundary near 1.55.
 Other walls remain locked; there is no two-dimensional chamber view yet.
@@ -390,8 +396,9 @@ ADE period description extends this to other regular chambers by choosing
 the positive indecomposable roots for that chamber and pairing with the
 levels. This yields chamberwise linear areas, but changes the effective
 component labels: taking absolute values of these six formulas does not
-supply a global continuation of the current atlas. Across-wall atlas
-transitions are not implemented here.
+supply a global continuation of the current atlas. The first live wall uses
+the transported atlas described above; general chamber transitions remain
+unimplemented.
 
 The fixed-point formulas were also checked against 15 balanced representatives
 at three level vectors in this chamber, with moment errors below 9e-10.

@@ -54,7 +54,9 @@ The tests do not establish atlas stability or global solver convergence.
 ## First live crossing
 
 The live panel supports the second-sphere wall on the r=0 branch and its
-reverse. Drag beta_1^(1) upward to the boundary near 1.55; Cross Wall appears.
+reverse. Cross Wall and its beta inequality remain visible, with the button
+disabled away from the boundary. Drag beta_1^(1) upward to the boundary near
+1.55 to enable it. The inequality reverses after crossing.
 The click retains the beta tuple and chart coordinates. The selected chamber
 is explicit state, and subsequent drags use that chamber's root signs.
 The remaining walls, including coordinate-zero walls, stay locked.
