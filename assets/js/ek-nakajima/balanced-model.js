@@ -55,7 +55,14 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
     if(!source.success)return source;
     try {
       const transported=e6TransportBalancedWord(source.solvedRep,sourceLevels,word);
-      const real=realResidualNorm(transported.rep,levels),complex=complexResidualNorm(transported.rep);
+      let real=realResidualNorm(transported.rep,levels),complex=complexResidualNorm(transported.rep);
+      // Reflection preserves the equations analytically; roundoff can amplify
+      // a source residual near another facet. Polish the already balanced
+      // target rather than relaxing the established acceptance tolerance.
+      if(real>1e-9 && real<1e-6 && complex<1e-8) {
+        const polish=solveRealMomentMap(transported.rep,levels,{analytic:true,centered:true,maxIter:40,max_nfev:2000,multistart:false,abs_tol:1e-11,rel_tol:1e-11});
+        if(polish.success){transported.rep=polish.solvedRep;real=realResidualNorm(transported.rep,levels);complex=complexResidualNorm(transported.rep);}
+      }
       if(!Number.isFinite(real)||!Number.isFinite(complex)||real>1e-9||complex>1e-8)
         return failed(source.atlas,'transport_residual','Transported moment-map residual exceeds tolerance: '+real+', '+complex);
       return Object.assign({},source,{solvedRep:transported.rep,logGauge:null,
@@ -121,4 +128,5 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
     continuation:success ? {family:chartFamily,levelKey,chamberId:'default',logGauge:result.logGauge} : null,
   };
 }
+
 

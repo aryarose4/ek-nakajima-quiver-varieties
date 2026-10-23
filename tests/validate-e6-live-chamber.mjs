@@ -21,7 +21,10 @@ for(const t of [0,.5,1])for(const outgoing of [false,true])if(!(outgoing&&t===1)
 for(const r of [0,1])for(const sphere of [1])fixtures.push({r,theta:0,t:.3,phi:.3,sphere,outgoing:true});
 assert.strictEqual(solveBalancedAtlas(fixtures[0],E6_REGULAR_LEVELS,{chamber:'side-zero-second'}).diagnostics.status,'chamber_mismatch');
 for(const p of fixtures){const result=solveBalancedAtlas(p,target,{chamber:'side-zero-second'});assert(result.success,JSON.stringify(p)+' '+JSON.stringify(result.diagnostics));assert(result.residuals.real_norm<1e-7);}
-const {frob2}=await import(source('core-math.js'));
+const collarLevels=[[1.0504833333333334,.5],[1.01715,1.0166666666666666],[.9838166666666665,1.5333333333333334]].map(r=>r.map(x=>2*x));
+const collar=solveBalancedAtlas({r:.35,theta:.7,t:0,phi:.6,sphere:0},collarLevels,{chamber:'side-zero-second'});
+assert(collar.success);assert(collar.residuals.real_norm<1e-9);
+const {frob2,extractGeometry,matMul,matAdj,matTrace}=await import(source('core-math.js'));
 const F=rep=>rep.b.concat(rep.B).reduce((sum,m)=>sum+frob2(m),0)/2;
 for(const epsilon of [1e-3,1e-4,1e-5,1e-6,1e-7]) {
 const low=E6_REGULAR_LEVELS.map((r,i)=>r.map((x,j)=>(x+target[i][j])/2+epsilon*(x-target[i][j])));
@@ -33,9 +36,15 @@ assert(a.success && b.success,'nearwall '+epsilon+' '+JSON.stringify(p)+' '+a.di
 assert(a.residuals.real_norm<1e-9 && b.residuals.real_norm<1e-9);
 assert(Math.abs(F(a.solvedRep)-F(b.solvedRep))<1e-7);
 worst=Math.max(worst,Math.abs(F(a.solvedRep)-F(b.solvedRep)));
+const ga=extractGeometry(a.solvedRep,low),gb=extractGeometry(b.solvedRep,high);
+const invariants=g=>g.pairwise.flat().concat(g.K.map(k=>g.K.map(l=>matTrace(matMul(k,matAdj(l))))).flat(2));
+const ia=invariants(ga),ib=invariants(gb);
+const geometryDifference=Math.max(...ia.map((x,i)=>Math.abs(x-ib[i])));
+assert(geometryDifference<100*epsilon+1e-7,'wall geometry continuity '+geometryDifference);
 }
 console.log('nearwall',epsilon,'F difference',worst,'failures',failures);
 }
 console.log('Live adjacent solver: '+fixtures.length+' chart configurations passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
 
