@@ -5,10 +5,9 @@ import { AFFINE_ADE } from "./quiver-data.js";
 import { buildSideLayout, makeCoreView, armAt, CAP_NEAR_INF_W, T_NEAR_INF } from "./core-view.js";
 import { e6AtlasPoint, e6HasInfinityLimit } from "./e6-atlas.js";
 import { createBalancedClient } from './balanced-client.js';
-import { E6_REGULAR_LEVELS } from "./e6-levels.js";
 import { e6CoreAreas } from "./e6-areas.js";
 import { createParametersPanel } from "./parameters-panel.js";
-import { betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
+import { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
 
@@ -133,7 +132,7 @@ function ensureStyles() {
 // ---------------------------------------------------------------------------
 function activate(container) {
   ensureStyles();
-  container.setAttribute("data-e6-levels", JSON.stringify(E6_REGULAR_LEVELS));
+  container.setAttribute("data-e6-levels", JSON.stringify(betaToLevels(E6_DEFAULT_BETA)));
   const state = { key: "E6", sphere: 0, arm: -1, outgoing: false };
   const tabs = document.createElement("div");
   tabs.className = "ek-tabs";

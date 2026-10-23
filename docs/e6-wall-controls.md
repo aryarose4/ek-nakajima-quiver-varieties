@@ -54,11 +54,11 @@ The tests do not establish atlas stability or global solver convergence.
 ## Live chamber graph
 
 The live panel supports all five positive-beta facets of the starting chamber
-and positive-beta facets reached by successive crossings. A compact selector
-shows the available inequalities beside one persistent Cross Wall button.
-Arriving at a wall selects its inequality automatically; the button stays
-disabled away from a boundary. Drag beta_1^(1) upward to the boundary near
-1.55 for the original r=0 second-sphere example.
+and positive-beta facets reached by successive crossings. Each of the six
+inequalities has its own line and Cross Wall button, without an outer button
+box. Buttons stay disabled away from their boundaries. From the live defaults,
+drag beta_1^(1) upward to the boundary near 1.65 for the original r=0
+second-sphere example (near 1.55 at the old reference fixture).
 The click retains the beta tuple and chart coordinates. The selected chamber
 is explicit state, and subsequent drags use that chamber's root signs.
 Coordinate-zero walls stay locked: the display and solver require positive

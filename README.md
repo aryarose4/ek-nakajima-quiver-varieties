@@ -20,7 +20,7 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** The E6 flag picture and matrix readout now use numerically balanced representatives at `alpha=(3,3,3), gamma=(1,2.1,3)`. A background worker solves the real moment maps before displaying new matrices. A stateless tensor camera displays the balanced flags and their cotangent data, with visibility following actual map ranks. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
+> **Status.** The E6 flag picture and matrix readout use numerically balanced representatives at the selected beta parameters. A background worker solves the real moment maps before displaying new matrices. A stateless tensor camera displays the balanced flags and their cotangent data, with visibility following actual map ranks. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
 
 ## Try it
 
@@ -125,7 +125,9 @@ The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
 The live incidence view uses a stateless unitary frame extracted from a fixed
-weighted sum of the balanced tensors `H_i = x_i^(2) x_i^(2)*`. Polynomial
+weighted sum of the balanced tensors `H_i = x_i^(2) x_i^(2)*`, mixed with
+one eighth of a fixed Hermitian point/cotangent correlation tensor. The mixing
+resolves an ordered-axis exchange on the real outgoing stratum. These same
 point and cotangent tensors supply the phase references. A leading spectral
 projector synchronizes all surviving correlations, avoiding a prescribed
 chain of references that can disappear at a wall. The same rule is
@@ -294,12 +296,18 @@ magnitude: half opacity at .025 and full opacity from .05 onward.
 The Parameters panel uses the real coefficients of the paper's compact
 levels: write `a_i = beta_i^(1)`, `g_i = beta_i^(2)`, and
 `T = sum_i(a_i + 2*g_i)`. The Hermitian solver levels are **twice** these
-beta values. The default beta pairs are `(1.5,.5), (1.5,1.05), (1.5,1.5)`.
+beta values. The live default beta pairs are `(1.23,.40), (1.64,1.41), (1.06,1.82)`.
+They remain in the reference chamber, with distinct coordinates and a unique
+root wall at every single-slider boundary. The original regular fixture
+remains the independent chamber reference used by exact numerical regressions.
 All six sliders update the balanced representation. Same-chart beta changes
 reuse the previous balancing gauge and retain the incidence frame while a
 new solve is pending. If the ordinary solve fails near a wall, a recovery
-solve uses an analytic Jacobian and QR least squares with weaker damping;
-the real and complex residual acceptance criteria are unchanged. Difficult
+solve uses an analytic Jacobian and QR least squares with weaker damping.
+If that also fails, a cold solve follows a sequence of real levels from the
+regular reference, rebasing the same complex orbit on each balanced result.
+The final result satisfies the requested levels with unchanged real and
+complex residual acceptance criteria. Difficult
 cold wall approaches can take several seconds. Red boundaries show
 nearest root walls; input is clipped strictly inside the current chamber.
 With fixed moduli coordinates, beta updates balance directly from the previous
@@ -308,12 +316,12 @@ original chart near a collapsing sphere. Analytic derivatives share a cached
 eigensystem per gauge block. Continuation and cold solves are checked against
 the same residual tolerances and rendered-data comparisons.
 All five positive-beta facets of the initial chamber support crossing, as do
-positive-beta facets reached by subsequent crossings. A compact selector shows
-the current inequalities beside one always-visible Cross Wall button; arriving
-at a wall selects it automatically. The button enables at the boundary.
+positive-beta facets reached by subsequent crossings. Each chamber inequality
+has its own row and Cross Wall button. Buttons enable at their corresponding
+boundaries; coordinate-zero buttons remain disabled.
 Clicking retains beta and the dot coordinates, changes the selected chamber,
 and allows dragging farther or crossing back. For example, increase
-beta_1^(1) from 1.5 to its boundary near 1.55. Coordinate-zero walls remain
+beta_1^(1) from its default 1.23 to its boundary near 1.65. Coordinate-zero walls remain
 locked; there is no two-dimensional chamber view yet.
 At the boundary, rendering uses an interior sample with crossed period at
 least `1e-7`; requested and displayed levels are separate DOM metadata.
@@ -329,7 +337,7 @@ Worker epochs reject results and seeds from the previous chamber. See
 In the initial chamber the following periods are the symplectic areas
 **divided by 2*pi**, with first/second counted outward from the central sphere:
 
-| Component | Area / (2*pi) | Default |
+| Component | Area / (2*pi) | Original reference fixture |
 | --- | --- | --- |
 | Central | `g_1` | `1/2` |
 | r=0, first | `T/3 - a_2 - g_1 - g_2` | `29/60` |
