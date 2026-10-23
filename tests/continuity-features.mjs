@@ -27,10 +27,14 @@ export function renderedFeatures(d){
 }
 export function glyphFeatures(d){
   // Actual glyph coefficients retain both signed phase and vanishing amplitude.
-  // Projected target positions are tested separately from Boolean UI statuses.
+  // Only the third arrow uses this target. Its position has no visible meaning
+  // when that physical block vanishes; use a continuous magnitude weight here.
+  // arrowFeatures separately checks the renderer's exact pixel geometry/alpha.
   return d.glyphs.flatMap((g,i)=>{
     const target=d.layout.cotangentTargets[i],p=target&&target.point;
-    return (g?g.coefficients.flat():[0,0,0,0,0,0]).concat(g&&g.magnitudes?g.magnitudes:[0,0,0],p?p:[0,0]);
+    const magnitude=g?(g.magnitudes?g.magnitudes[2]:Math.hypot(...g.coefficients[2])*Math.min(d.layout.pointOpacities[i],d.layout.lineOpacities[i])):0;
+    const weight=magnitude/(1+magnitude);
+    return (g?g.coefficients.flat():[0,0,0,0,0,0]).concat(g&&g.magnitudes?g.magnitudes:[0,0,0],p?p.map(x=>weight*x):[0,0]);
   });
 }
 export const invariantFeatures=o=>o.gram.flat(2).concat(o.cyclic.flat());
