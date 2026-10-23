@@ -5,11 +5,19 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
   const {balancedTensorDiagram}=await import(source('weighted-balanced-diagram.js'));
   const {balancedObservables}=await import(source('balanced-observables.js'));
   const {cotangentArrowGeometry,cotangentArrowOpacity}=await import(source('element-render.js'));
-  const {E6_DEFAULT_BETA:defaultBeta,betaToLevels}=await import(source('e6-parameters.js'));
+  const {E6_DEFAULT_BETA:defaultBeta,betaToLevels,e6ChamberWallOptions}=await import(source('e6-parameters.js'));
   const {e6WallTransitionOptions}=await import(source('e6-wall-transitions.js'));
   const adjacent=process.argv.includes('--adjacent');
-  const E6_DEFAULT_BETA=adjacent?[[46/30,1/2],[3/2,61/60],[44/30,46/30]]:defaultBeta;
-  const chamber=adjacent?{id:'side-zero-second',word:[4,1,0,3,0,1,4]}:undefined;
+  let E6_DEFAULT_BETA=adjacent?[[46/30,1/2],[3/2,61/60],[44/30,46/30]]:defaultBeta;
+  let chamber=adjacent?{id:'side-zero-second',word:[4,1,0,3,0,1,4]}:undefined;
+  const pathArgument=process.argv.find(arg=>arg.indexOf('--chamber-path=')===0);
+  if(pathArgument)for(const index of pathArgument.slice('--chamber-path='.length).split(',').map(Number)){
+    const options=e6ChamberWallOptions(E6_DEFAULT_BETA,chamber?chamber.id:'default').filter(wall=>wall.canCross);
+    const wall=options[index];
+    if(!wall)throw Error('Invalid continuity chamber path index '+index);
+    E6_DEFAULT_BETA=wall.crossing.targetBeta;
+    chamber={id:wall.targetChamberId};
+  }
   const defaults={r:.35,theta:.7,t:.3,phi:.6,sphere:0},failures=[],rows=[];
   let solves=0;
   function sample(input){
@@ -18,7 +26,7 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
     const s=solveBalancedAtlas(p,betaToLevels(beta),{chamber:selectedChamber});solves++;
     if(!s.success)throw Error('solve '+JSON.stringify({p,beta,residuals:s.residuals}));
     if(!(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8))throw Error('moment residual '+JSON.stringify({p,beta,residuals:s.residuals}));
-    if(selectedChamber&&selectedChamber.id==='side-zero-second'&&(s.chamberId!=='side-zero-second'||s.diagnostics.transported!==true))throw Error('chamber transport was not applied');
+    if(selectedChamber&&selectedChamber.id!=='default'&&(s.chamberId!==selectedChamber.id||s.diagnostics.transported!==true))throw Error('chamber transport was not applied');
     const d=balancedTensorDiagram(s.solvedRep);
     if(!d.valid)throw Error('camera '+JSON.stringify({p,beta,reason:d.reason}));
     const result=[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),glyphFeatures(d),arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity)];
@@ -65,6 +73,6 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
       beta:defaultBeta.map((row,i)=>row.map((x,j)=>(x+E6_DEFAULT_BETA[i][j])/2+sign*h*(E6_DEFAULT_BETA[i][j]-x)))
     })));
   }
-  console.log(JSON.stringify({chamber:adjacent?'side-zero-second':'default',solves,cases:rows.length,rows,failures}));
+  console.log(JSON.stringify({chamber:chamber?chamber.id:'default',solves,cases:rows.length,rows,failures}));
   if(failures.length)process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1;});

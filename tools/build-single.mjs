@@ -54,6 +54,7 @@ const MODULES = [
   "balanced-worker-source",
   "balanced-client",
   "e6-parameters",
+  "e6-wall-transitions",
   "e6-areas",
   "parameters-panel",
   "element-view",
@@ -233,7 +234,8 @@ function replaceOnce(text, find, repl, label) {
 
 function build() {
   const workerModules = ['core-math', 'chart', 'limit-chart', 'branch-charts',
-    'fixed-point', 'e6-levels', 'e6-chamber-transport', 'e6-atlas', 'solver', 'balanced-model'];
+    'fixed-point', 'e6-levels', 'e6-chamber-transport', 'e6-wall-transitions',
+    'e6-parameters', 'e6-atlas', 'solver', 'balanced-model'];
   const workerGraph = topoOrder(workerModules);
   const workerSource = workerGraph.order.map(id => transformModule(id, workerGraph.src[id])).join('\n') +
     '\nlet previous = null, epoch = null, chamberKey = null; self.onmessage = function(event) {\n' +

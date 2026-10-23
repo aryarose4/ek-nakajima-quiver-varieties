@@ -47,5 +47,6 @@ for(const wall of first){
 }
 assert.throws(()=>m.e6DisplayBeta(first[0].crossing.targetBeta,'default'),RangeError);
 assert.throws(()=>m.e6ChamberWord('weyl:9'),RangeError);
+assert.strictEqual(solveBalancedAtlas(fixtures[0],[[-1,1],[1,1],[1,1]],{chamber:'weyl:4'}).diagnostics.status,'unsupported_chamber_region');
 console.log('More E6 chambers: five first-hop facets, multihop/reverse, '+solves+' strict solves passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

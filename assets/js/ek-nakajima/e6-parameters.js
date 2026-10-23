@@ -118,6 +118,16 @@ function registerChamber(beta,word) {
   const sig=signature(beta);if(signatures.has(sig))return signatures.get(sig);
   const id='weyl:'+word.join('.');chambers.set(id,{beta:beta.map(r=>r.slice())});signatures.set(sig,id);return id;
 }
+function wallInequality(coefficients) {
+  const sides=[[],[]],subscripts=['\u2081','\u2082','\u2083'];
+  coefficients.forEach((value,index)=>{
+    const coefficient=Math.round(3*value);
+    if(!coefficient)return;
+    const symbol='\u03b2'+subscripts[Math.floor(index/2)]+'\u207d'+(index%2?'\u00b2':'\u00b9')+'\u207e';
+    sides[coefficient>0?0:1].push((Math.abs(coefficient)===1?'':Math.abs(coefficient))+symbol);
+  });
+  return (sides[0].join('+')||'0')+' > '+(sides[1].join('+')||'0');
+}
 export function e6ChamberWallOptions(beta,chamberId=E6_DEFAULT_CHAMBER) {
   const sample=e6DisplayBeta(beta,chamberId);
   if(!e6BetaInChamber(sample,chamberId))throw new RangeError('Beta outside selected E6 chamber.');
@@ -125,7 +135,7 @@ export function e6ChamberWallOptions(beta,chamberId=E6_DEFAULT_CHAMBER) {
   signatures.set(signature(sample),chamberId);
   return e6WallTransitionOptions(sample).map(option=>{
     const period=weight(option.coefficients,flat(beta)),atWall=Math.abs(period)<=2e-7;
-    const label=option.coefficients.map((c,i)=>Math.abs(c)<1e-12?'':(c<0?'-':'+')+Math.abs(Math.round(c*3))+'\u03b2'+(Math.floor(i/2)+1)+'^('+(i%2+1)+')').filter(Boolean).join(' ').replace(/^\+/,'')+' > 0';
+    const label=wallInequality(option.coefficients);
     if(option.kind==='coordinate-zero')return Object.assign({},option,{label,period,atWall,canCross:false,targetChamberId:null});
     const word=[];
     e6ChamberWord(chamberId).concat(reflectionWord(option.coefficients)).forEach(v=>{if(word[word.length-1]===v)word.pop();else word.push(v);});

@@ -44,6 +44,8 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   const chamber=options.chamber || 'default';
   const chamberId=typeof chamber==='string' ? chamber : chamber.id;
   if(chamberId && chamberId!=='default') {
+    if(!Array.isArray(levels)||levels.length!==3||levels.some(row=>!Array.isArray(row)||row.length!==2||row.some(value=>!Number.isFinite(value)||value<=0)))
+      return failed(null,'unsupported_chamber_region','Flag transport requires strictly positive leg levels.');
     let word;
     try { word=e6ChamberWord(chamberId); } catch(e) { return failed(null,'unsupported_chamber','Unknown chamber.'); }
     const sourceLevels=word.slice().reverse().reduce((z,v)=>e6ReflectLevels(z,v),levels);
