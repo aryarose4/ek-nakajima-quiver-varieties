@@ -31,6 +31,11 @@ import {source,distance,renderedFeatures,glyphFeatures,arrowFeatures} from './co
  const reps=[];
  for(const beta of betas)for(const p of params){const s=solveBalancedAtlas(p,beta.map(row=>row.map(x=>2*x)));check(s.success,'strict fixture solve');reps.push(s.solvedRep);}
  const snapshots=reps.map(rep=>{const d=diagram(rep);check(d.valid,'direct camera available');const f=features(d);check(f.every(v=>v.every(Number.isFinite)),'finite visible features');return f;});
+ for(let i=0;i<betas.length;i++)for(const key of ['theta','phi']){
+  const p={...params[0],[key]:params[0][key]+2*Math.PI};
+  const s=solveBalancedAtlas(p,betas[i].map(row=>row.map(x=>2*x)));check(s.success,'periodic phase fixture solves');
+  features(diagram(s.solvedRep)).forEach((v,k)=>check(distance(v,snapshots[i*params.length][k])<2e-7,'full-turn phase closes rendered geometry and hue '+key+' '+k));
+ }
  for(let j=0;j<reps.length;j++){
   const rep=reps[j],d=diagram(rep),observables=balancedObservables(rep);
   const incidence=flagIncidence(rep);check(incidence.valid,'independent complex flag classification available');
