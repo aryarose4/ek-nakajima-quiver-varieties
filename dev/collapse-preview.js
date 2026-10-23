@@ -9,6 +9,7 @@ const ids = ['r', 'theta', 't', 'phi', 'beta'];
 const controls = ids.map(id => document.getElementById(id));
 const canvases = ['current', 'proposed'].map(id => document.getElementById(id));
 const status = document.getElementById('status');
+const path = document.getElementById('path');
 let frames = [], requestNumber = 0;
 const client = createBalancedClient();
 const color = (hue, strength) => 'hsl(' + (hue === null ? 0 : hue) + ', ' + 85 * strength + '%, 40%)';
@@ -61,16 +62,20 @@ function draw(canvas, frame) {
 
 function update() {
   const values = controls.map(input => Number(input.value));
-  const betaValue = .5 * Math.pow(1e-7 / .5, values[4]);
+  const positive = path.value === 'positive';
+  const start = positive ? .05 : .5;
+  const distance = start * Math.pow(1e-7 / start, values[4]);
+  const betaValue = positive ? 1 + distance : distance;
+  document.getElementById('beta-label').textContent = positive ? 'β₂⁽²⁾' : 'β₁⁽²⁾';
   controls.forEach((input, i) => { input.nextElementSibling.value = i === 4 ? betaValue.toExponential(2) : values[i].toFixed(3); });
   const parameters = { r: values[0], theta: values[1], t: values[2], phi: values[3], sphere: 0, outgoing: false };
-  const beta = E6_DEFAULT_BETA.map(row => row.slice()); beta[0][1] = betaValue;
+  const beta = E6_DEFAULT_BETA.map(row => row.slice()); beta[positive ? 1 : 0][1] = betaValue;
   const levels = betaToLevels(beta), revision = ++requestNumber;
   status.textContent = 'Solving…'; document.body.dataset.busy = 'true';
   client.request(parameters, result => {
     if (revision !== requestNumber) return;
     document.body.dataset.busy = 'false';
-    const diagnostics = { success: result.success, parameters, beta, levels, residuals: result.residuals, diagnostics: result.diagnostics };
+    const diagnostics = { success: result.success, path: positive ? 'positive' : 'coordinate', distance, parameters, beta, levels, residuals: result.residuals, diagnostics: result.diagnostics };
     window.collapsePreview = diagnostics;
     document.body.dataset.realResidual = String(result.residuals && result.residuals.real_norm);
     document.body.dataset.parameters = JSON.stringify(parameters); document.body.dataset.beta = JSON.stringify(beta);
@@ -88,6 +93,7 @@ function update() {
   }, levels);
 }
 controls.forEach(input => input.addEventListener('input', update));
+path.addEventListener('change', update);
 window.addEventListener('resize', () => canvases.forEach((canvas, i) => draw(canvas, frames[i])));
 window.addEventListener('pagehide', () => client.dispose());
 update();

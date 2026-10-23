@@ -8,11 +8,12 @@
 </style>
 <main>
 <form aria-label="Comparison parameters" onsubmit="return false">
+<select id="path" aria-label="Wall approach"><option value="coordinate">β₁⁽²⁾ → 0</option><option value="positive">β₂⁽²⁾ → 1</option></select>
 <label for="r">r <input id="r" type="range" min="0" max="1" step=".001" value=".35"><output for="r"></output></label>
 <label for="theta">θ <input id="theta" type="range" min="0" max="6.283185307179586" step=".001" value="0"><output for="theta"></output></label>
 <label for="t">t <input id="t" type="range" min="0" max=".99" step=".001" value="0"><output for="t"></output></label>
 <label for="phi">φ <input id="phi" type="range" min="0" max="6.283185307179586" step=".001" value="0"><output for="phi"></output></label>
-<label for="beta">β₁⁽²⁾ <input id="beta" type="range" min="0" max="1" step=".001" value="0"><output for="beta"></output></label>
+<label for="beta"><span id="beta-label">β₁⁽²⁾</span> <input id="beta" type="range" min="0" max="1" step=".001" value="0"><output for="beta"></output></label>
 </form>
 <div class="panels"><section><h2>Current</h2><canvas id="current" role="img" aria-label="Current incidence diagram"></canvas></section><section><h2>Proposed · experimental</h2><canvas id="proposed" role="img" aria-label="Proposed incidence diagram"></canvas></section></div>
 <span id="status" role="status" aria-live="polite"></span>
