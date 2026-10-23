@@ -17,8 +17,10 @@ function source(name){if(cache[name])return cache[name];const code=fs.readFileSy
  const extended=process.argv.includes('--extended'),n=arg('steps')?Number(arg('steps').split('=')[1]):128;
  const fixtures=[{label:'default',beta:E6_DEFAULT_BETA},{label:'asymmetric',beta:[[.751,2.225],[2.793,.602],[.938,.702]],chamber:{id:'weyl:2.5.0.3.2.0.1.4.1.0.2.3.0.5.2.5.2.0.1.4.1.4.1.4.1.0.2.1.0.3.2.0.1.4.1.0.2.3.0.1.5'}}];
  if(extended)for(const index of [0,1,4]){const w=e6ChamberWallOptions(E6_DEFAULT_BETA,'default').filter(x=>x.canCross)[index];fixtures.push({label:'neighbor '+index,beta:w.crossing.targetBeta,chamber:{id:w.targetChamberId}});}
+ // The gray collinearity guide and concurrency dot are part of the canvas too.
+ function auxiliary(d){const l=d.layout,a=l.transversal;return [a?1:0,...(a?a[0].map((v,i)=>(v+a[1][i])/2):[0,0]),...(a?a[0].map((v,i)=>(v-a[1][i])**2):[0,0]),l.concurrencyPoint?1:0,...(l.concurrencyPoint||[0,0])];}
  let solves=0;const failures=[],suspects=[];
- function sample(f,p){const s=solveBalancedAtlas({r:.35,theta:0,t:0,phi:0,sphere:0,...p},betaToLevels(p.beta||f.beta),{chamber:f.chamber});solves++;if(!s.success||!(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8))throw Error('strict solve '+JSON.stringify({f,p,residuals:s.residuals}));const d=balancedTensorDiagram(s.solvedRep);if(!d.valid)throw Error('diagram '+JSON.stringify({f,p,reason:d.reason}));const features=[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),glyphFeatures(d).filter((_,i)=>i%8<6),arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity)];if(!features.every(v=>v.every(Number.isFinite)))throw Error('nonfinite '+JSON.stringify({f,p}));return {features,diagnostics:d.diagnostics};}
+ function sample(f,p){const s=solveBalancedAtlas({r:.35,theta:0,t:0,phi:0,sphere:0,...p},betaToLevels(p.beta||f.beta),{chamber:f.chamber});solves++;if(!s.success||!(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8))throw Error('strict solve '+JSON.stringify({f,p,residuals:s.residuals}));const d=balancedTensorDiagram(s.solvedRep);if(!d.valid)throw Error('diagram '+JSON.stringify({f,p,reason:d.reason}));const features=[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),glyphFeatures(d).filter((_,i)=>i%8<6),arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity),auxiliary(d)];if(!features.every(v=>v.every(Number.isFinite)))throw Error('nonfinite '+JSON.stringify({f,p}));return {features,diagnostics:d.diagnostics};}
  // Target coordinates can switch to null when clipped; only their actual
  // rendered arrow contribution above is visible. Signed glyph coefficients remain.
  const delta=(a,b)=>a.features.map((v,k)=>distance(v,b.features[k]));
@@ -27,6 +29,7 @@ function source(name){if(cache[name])return cache[name];const code=fs.readFileSy
  for(const f of fixtures){for(const theta of (extended?[0,.03,.7,Math.PI-1e-6]:[0,.7]))line(f,'r theta='+theta,x=>({r:x,theta}));if(extended){line(f,'theta seam',x=>({r:.78,theta:2*Math.PI*x-Math.PI}));for(const r of [0,.5,1])for(const sphere of (r===.5?[0]:[0,1])){line(f,'t '+r+':'+sphere,x=>({r,sphere,t:x}));line(f,'phi '+r+':'+sphere,x=>({r,sphere,t:.4,phi:2*Math.PI*x-Math.PI}));}for(let j=0;j<6;j++){const original=f.beta;line(f,'beta '+j,x=>({r:.78,beta:original.map((row,i)=>row.map((v,k)=>v+(2*i+k===j?.04*(x-.5):0)))}));}}console.log(JSON.stringify({progress:f.label,solves,failures:failures.length}));}
  console.log(JSON.stringify({sourceBase:base,solves,suspects:suspects.length,failures}));if(failures.length)process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
 
 
 
