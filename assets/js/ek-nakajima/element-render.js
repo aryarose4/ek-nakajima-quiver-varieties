@@ -1,21 +1,30 @@
 // Balanced flags use hue for cross-incidence; legacy charts use phase.
 import { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } from "./flag-diagram.js";
-import { balancedDiagram } from './balanced-diagram.js';
+import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
 
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
 
-// React to mathematical incidence gains, never to accidental screen crossings.
+// Missing opacity arrays retain the legacy full-strength drawing.
+export function objectOpacity(layout, kind, index) {
+  const values = layout && layout[kind + 'Opacities'];
+  return values ? Math.max(0, Math.min(1, Number.isFinite(values[index]) ? values[index] : 0)) : 1;
+}
+
+// React to mathematical incidence gains between existing objects.
 export function newIncidenceHighlights(previous, current) {
   const points = [];
   if (!previous || !previous.valid || !current || !current.valid) return { points, concurrency: false };
+  const present = (kind, i) => (!previous[kind + 'Present'] || previous[kind + 'Present'][i]) &&
+    (!current[kind + 'Present'] || current[kind + 'Present'][i]);
   for (let i = 0; i < 3; i++) {
+    if (!present('point', i)) continue;
     const gained = [0, 1, 2].some(j => j !== i &&
-      ((current.incident[i][j] && !previous.incident[i][j]) ||
-       (current.pointEqual[i][j] && !previous.pointEqual[i][j])));
-    if (gained || (current.collinear && !previous.collinear)) points.push(i);
+      ((present('line', j) && current.incident[i][j] && !previous.incident[i][j]) ||
+       (present('point', j) && current.pointEqual[i][j] && !previous.pointEqual[i][j])));
+    if (gained || ([0, 1, 2].every(j => present('point', j)) && current.collinear && !previous.collinear)) points.push(i);
   }
-  return { points, concurrency: current.concurrent && !previous.concurrent };
+  return { points, concurrency: [0, 1, 2].every(j => present('line', j)) && current.concurrent && !previous.concurrent };
 }
 
 export function incidenceFlashStrength(elapsed) {
@@ -56,7 +65,7 @@ export function cotangentArrowOpacity(z) {
 
 // Shared by the canvas and the atlas integration checks.
 export function elementFrame(view) {
-  if (view && view.balancedRep) return balancedDiagram(view.balancedRep, { previous: view.previous });
+  if (view && view.balancedRep) return balancedTensorDiagram(view.balancedRep, { previous: view.previous });
   let data = view && view.incidence ? view.incidence : null;
   let operators = view && view.cotangentOperators;
   if (data && data.valid && view.branchGauge) {
@@ -180,15 +189,15 @@ export function makeElementView(host, opts) {
     const now = Date.now();
     const flashing = flashStarts.map((start, i) => now - start < 750 ? i : -1).filter(i => i >= 0);
     canvas.setAttribute('data-incidence-flash', flashing.join(','));
-    function glow(p, index, color) {
+    function glow(p, index, color, opacity) {
       const strength = incidenceFlashStrength(now - flashStarts[index]);
-      if (!strength) return;
-      ctx.globalAlpha = .8 * strength;
+      if (!strength || !opacity) return;
+      ctx.globalAlpha = .8 * strength * opacity;
       ctx.shadowColor = color; ctx.shadowBlur = 18;
       ctx.fillStyle = color;
       ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, Math.PI * 2); ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = .7 * strength;
+      ctx.globalAlpha = .7 * strength * opacity;
       ctx.fillStyle = pal.dark ? '#ffffff' : '#fff6cc';
       ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1;
@@ -204,6 +213,7 @@ export function makeElementView(host, opts) {
       ctx.globalAlpha = 1;
     }
     for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = objectOpacity(layout, 'line', i);
       const a = pixel(layout.lines[i][0]);
       const b = pixel(layout.lines[i][1]);
       const color = layout.incidenceColors ? incidenceColor(layout.incidenceColors.lineHues[i], layout.incidenceColors.lineStrengths[i], pal.dark) : layout.phaseVectors ? balancedPhaseColor(layout.linePhases[i], layout.phaseVectors[i], pal.dark) :
@@ -218,17 +228,22 @@ export function makeElementView(host, opts) {
       ctx.fillStyle = color;
       ctx.fillText(LINE[i], a[0] + (b[0] - a[0]) * t + 5, a[1] + (b[1] - a[1]) * t - 6);
     }
+    ctx.globalAlpha = 1;
     if (ctx.setLineDash) ctx.setLineDash([]);
     if (layout.concurrencyPoint) {
       const q = pixel(layout.concurrencyPoint);
-      glow(q, 3, pal.point);
+      const opacity = Math.min(...[0, 1, 2].map(i => objectOpacity(layout, 'line', i)));
+      glow(q, 3, pal.point, opacity);
+      ctx.globalAlpha = opacity;
       ctx.fillStyle = pal.point;
       ctx.beginPath(); ctx.arc(q[0], q[1], 3, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = pal.point; ctx.lineWidth = 1; ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = pal.point; ctx.lineWidth = 1; ctx.globalAlpha = 0.45 * opacity;
       ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
     for (let i = 0; i < 3; i++) {
+      const pointOpacity = objectOpacity(layout, 'point', i);
+      const lineOpacity = objectOpacity(layout, 'line', i);
       const p = pixel(layout.points[i]);
       const marker = layout.pointMarkers && layout.pointMarkers[i];
       let groupIndex = 0;
@@ -236,7 +251,8 @@ export function makeElementView(host, opts) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
       ctx.strokeStyle = layout.incidenceColors ? incidenceColor(layout.incidenceColors.pointHues[i], layout.incidenceColors.pointStrengths[i], pal.dark) : layout.pointPhaseVectors ? balancedPhaseColor(layout.pointPhases[i], layout.pointPhaseVectors[i], pal.dark) : pal.point;
-      glow(p, i, ctx.strokeStyle);
+      glow(p, i, ctx.strokeStyle, pointOpacity);
+      ctx.globalAlpha = pointOpacity;
       ctx.lineWidth = 2;
       if (marker && marker.clipped) {
         const d = [marker.direction[0], -marker.direction[1]];
@@ -260,7 +276,7 @@ export function makeElementView(host, opts) {
         if(!color||!arrow)return;
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
-        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=cotangentArrowOpacity(z);
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=cotangentArrowOpacity(z)*Math.min(pointOpacity,lineOpacity);
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
@@ -277,12 +293,18 @@ export function makeElementView(host, opts) {
 
   function setData(view) {
     const frame = elementFrame(view);
+    canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
+    canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
     const highlights = newIncidenceHighlights(data, frame.data);
     const now = Date.now();
     if (!frame.data || !frame.data.valid) {
       flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
       canvas.setAttribute('data-incidence-flash', '');
     } else {
+      for (let i = 0; i < 3; i++) {
+        if (objectOpacity(frame.layout, 'point', i) === 0) flashStarts[i] = -Infinity;
+      }
+      if ([0, 1, 2].some(i => objectOpacity(frame.layout, 'line', i) === 0)) flashStarts[3] = -Infinity;
       highlights.points.concat(highlights.concurrency ? [3] : []).forEach(i => {
         // Do not prolong an active pulse when several incidences arrive together.
         if (now - flashStarts[i] >= 750) flashStarts[i] = now;

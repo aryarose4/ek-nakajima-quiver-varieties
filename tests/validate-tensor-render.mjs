@@ -1,0 +1,40 @@
+﻿import assert from 'assert';
+import {makeElementView, newIncidenceHighlights, objectOpacity} from './element-render.js';
+import {e6AtlasPoint} from './e6-atlas.js';
+import {flagIncidence} from './flag-incidence.js';
+const calls=[];
+const ctx={globalAlpha:1};
+for(const method of ['setTransform','clearRect','beginPath','moveTo','lineTo','arc','fill','stroke','fillText','setLineDash'])
+  ctx[method]=function(...args){calls.push({method,args,alpha:this.globalAlpha});};
+function element(){return {style:{},children:[],handlers:{},appendChild(c){this.children.push(c);},
+  setAttribute(k,v){this[k]=v;},addEventListener(k,v){this.handlers[k]=v;},getContext(){return ctx;}};}
+global.document={createElement:element,documentElement:{getAttribute(){return 'light';}}};
+const host=element();host.clientWidth=500;host.clientHeight=400;
+const renderer=makeElementView(host);
+const p=e6AtlasPoint({r:.3,sphere:0,theta:.2,t:.4,phi:.2});
+const frame=renderer.setData({...p.view,incidence:flagIncidence(p.rep)});
+assert.ok(frame.layout.valid);
+frame.layout.transversal=null;frame.layout.concurrencyPoint=null;
+frame.layout.pointOpacities=[0,.25,1];frame.layout.lineOpacities=[.5,0,1];
+frame.glyphs.splice(0,frame.glyphs.length,...[0,1,2].map(()=>({coefficients:[[1,0],[0,0],[0,0]]})));
+calls.length=0;renderer.resize();
+const labels=calls.filter(c=>c.method==='fillText');
+assert.deepStrictEqual(labels.map(c=>c.alpha),[.5,0,1],'line labels fade with their lines');
+assert.deepStrictEqual(labels.map(c=>c.args[0]),['P₁','P₂','P₃'],'only plane labels remain');
+const strokes=calls.filter(c=>c.method==='stroke');
+assert.deepStrictEqual(strokes.slice(0,3).map(c=>c.alpha),[.5,0,1],'canvas line strokes receive physical visibility');
+assert.deepStrictEqual(strokes.slice(3).map(c=>c.alpha),[0,0,.25,0,1,1],'points and y glyphs fade independently without alpha leakage');
+const checkbox=host.children[1].children[0];checkbox.checked=false;calls.length=0;checkbox.handlers.change();
+assert.strictEqual(calls.filter(c=>c.method==='stroke').length,6,'y toggle still hides only glyphs');
+assert.strictEqual(objectOpacity(null,'point',0),1,'legacy frames keep ordinary opacity');
+assert.strictEqual(objectOpacity({pointOpacities:[NaN]},'point',0),0);
+const generic=()=>({valid:true,incident:[[true,false,false],[false,true,false],[false,false,true]],pointEqual:[[true,false,false],[false,true,false],[false,false,true]],pointPresent:[true,true,true],linePresent:[true,true,true]});
+const a=generic(),b=generic();b.incident[0][1]=true;b.pointPresent[0]=false;
+assert.deepStrictEqual(newIncidenceHighlights(a,b).points,[],'point loss cannot trigger an incidence pulse');
+b.pointPresent[0]=true;a.pointPresent[0]=false;
+assert.deepStrictEqual(newIncidenceHighlights(a,b).points,[],'point birth cannot trigger an incidence pulse');
+a.pointPresent[0]=true;b.linePresent[1]=false;
+assert.deepStrictEqual(newIncidenceHighlights(a,b).points,[],'missing target line cannot trigger an incidence pulse');
+assert.strictEqual(host.children[0]['data-frame-valid'],'true');
+renderer.setData(null);assert.strictEqual(host.children[0]['data-frame-valid'],'false');
+console.log('Tensor renderer: canvas alpha, labels, y toggle, rank-loss flashes, and validity metadata passed.');
