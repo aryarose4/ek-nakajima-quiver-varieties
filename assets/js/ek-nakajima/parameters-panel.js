@@ -15,14 +15,13 @@ export function createParametersPanel(host, options = {}) {
   // Optional host adapter. Actions never mutate beta or assume solver support.
   // Descriptors: {id, label, atWall, canApproach, canCross, alwaysVisible}. Cross changes the
   // chamber at the pinned wall; transport and chamber areas belong to the host.
+  // rows keeps every inequality visible, including locked coordinate-zero walls.
   const wallActions = options.wallActions;
   const wallRow = wallActions ? document.createElement('div') : null;
   let wallRevision = 0;
   let wallPending = false;
-  let selectedWallId = null;
-  let reachedWallIds = [];
   if (wallRow) {
-    wallRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:.85em';
+    wallRow.style.cssText = 'display:flex;flex-direction:column;align-items:stretch;gap:6px;margin-top:10px;font-size:.85em';
     panel.appendChild(wallRow);
   }
   function wallOptions() {
@@ -40,48 +39,24 @@ export function createParametersPanel(host, options = {}) {
     const revision = ++wallRevision;
     wallRow.textContent = '';
     let count = 0;
-    let walls = wallOptions();
-    if (wallActions.compact) {
-      walls = walls.filter(wall => wall.canCross === true && typeof wallActions.onCross === 'function');
-      const reached = walls.filter(wall => wall.atWall === true);
-      const newlyReached = reached.find(wall => reachedWallIds.indexOf(wall.id) < 0);
-      if (newlyReached) selectedWallId = newlyReached.id;
-      if (!walls.some(wall => wall.id === selectedWallId)) selectedWallId = walls.length ? walls[0].id : null;
-      reachedWallIds = reached.map(wall => wall.id);
-      if (enabled && walls.length) {
-        const select = document.createElement('select');
-        select.className = 'ek-wall-select';
-        select.style.cssText = 'min-width:0;max-width:100%;flex:1;font:inherit;color:inherit;background:var(--ek-box-bg)';
-        if (select.setAttribute) select.setAttribute('aria-label', 'Chamber wall');
-        walls.forEach(wall => {
-          const option = document.createElement('option');
-          option.value = wall.id; option.textContent = wall.label || wall.id;
-          select.appendChild(option);
-        });
-        select.value = selectedWallId; select.disabled = wallPending;
-        select.addEventListener('change', () => {
-          if (revision !== wallRevision || wallPending) return;
-          selectedWallId = select.value; refreshWallActions();
-        });
-        wallRow.appendChild(select);
-      }
-      walls = walls.filter(wall => wall.id === selectedWallId).map(wall => ({...wall, alwaysVisible:true}));
-    }
+    const walls = wallOptions();
     walls.forEach(wall => {
       ['approach', 'cross'].forEach(action => {
         const available = permitted(wall, action);
-        const persistent = enabled && action === 'cross' && wall.alwaysVisible === true &&
-          wall.canCross === true && typeof wallActions.onCross === 'function';
+        const persistent = enabled && action === 'cross' && (wallActions.rows === true || wall.alwaysVisible === true && wall.canCross === true) &&
+          typeof wallActions.onCross === 'function';
         if (!available && !persistent) return;
         const box = document.createElement('span');
-        box.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid currentColor;border-radius:4px;padding:3px 6px';
-        if (wall.atWall === true) box.style.background = 'rgba(245,180,40,.2)';
+        box.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0';
+        box.className = 'ek-wall-action-row';
+        if (box.setAttribute) box.setAttribute('data-wall-id', wall.id);
         const label = document.createElement('span'); label.textContent = wall.label || '';
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ek-btn';
         button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
         button.disabled = !available;
-        if (!available) button.title = wallPending ? 'Crossing wall' : 'Reach this wall to cross';
+        button.style.flexShrink = '0';
+        if (!available) button.title = wallPending ? 'Crossing wall' : wall.canCross === true ? 'Reach this wall to cross' : 'Crossing this wall is not supported';
         button.addEventListener('click', () => {
           // Recheck live capability; detached buttons and double clicks are inert.
           if (revision !== wallRevision) return;
@@ -101,7 +76,7 @@ export function createParametersPanel(host, options = {}) {
             else finish();
           } catch (error) { finish(error); }
         });
-        if (label.textContent && !wallActions.compact) box.appendChild(label);
+        if (label.textContent) box.appendChild(label);
         box.appendChild(button); wallRow.appendChild(box); count++;
       });
     });

@@ -275,7 +275,7 @@ function activate(container) {
   const parametersPanel = createParametersPanel(right, {
     getChamberId: () => chamberId,
     wallActions: {
-      compact: true,
+      rows: true,
       getOptions: beta => e6ChamberWallOptions(beta, chamberId),
       onCross: function (wall) {
         // Keep beta and the dot's chart coordinates pinned. At the collapsed
