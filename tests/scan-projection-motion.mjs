@@ -16,13 +16,21 @@ import {structuralDefects} from './structural-screen-features.mjs';
   solves++;assert(s.success,'strict solve '+JSON.stringify(p));
   assert(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8,'moment residual');
   const d=balancedTensorDiagram(s.solvedRep);assert(d.valid,d.reason);
-  assert.deepStrictEqual(structuralDefects(d),[],'structural fidelity '+JSON.stringify(p));
+  const defects=structuralDefects(d);
+  // Visibility inspection reports failures as evidence; normal motion scans
+  // retain strict structural assertions and never turn missing ink into a pass.
+  if(!process.argv.includes('--visibility'))assert.deepStrictEqual(defects,[],'structural fidelity '+JSON.stringify(p));
   // Geometric positions and unoriented segment moments; omit hue and guide
   // opacity, which can change quickly without moving a point or physical line.
   const features=renderedFeatures(d);
-  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep))};
+  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,diagnostics:d.diagnostics,defects}};
  }
  const rows=[];
+ if(process.argv.includes('--visibility')){
+  for(const r of [0,.5,1])for(const sphere of(r===.5?[0]:[0,1]))for(const t of [0,.4,1])rows.push({p:{r,sphere,t},...sample({r,sphere,t}).visibility});
+  for(const r of [.2,.35,.78])rows.push({p:{r},...sample({r}).visibility});
+  console.log(JSON.stringify({solves,rows}));return;
+ }
  function scan(label,at,lo,hi,n){
   const h=(hi-lo)/n,a=Array.from({length:n+1},(_,i)=>sample(at(lo+i*h)));
   const screen=[],physical=[],gain=[],curvature=[],sourceCurvature=[];
