@@ -20,6 +20,9 @@ import {structuralDefects} from './structural-screen-features.mjs';
   const physicalDefects=structuralDefects({...d,layout:{...d.layout,
    pointOpacities:d.layout.pointWeights.map(w=>Math.min(1,Math.max(0,w)/.15)),
    lineOpacities:d.layout.lineWeights.map(w=>Math.min(1,Math.max(0,w)/.15))}});
+  const physicalRawDefects=structuralDefects({...d,layout:{...d.layout,points:d.layout.rawPoints||d.layout.points,
+   pointOpacities:d.layout.pointWeights.map(w=>Math.min(1,Math.max(0,w)/.15)),
+   lineOpacities:d.layout.lineWeights.map(w=>Math.min(1,Math.max(0,w)/.15))}});
   // Visibility inspection reports failures as evidence; normal motion scans
   // retain strict structural assertions and never turn missing ink into a pass.
   if(!process.argv.includes('--visibility'))assert.deepStrictEqual(defects,[],'structural fidelity '+JSON.stringify(p));
@@ -27,7 +30,7 @@ import {structuralDefects} from './structural-screen-features.mjs';
   // opacity, which can change quickly without moving a point or physical line.
   const features=renderedFeatures(d);
   const raw=renderedFeatures({...d,layout:{...d.layout,pointOpacities:[1,1,1],lineOpacities:[1,1,1]}});
-  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),rawScreen:[0,1,2].flatMap(i=>raw.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,points:d.layout.points,markers:d.layout.pointMarkers,arrowOpacities:d.layout.arrowOpacities,diagnostics:d.diagnostics,defects,physicalDefects}};
+  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),rawScreen:[0,1,2].flatMap(i=>raw.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,points:d.layout.points,rawPoints:d.layout.rawPoints,markers:d.layout.pointMarkers,arrowOpacities:d.layout.arrowOpacities,diagnostics:d.diagnostics,defects,physicalDefects,physicalRawDefects}};
  }
  const rows=[];
  if(process.argv.includes('--visibility')){
