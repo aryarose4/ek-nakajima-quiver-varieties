@@ -16,13 +16,13 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
  const filename=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'./fixtures/historical-weighted-camera.js');
  const code=fs.readFileSync(filename,'utf8').replace(/from\s+['"]([^'"]+)['"]/g,(_,dep)=>'from '+JSON.stringify(source(path.basename(dep))));
  const {balancedTensorDiagram:oldCamera}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
- let solves=0,minGap=Infinity,minAnchor=Infinity;
+ let solves=0;
  function sample(p={},b=beta,old=false){
   const s=solveBalancedAtlas({r:.08739584396954322,theta:0,phi:0,t:0,sphere:0,...p},b.map(row=>row.map(x=>2*x)),{chamber});solves++;
   assert(s.success,'strict central solve '+JSON.stringify({p,diagnostics:s.diagnostics}));
   assert(s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8,'moment residual');
   const d=(old?oldCamera:balancedTensorDiagram)(s.solvedRep);assert(d.valid,d.reason);
-  if(!old){minGap=Math.min(minGap,d.diagnostics.eigenvalueGap);minAnchor=Math.min(minAnchor,...d.diagnostics.phaseAnchorMagnitudes);assert.deepStrictEqual(d.layout.cameraDefects,[]);}
+  if(!old)assert.deepStrictEqual(d.layout.cameraDefects,[]);
   return {d,features:[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),glyphFeatures(d),arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity)]};
  }
  let lo=.081,hi=.096;
@@ -40,6 +40,6 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
  for(let i=0;i<=10;i++)convergence('local r sweep '+i,h=>[-1,1].map(sign=>({p:{r:.04+i*.01+sign*h}})));
  convergence('one-sided t',h=>[{p:{r:collision,t:0}},{p:{r:collision,t:h}}]);
  for(let i=1;i<20;i++)convergence('central r sweep '+i,h=>[-1,1].map(sign=>({p:{r:i/20+sign*h}})));
- console.log(JSON.stringify({collision,oldJump,oldDiagnostics:diagnostics,minGap,minAnchor,solves,cases:rows.length,rows}));
+ console.log(JSON.stringify({collision,oldJump,oldDiagnostics:diagnostics,solves,cases:rows.length,rows}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
 

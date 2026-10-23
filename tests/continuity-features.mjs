@@ -4,7 +4,8 @@ import {fileURLToPath} from 'url';
 const base=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets/js/ek-nakajima'),cache={};
 export function source(name){
   if(cache[name])return cache[name];
-  const code=fs.readFileSync(path.join(base,name),'utf8').replace(/from\s+['"]\.\/([^'"]+)['"]/g,(_,dep)=>'from '+JSON.stringify(source(dep)));
+  const filename=name==='weighted-balanced-diagram.js'&&process.env.EK_CAMERA_SOURCE_FILE?process.env.EK_CAMERA_SOURCE_FILE:path.join(base,name);
+  const code=fs.readFileSync(filename,'utf8').replace(/from\s+['"]\.\/([^'"]+)['"]/g,(_,dep)=>'from '+JSON.stringify(source(dep)));
   return cache[name]='data:text/javascript;base64,'+Buffer.from(code).toString('base64');
 }
 export const distance=(a,b)=>Math.hypot(...a.map((x,i)=>x-b[i]));
