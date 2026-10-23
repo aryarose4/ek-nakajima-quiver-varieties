@@ -19,6 +19,8 @@ export function createParametersPanel(host, options = {}) {
   const wallRow = wallActions ? document.createElement('div') : null;
   let wallRevision = 0;
   let wallPending = false;
+  let selectedWallId = null;
+  let reachedWallIds = [];
   if (wallRow) {
     wallRow.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:.85em';
     panel.appendChild(wallRow);
@@ -38,7 +40,34 @@ export function createParametersPanel(host, options = {}) {
     const revision = ++wallRevision;
     wallRow.textContent = '';
     let count = 0;
-    wallOptions().forEach(wall => {
+    let walls = wallOptions();
+    if (wallActions.compact) {
+      walls = walls.filter(wall => wall.canCross === true && typeof wallActions.onCross === 'function');
+      const reached = walls.filter(wall => wall.atWall === true);
+      const newlyReached = reached.find(wall => reachedWallIds.indexOf(wall.id) < 0);
+      if (newlyReached) selectedWallId = newlyReached.id;
+      if (!walls.some(wall => wall.id === selectedWallId)) selectedWallId = walls.length ? walls[0].id : null;
+      reachedWallIds = reached.map(wall => wall.id);
+      if (enabled && walls.length) {
+        const select = document.createElement('select');
+        select.className = 'ek-wall-select';
+        select.style.cssText = 'min-width:0;max-width:100%;flex:1;font:inherit;color:inherit;background:var(--ek-box-bg)';
+        if (select.setAttribute) select.setAttribute('aria-label', 'Chamber wall');
+        walls.forEach(wall => {
+          const option = document.createElement('option');
+          option.value = wall.id; option.textContent = wall.label || wall.id;
+          select.appendChild(option);
+        });
+        select.value = selectedWallId; select.disabled = wallPending;
+        select.addEventListener('change', () => {
+          if (revision !== wallRevision || wallPending) return;
+          selectedWallId = select.value; refreshWallActions();
+        });
+        wallRow.appendChild(select);
+      }
+      walls = walls.filter(wall => wall.id === selectedWallId).map(wall => ({...wall, alwaysVisible:true}));
+    }
+    walls.forEach(wall => {
       ['approach', 'cross'].forEach(action => {
         const available = permitted(wall, action);
         const persistent = enabled && action === 'cross' && wall.alwaysVisible === true &&
@@ -72,7 +101,7 @@ export function createParametersPanel(host, options = {}) {
             else finish();
           } catch (error) { finish(error); }
         });
-        if (label.textContent) box.appendChild(label);
+        if (label.textContent && !wallActions.compact) box.appendChild(label);
         box.appendChild(button); wallRow.appendChild(box); count++;
       });
     });

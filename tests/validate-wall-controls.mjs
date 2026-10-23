@@ -49,31 +49,53 @@ async function main() {
   }});
   assert.strictEqual(buttons(approachHost)[0].textContent, 'Approach Wall');
   buttons(approachHost)[0].handlers.click(); assert.strictEqual(approached, 1);
-  // Exercise the production host descriptor, including its chamber inequality.
+  // Registry supplies the actual inequalities and chamber identity. The compact
+  // adapter exposes every supported wall with one persistent action.
   const widget = readFileSync(new URL('../assets/js/ek-nakajima/widget.js', import.meta.url), 'utf8');
-  const descriptorSource = widget.match(/getOptions: beta => (\[\{[\s\S]*?\}\]),/)[1];
-  const describe = new Function('beta', 'chamberId', 'e6AtCrossingWall', 'return ' + descriptorSource);
-  let chamber = 'default', atWall = false, persistentCalls = 0;
-  const persistentHost = element('div');
-  const persistentPanel = createParametersPanel(persistentHost, {wallActions: {
-    getOptions: beta => describe(beta, chamber, () => atWall),
-    onCross() {persistentCalls++; chamber = chamber === 'default' ? 'side-zero-second' : 'default';}
+  assert(widget.includes('getOptions: beta => e6ChamberWallOptions(beta, chamberId)'));
+  assert(widget.includes('chamberId = wall.targetChamberId'));
+  assert(widget.includes('word: e6ChamberWord(chamberId)'));
+  assert(widget.includes('chamberEpoch++'));
+  assert(widget.includes('balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null'));
+  const compactHost = element('div');
+  let chamber = 'default', selectedCalls = [], release;
+  let reached = null;
+  const descriptions = () => ['first','second','third'].map((id,index) => ({
+    id, label: 'period ' + index + ' > 0', canCross:true, atWall:id===reached,
+    targetChamberId: chamber === 'default' ? id : 'default'
+  }));
+  const compact = createParametersPanel(compactHost,{wallActions:{compact:true,
+    getOptions:descriptions,
+    onCross(wall) {
+      selectedCalls.push(wall.id); chamber=wall.targetChamberId;
+      return new Promise(resolve => {release=resolve;});
+    }
   }});
-  const wallBox = () => persistentHost.children[0].children[2].children[0];
-  const originalLabel = wallBox().children[0].textContent;
-  assert(originalLabel.includes('<') && originalLabel.includes('\u03b2\u2081\u207d\u00b9\u207e'));
-  assert.strictEqual(buttons(persistentHost).length, 1, 'supported control remains visible off wall');
-  assert.strictEqual(buttons(persistentHost)[0].disabled, true);
-  buttons(persistentHost)[0].handlers.click();
-  assert.strictEqual(persistentCalls, 0, 'visible disabled control cannot dispatch');
-  atWall = true; persistentPanel.refreshWallActions();
-  assert.strictEqual(buttons(persistentHost)[0].disabled, false);
-  buttons(persistentHost)[0].handlers.click();
-  assert.strictEqual(persistentCalls, 1);
-  assert.strictEqual(wallBox().children[0].textContent, originalLabel.replace('<', '>'), 'inequality reverses after crossing');
-  atWall = false; persistentPanel.refreshWallActions();
-  assert.strictEqual(buttons(persistentHost)[0].disabled, true);
-  assert.strictEqual(buttons(persistentHost).length, 1, 'row remains after leaving wall');
+  const descendants = node => [node].concat(...node.children.map(descendants));
+  const selector = () => descendants(compactHost).find(node => node.tag==='select');
+  assert.strictEqual(selector().children.length,3,'all supported inequalities accessible');
+  assert.strictEqual(buttons(compactHost).length,1,'only one compact action');
+  assert(buttons(compactHost)[0].disabled,'initially disabled off wall');
+  selector().value='third'; selector().handlers.change();
+  compact.refresh(); assert.strictEqual(selector().value,'third','manual selection survives refresh');
+  reached='second'; compact.refresh();
+  assert.strictEqual(selector().value,'second','newly reached wall auto-selected');
+  const staleSelect=selector(), staleButton=buttons(compactHost)[0];
+  const pinned=compact.getBeta(); staleButton.handlers.click();
+  assert.deepStrictEqual(selectedCalls,['second']); assert.strictEqual(chamber,'second');
+  assert(buttons(compactHost)[0].disabled,'persistent action disabled while pending');
+  assert(selector().disabled,'selector disabled while pending');
+  staleButton.handlers.click(); staleSelect.value='first'; staleSelect.handlers.change();
+  assert.strictEqual(selector().value,'second','detached selector is inert');
+  assert.strictEqual(selectedCalls.length,1,'pending double-click inert');
+  release(); await Promise.resolve();
+  assert.deepStrictEqual(compact.getBeta(),pinned,'crossings preserve requested beta');
+  buttons(compactHost)[0].handlers.click();
+  assert.strictEqual(chamber,'default','descriptor supports return crossing');
+  release(); await Promise.resolve();
+  reached='third'; compact.refresh(); buttons(compactHost)[0].handlers.click();
+  assert.strictEqual(chamber,'third','another wall can be crossed');
+  release(); await Promise.resolve();
   const missingCallback = element('div');
   createParametersPanel(missingCallback, {wallActions: {getOptions: () => [{...descriptor, alwaysVisible: true}]}});
   assert.strictEqual(buttons(missingCallback).length, 0, 'persistent control still requires callback');

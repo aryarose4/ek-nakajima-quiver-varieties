@@ -8,7 +8,7 @@ import { createBalancedClient } from './balanced-client.js';
 import { E6_REGULAR_LEVELS } from "./e6-levels.js";
 import { e6CoreAreas } from "./e6-areas.js";
 import { createParametersPanel } from "./parameters-panel.js";
-import { betaToLevels, e6DisplayBeta, e6AtCrossingWall, E6_CROSSING_WORD } from './e6-parameters.js';
+import { betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
 
@@ -275,17 +275,13 @@ function activate(container) {
   const parametersPanel = createParametersPanel(right, {
     getChamberId: () => chamberId,
     wallActions: {
-      getOptions: beta => [{
-        id: 'side-zero-second', atWall: e6AtCrossingWall(beta), canCross: true, alwaysVisible: true,
-        label: '2\u03b2\u2081\u207d\u00b9\u207e+\u03b2\u2081\u207d\u00b2\u207e+\u03b2\u2083\u207d\u00b2\u207e ' +
-          (chamberId === 'default' ? '<' : '>') +
-          ' \u03b2\u2082\u207d\u00b9\u207e+\u03b2\u2083\u207d\u00b9\u207e+2\u03b2\u2082\u207d\u00b2\u207e'
-      }],
-      onCross: function () {
+      compact: true,
+      getOptions: beta => e6ChamberWallOptions(beta, chamberId),
+      onCross: function (wall) {
         // Keep beta and the dot's chart coordinates pinned. At the collapsed
         // component these coordinates denote the selected side's regular
         // limit; data-requested/displayed-levels report the interior sample.
-        chamberId = chamberId === 'default' ? 'side-zero-second' : 'default';
+        chamberId = wall.targetChamberId;
         chamberEpoch++;
         balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
         container.setAttribute('data-e6-chamber', chamberId);
@@ -384,7 +380,7 @@ function activate(container) {
       const requestedLevels = parametersPanel.getLevels();
       const levels = betaToLevels(e6DisplayBeta(parametersPanel.getBeta(), chamberId));
       const epoch = chamberEpoch;
-      const chamber = { id: chamberId, word: chamberId === 'default' ? [] : E6_CROSSING_WORD.slice() };
+      const chamber = { id: chamberId, word: e6ChamberWord(chamberId) };
       container.setAttribute('data-e6-chamber', chamberId);
       incidenceFrame.setAttribute('data-requested-levels', JSON.stringify(requestedLevels));
       incidenceFrame.setAttribute('data-wall-approximation', JSON.stringify(levels) !== JSON.stringify(requestedLevels) ? 'true' : 'false');
