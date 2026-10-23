@@ -53,11 +53,21 @@ export function balancedTensorDiagram(rep) {
   // Each summand has the same phase covariance; there is no endpoint switch.
   const tSize=Math.max(1,Math.hypot(...T.flat().map(abs)));
   const phaseTensor=matAdd(T,matScale(matMul(T,T),.1/tSize));
-  const anchors=[inner(frame[0],apply(phaseTensor,frame[1])),inner(frame[1],apply(phaseTensor,frame[2]))];
-  if(anchors.some(z=>abs(z)<1e-11*tSize))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
-  const phases=[[1,0],cScale(cConj(anchors[0]),1/abs(anchors[0]))];
-  phases.push(cMul(phases[1],cScale(cConj(anchors[1]),1/abs(anchors[1]))));
-  frame.forEach((v,i)=>{frame[i]=v.map(z=>cMul(z,phases[i]));});
+  // Synchronize all eigenaxis phases through one spectral correlation tensor.
+  // Its H-diagonal is removed: a large uncoupled diagonal entry must not
+  // dominate phase selection. A prescribed chain of two correlations fails
+  // when its middle axis decouples while the outer two remain coupled.
+  // The leading projector uses every edge, with no chamber or edge switch.
+  const correlation=matSub(phaseTensor,sum(frame.map(v=>matScale(v.map(x=>v.map(y=>cMul(x,cConj(y)))),inner(v,apply(phaseTensor,v))))));
+  const tv=eigvalsHermitian3(correlation);
+  const phaseGap=tv[0]-tv[1];
+  if(phaseGap<1e-11*tSize)return {valid:false,reason:'Tensor phase synchronizer has a repeated leading eigenvalue.',cameraDefects:[{kind:'phase-eigenvalue-gap'}]};
+  const Q=matScale(matMul(matSub(correlation,matScale(eyeZ(3),tv[1])),matSub(correlation,matScale(eyeZ(3),tv[2]))),1/((tv[0]-tv[1])*(tv[0]-tv[2])));
+  const cols=[0,1,2].map(j=>Q.map(row=>row[j]));
+  const q=unit(cols.reduce((a,b)=>norm(a)>norm(b)?a:b));
+  const anchors=frame.map(v=>inner(v,q));
+  if(anchors.some(z=>abs(z)<1e-12))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
+  frame.forEach((v,i)=>{frame[i]=v.map(z=>cMul(z,cScale(anchors[i],1/abs(anchors[i]))));});
   // Contrast cutoffs are fixed display units, not beta/rank classifications.
   // Full strength above cutoff retains the ordinary default appearance.
   const pointWeights=bs.map(b=>matTrace(b.J)[0]);
@@ -159,7 +169,7 @@ export function balancedTensorDiagram(rep) {
     if(length>1e-8&&rawPoints.every(p=>Math.abs(d[0]*(p[1]-a[1])-d[1]*(p[0]-a[0]))<1e-8*length))transversal=clip(a,d);
   }
   return {valid:true,frame,observables,data,glyphs,operators,source:'balanced-weighted-tensors',
-    diagnostics:{eigenvalues,eigenvalueGap:gap,phaseAnchorMagnitudes:anchors.map(abs)},
+    diagnostics:{eigenvalues,eigenvalueGap:gap,phaseEigenvalues:tv,phaseEigenvalueGap:phaseGap,phaseAnchorMagnitudes:anchors.map(abs)},
     layout:{valid:true,points,rawPoints,lines,pointMarkers,pointOpacities,lineOpacities,pointWeights,lineWeights,
       incidenceColors:colors,phaseVectors,pointPhaseVectors:[[0,0],[0,0],[0,0]],cameraDefects,
       cotangentTargets,transversal,concurrencyPoint,
@@ -168,3 +178,5 @@ export function balancedTensorDiagram(rep) {
 function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
 
 export const experimentalBalancedDiagram=balancedTensorDiagram;
+
+
