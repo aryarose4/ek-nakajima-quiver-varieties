@@ -33,11 +33,12 @@ function draw(canvas, frame) {
     ctx.globalAlpha = layout.lineOpacities ? layout.lineOpacities[i] : 1;
     ctx.strokeStyle = colors ? color(colors.lineHues[i], colors.lineStrengths[i]) : '#505762';
     ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
-    ctx.fillStyle = ctx.strokeStyle; ctx.fillText('ℓ' + (i + 1), a[0] + (b[0] - a[0]) * .08 + 5, a[1] + (b[1] - a[1]) * .08 - 6);
+    ctx.fillStyle = ctx.strokeStyle; ctx.fillText('P' + ['₁', '₂', '₃'][i], a[0] + (b[0] - a[0]) * .08 + 5, a[1] + (b[1] - a[1]) * .08 - 6);
   });
   ctx.globalAlpha = 1;
   if (layout.concurrencyPoint) {
     const p = pixel(layout.concurrencyPoint); ctx.fillStyle = '#303740';
+    ctx.globalAlpha = layout.concurrencyOpacity === undefined ? 1 : layout.concurrencyOpacity;
     ctx.beginPath(); ctx.arc(...p, 3, 0, Math.PI * 2); ctx.fill();
   }
   layout.points.forEach((point, i) => {
@@ -55,7 +56,6 @@ function draw(canvas, frame) {
     } else {
       ctx.arc(...p, 4 + 3*group, 0, Math.PI*2); ctx.fillStyle = 'white'; if (!group) ctx.fill(); ctx.stroke();
     }
-    ctx.fillStyle = ctx.strokeStyle; ctx.fillText('p' + (i + 1), p[0] + 8, p[1] - 8 - group*12);
   });
   ctx.globalAlpha = 1;
 }
