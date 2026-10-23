@@ -26,7 +26,8 @@ import {structuralDefects} from './structural-screen-features.mjs';
   // Geometric positions and unoriented segment moments; omit hue and guide
   // opacity, which can change quickly without moving a point or physical line.
   const features=renderedFeatures(d);
-  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,diagnostics:d.diagnostics,defects,physicalDefects}};
+  const raw=renderedFeatures({...d,layout:{...d.layout,pointOpacities:[1,1,1],lineOpacities:[1,1,1]}});
+  return {screen:[0,1,2].flatMap(i=>features.slice(13*i,13*i+9)),rawScreen:[0,1,2].flatMap(i=>raw.slice(13*i,13*i+9)),invariant:invariantFeatures(balancedObservables(s.solvedRep)),visibility:{pointWeights:d.layout.pointWeights,lineWeights:d.layout.lineWeights,pointOpacities:d.layout.pointOpacities,lineOpacities:d.layout.lineOpacities,cameraOpacity:d.layout.cameraOpacity,diagnostics:d.diagnostics,defects,physicalDefects}};
  }
  const rows=[];
  if(process.argv.includes('--visibility')){
@@ -36,14 +37,16 @@ import {structuralDefects} from './structural-screen-features.mjs';
  }
  function scan(label,at,lo,hi,n){
   const h=(hi-lo)/n,a=Array.from({length:n+1},(_,i)=>sample(at(lo+i*h)));
-  const screen=[],physical=[],gain=[],curvature=[],sourceCurvature=[];
+  const screen=[],physical=[],gain=[],curvature=[],sourceCurvature=[],rawSpeed=[],rawCurvature=[];
   for(let i=1;i<=n;i++){
    screen.push(distance(a[i].screen,a[i-1].screen)/h);
+   rawSpeed.push(distance(a[i].rawScreen,a[i-1].rawScreen)/h);
    physical.push(distance(a[i].invariant,a[i-1].invariant)/h);
    gain.push(screen[i-1]/Math.max(1e-14,physical[i-1]));
    if(i<n){
     curvature.push(Math.hypot(...a[i].screen.map((v,j)=>(a[i+1].screen[j]-2*v+a[i-1].screen[j])/(h*h))));
     sourceCurvature.push(Math.hypot(...a[i].invariant.map((v,j)=>(a[i+1].invariant[j]-2*v+a[i-1].invariant[j])/(h*h))));
+    rawCurvature.push(Math.hypot(...a[i].rawScreen.map((v,j)=>(a[i+1].rawScreen[j]-2*v+a[i-1].rawScreen[j])/(h*h))));
    }
   }
   // Differentiate with respect to source arc length too. This removes speedup
@@ -58,6 +61,8 @@ import {structuralDefects} from './structural-screen-features.mjs';
   const sorted=gain.slice().sort((x,y)=>x-y),q=x=>sorted[Math.floor(x*(sorted.length-1))];
   const row={label,lo,hi,n,h,screenSpeed:[Math.min(...screen),Math.max(...screen)],invariantSpeed:[Math.min(...physical),Math.max(...physical)],gainQuantiles:[q(0),q(.1),q(.5),q(.9),q(1)],maxGainAt:lo+(maxIndex+.5)*h,maxScreenAcceleration:Math.max(...curvature),maxInvariantAcceleration:Math.max(...sourceCurvature),maxSourceArcAcceleration:arcAcceleration.length?Math.max(...arcAcceleration):null,sourceArcDerivativeSamples:arcAcceleration.length,peakNeighborhood:Array.from({length:7},(_,k)=>maxIndex+k-3).filter(i=>i>=0&&i<n).map(i=>({x:lo+(i+.5)*h,screen:screen[i],invariant:physical[i],gain:gain[i]}))};
   rows.push(row);
+  row.rawScreenSpeed=[Math.min(...rawSpeed),Math.max(...rawSpeed)];
+  row.maxRawScreenAcceleration=Math.max(...rawCurvature);
   if(process.argv.includes('--progress'))console.log(JSON.stringify(row));
  }
  // Endpoints are one-sided: r is a compact coordinate, so a divergent source
