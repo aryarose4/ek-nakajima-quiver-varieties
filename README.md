@@ -20,7 +20,7 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** The E6 flag picture and matrix readout now use numerically balanced representatives at `alpha=(3,3,3), gamma=(1,2.1,3)`. A background worker solves the real moment maps before displaying new matrices. A unitary display frame aligns successive flags and their cotangent data. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
+> **Status.** The E6 flag picture and matrix readout now use numerically balanced representatives at `alpha=(3,3,3), gamma=(1,2.1,3)`. A background worker solves the real moment maps before displaying new matrices. A stateless tensor camera displays the balanced flags and their cotangent data, with visibility following actual map ranks. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
 
 ## Try it
 
@@ -120,46 +120,34 @@ the outgoing paraboloid at the short arm's tip, rather than a second sphere.
 The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
-The live view no longer applies the old synthetic concurrency animation or
-nonunitary display gauges. All positions, slopes, phases, and cotangent
-decorations come from the balanced representation in a unitary first-flag
-frame. Internal diagonal phases are aligned with the previous frame using
-flag projectors and cotangent operators; the final camera and y coefficient
-basis cancel this history using normalized complex phasors wherever their
-references are nonzero. The camera combines two point correlations with a
-cotangent-operator entry, avoiding the first-point reference's zero near
-`r=.34624` and extending through the short tip. Additional operator and linked
-point/operator correlations keep both camera phases defined at the right
-arm's first fixed point, through its incoming limit and higher-stratum chart.
-These transitions are tested for geometry, glyphs, and phase/incidence colors.
-It is a complex unitary camera
-even for some real flags; its real-part projection cannot show every incidence
-literally. Projection loss and vanishing camera references are recorded.
-Line hue and saturation encode the imaginary and real parts of
-`2*n[0]*conj(n[1])` for the normalized dual line in this camera. This product
-is independent of homogeneous rescaling; it is a viewing-chart phase cue,
-not a global invariant or a complete encoding of a complex line. Smooth
-contrast scaling by `sqrt(|v|^2+.04^2)` emphasizes its phase while remaining
-continuous at zero; `.04` is a display parameter. Hues stay
-within 20 degrees of three centers 120 degrees apart, retaining separate bands.
-A dot's hue uses the normalized complex incidence residuals against the other
-two lines, with opposite residual weights. Matching another line's hue means
-that pairing vanishes; own-line hue need not match. If both other pairings
-vanish the dot fades continuously to neutral, since one hue cannot represent
-both lines. These line phase cues and incidence hues are separate from y-data.
-Nearly incident configurations can have perceptually indistinguishable hues;
-this visual diagnostic is not an exact numerical certificate. Color does not
-repair apparent crossings introduced by the planar projection.
-Boundary markers handle points beyond the viewport. Affine infinity and
-degenerate projected normals or vanishing phase references remain possible
-camera discontinuities (including known exterior-tip cases); balancing
-alone is not a global continuous planar drawing of complex projective flags.
-The camera is anchored to the actual intersection of two balanced lines and
-projects line equations together. At concurrency all three drawn lines pass
-through a small common marker in view, even after complex phase histories.
-A camera phase choice computed from the current flags and shared viewport zoom preserve
-the short tip's visible collinearity; a faint guide marks that alignment.
-No additional on-page explanation accompanies this change.
+The live incidence view uses a stateless unitary frame extracted from a fixed
+weighted sum of the balanced tensors `H_i = x_i^(2) x_i^(2)*`. Polynomial
+point and cotangent tensors supply the phase references. The same rule is
+used throughout the current chamber, without camera switches based on beta
+or on which sphere is selected. The viewport has fixed scale.
+
+Point visibility follows `||x_i^(2) x_i^(1)||^2`; plane visibility follows
+`||wedge^2 x_i^(2)||^2`. Both reach full opacity at weight `.15` (a display
+parameter). Thus loss of a plane can leave its marked point visible, and
+loss of a marked point can leave its plane visible. A beta approaching zero
+does not itself force either to disappear: the actual balanced maps decide.
+The coordinate-wall collapse and a positive-beta wall contraction are
+numerically tested separately. At the latter, all flags remain visible.
+
+Line phase cues come from complex cyclic traces of the balanced tensors.
+Dot hues use the true complex incidence residuals against the other planes;
+a matching hue indicates that pairing, while a double match becomes neutral.
+Disappearing planes also lose their influence on dot color. These cues are
+separate from the cotangent arrows. Nearly incident configurations can have
+perceptually indistinguishable hues, so color is not an exact certificate.
+
+The three-dimensional complex flags are still projected into a real plane.
+Viewport clipping, affine infinity, repeated camera eigenvalues and vanishing
+phase references remain possible defects; no global continuity or faithful
+planar-incidence theorem is claimed. The formerly undefined outer-tip samples
+now have valid frames and are regression-tested. The previous camera remains
+available in the side-by-side development preview, not as a hidden fallback
+in the live view. No additional on-page explanation accompanies this change.
 The outgoing coordinate has weight two under reverse-arrow scaling:
 `v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
 meaning of the controls; the outgoing circle action has a half-turn stabilizer.

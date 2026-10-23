@@ -47,6 +47,8 @@ const MODULES = [
   "solver",
   "balanced-model",
   "balanced-diagram",
+  "balanced-observables",
+  "weighted-balanced-diagram",
   "balanced-worker-source",
   "balanced-client",
   "e6-parameters",
