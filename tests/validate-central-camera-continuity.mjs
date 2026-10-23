@@ -13,8 +13,8 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
  const chamber='weyl:2.5.0.3.2.0.1.4.1.0.2.3.0.5.2.5.2.0.1.4.1.4.1.4.1.0.2.1.0.3.2.0.1.4.1.0.2.3.0.1.5';
  // Keep the historical camera as a negative control: its third phase anchor
  // vanishes although both the camera and synchronizer eigenvalues are simple.
- const filename=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets/js/ek-nakajima/weighted-balanced-diagram.js');
- const code=fs.readFileSync(filename,'utf8').replace('const H=matAdd(baseH,matScale(T,.125));','const H=baseH;').replace(/from\s+['"]\.\/([^'"]+)['"]/g,(_,dep)=>'from '+JSON.stringify(source(dep)));
+ const filename=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'./fixtures/historical-weighted-camera.js');
+ const code=fs.readFileSync(filename,'utf8').replace(/from\s+['"]([^'"]+)['"]/g,(_,dep)=>'from '+JSON.stringify(source(path.basename(dep))));
  const {balancedTensorDiagram:oldCamera}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
  let solves=0,minGap=Infinity,minAnchor=Infinity;
  function sample(p={},b=beta,old=false){
