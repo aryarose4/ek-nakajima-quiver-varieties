@@ -51,43 +51,43 @@ unique wall IDs and singular/malformed-input rejection. Long paths reset
 periodically because repeated small steps can converge to intersections.
 The tests do not establish atlas stability or global solver convergence.
 
-## First live crossing: required integration
+## First live crossing
 
-The read-only prototype at commit `cc4202c` handles the old side-zero
-second-sphere wall. Its root is
-`(center=1; middle=1,0,1; outer=1,0,0)` and its reflection word in vertex
-order `(center,middle0,middle1,middle2,outer0,outer1,outer2)` is
-`[4,1,0,3,0,1,4]`. It supplies useful transport tests but no live adapter.
-The old side-zero middle/tip representatives have positive King witnesses
-in that adjacent chamber: unlocking the current solver is incorrect.
+The live panel supports the second-sphere wall on the r=0 branch and its
+reverse. Drag beta_1^(1) upward to the boundary near 1.55; Cross Wall appears.
+The click retains the beta tuple and chart coordinates. The selected chamber
+is explicit state, and subsequent drags use that chamber's root signs.
+The remaining walls, including coordinate-zero walls, stay locked.
 
-Before enabling that one crossing:
+The adjacent solver pulls levels back through the reflection word
+`[4,1,0,3,0,1,4]`, balances the source chart, and applies the balanced
+reflection formula from `e6-chamber-transport.md`. Orthonormal complement
+choices change only unitary gauge. Target residuals are checked independently
+against real `1e-9` and complex `1e-8` tolerances; a conditional target polish
+handles small accumulated numerical error. Wrong-chamber inputs are rejected.
 
-1. Add explicit chamber/basis/word state. At a wall retain the side selection
-   separately from beta and define a singular display that does not request
-   an ordinary regular stable solve. Preserve the dot's chart coordinates
-   with a documented wall-limit interpretation.
-2. At target regular levels pull back by the reflection word, construct a
-   stable source chart at those levels, then transport its arrows forward.
-   Validate chart overlaps, finite and infinity charts, nonzero transverse
-   coordinates, fixed gradings, and continuity of observables across pivot
-   changes. Existing source-atlas regularity is not a stability certificate.
-3. Carry the transported effective root labels through the area/core layer.
-   With c the crossed second-sphere class and b its neighboring first-sphere
-   class, use c'=-c and b'=b+c; the other four classes stay fixed. Taking
-   absolute values of old periods gives the wrong first-sphere area.
-   `e6CoreAreas` currently enforces the original basis and must be adapted.
-4. Include chamber identity/transport word in balanced-client requests and
-   worker messages, reject stale results across chamber epochs, and clear or
-   transform cached previous solutions/seeds. `invalidate()` currently
-   suppresses deliveries but does not clear the fallback `previous` seed.
-   Regenerate worker source after changing its solver path.
-5. Validate forward ranks, real/complex residuals, fixed Hamiltonians,
-   transported period/incidence labels, UI boundary behavior and back-crossing.
-   Only then expose this wall's Cross Wall action. The other four positive
-   facets need their own validated words/atlas paths before enabling them.
+At the pinned boundary the widget explicitly uses a nearby interior sample
+with signed crossed period at least `1e-7`. The DOM records requested levels,
+displayed levels and `data-wall-approximation`. Both incidence and sphere
+radii use the displayed sample. This avoids claiming an exact singular solve;
+the regular solver rejects singular levels. At non-boundary parameters the
+requested and displayed levels agree. A small boundary collar remains a
+numerical approximation, so convergence tests do not establish exact continuity.
 
-No transported solver, live area change, or certified wall-limit display is
-implemented in this milestone. The planner and UI adapter are independent
-foundations; they are not evidence that current representatives work in a
-new chamber.
+If c is the second-sphere root and b its first-sphere neighbor, the adjacent
+area basis is c'=-c, b'=b+c, with the other four unchanged. The live area layer
+uses this basis rather than absolute values of the old periods. Worker
+requests include chamber identity and epoch; changes invalidate previous
+seeds and reject stale progress/results.
+
+Validation covers transported chart fixtures, fixed-point checks from the
+original transport battery, strict target residuals, pinned controls and
+back-crossing, areas, and shrinking neighborhoods in r, theta, t, phi and all
+six beta coordinates. Continuity checks compare invariant tensors and visible
+line/dot/arrow data rather than raw gauge-dependent matrices. They are sampled
+regressions, not a proof of a globally regular planar camera. Browser checks
+exercise both source modules and the generated standalone HTML.
+
+Further crossings require validated transport words and corresponding
+chart/area identification. Negative-beta flag rendering and an exact singular
+wall representative remain outside this implementation.

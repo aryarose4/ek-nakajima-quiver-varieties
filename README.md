@@ -97,12 +97,16 @@ encode the upper-triangular coefficients of `K_i=A_i B_i` in an orthonormal
 flag basis: hue encodes phase and saturation encodes magnitude. The `c12`
 arrow is tangential toward the marked point; `c13` is normal toward it;
 `c23` is normal toward the projected orthogonal direction in the flag plane.
-That target is constructed from column 2 of balanced `A_i` after removing its
-point component, with column 1 as fallback. Coefficient phases use the current
+That target is the orthogonal complement of the marked point within its flag
+plane, equivalent projectively to removing the point component from an
+independent column of balanced `A_i`. Coefficient phases use the current
 camera's affine convention. Targets outside the viewport or at affine infinity
 are explicitly recorded and their `c23` arrow is omitted; no artificial target
 is substituted. Zero coefficients are hidden. Screen arrows are schematic
 matrix components, not literal displacements in complex projective space.
+The signed dual-affine line equation fixes arrow sides: the tangential arrow
+uses its oriented tangent, and the two normal arrows occupy opposite sides.
+They no longer flip when a target crosses the dot or a distance threshold.
 These are display-basis coefficients, not complex-gauge invariants;
 their phases are measured in the current camera frame. The full reverse
 arrows remain visible in the matrix readout.
@@ -122,7 +126,9 @@ and the metric interpretation of its portrait coordinates are not certified.
 
 The live incidence view uses a stateless unitary frame extracted from a fixed
 weighted sum of the balanced tensors `H_i = x_i^(2) x_i^(2)*`. Polynomial
-point and cotangent tensors supply the phase references. The same rule is
+point and cotangent tensors supply the phase references. A leading spectral
+projector synchronizes all surviving correlations, avoiding a prescribed
+chain of references that can disappear at a wall. The same rule is
 used throughout the current chamber, without camera switches based on beta
 or on which sphere is selected. The viewport has fixed scale.
 
@@ -296,9 +302,22 @@ solve uses an analytic Jacobian and QR least squares with weaker damping;
 the real and complex residual acceptance criteria are unchanged. Difficult
 cold wall approaches can take several seconds. Red boundaries show
 nearest root walls; input is clipped strictly inside the current chamber.
-There is no chamber crossing or two-dimensional chamber view yet.
+The second sphere on the r=0 branch now has a Cross Wall button at its
+boundary. Clicking retains beta and the dot coordinates, changes the selected
+chamber, and allows dragging into the adjacent chamber or crossing back.
+For example, increase beta_1^(1) from 1.5 to its boundary near 1.55.
+Other walls remain locked; there is no two-dimensional chamber view yet.
+At the boundary, rendering uses an interior sample with crossed period at
+least `1e-7`; requested and displayed levels are separate DOM metadata.
+This is a numerical wall-limit approximation, not an exact singular solve.
 
-In the current chamber the following periods are the symplectic areas
+Adjacent representations use balanced reflection transport with independent
+real/complex residual checks. The two affected curve periods change as
+`c -> -c`, `b -> b+c` (second and first r=0 spheres respectively).
+Worker epochs reject results and seeds from the previous chamber. See
+[wall controls](docs/e6-wall-controls.md) for scope and validation.
+
+In the initial chamber the following periods are the symplectic areas
 **divided by 2*pi**, with first/second counted outward from the central sphere:
 
 | Component | Area / (2*pi) | Default |

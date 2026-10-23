@@ -1,7 +1,10 @@
 # E6 adjacent-chamber transport prototype
 
-This is an experimental, dependency-free mathematical layer. It does not
-change the beta panel, live atlas, solver, or displayed radii. Run it with:
+The original holomorphic prototype below is now complemented by balanced
+unitary transport for the first live adjacent chamber. See
+[`e6-wall-controls.md`](e6-wall-controls.md) for the current UI, solver,
+area integration and numerical wall-limit approximation. Run the original
+transport regression with:
 
 ```
 node tests/validate-e6-chamber-transport.mjs
@@ -190,8 +193,9 @@ specific reflected fixture, all six new periods equal their source values.
 The geometric component identification is supplied by transporting the
 charts and their overlaps through the reflection equivalence. Roots
 alone do not supply representatives, fixed gradings, overlaps, or a map
-from the old UI's coordinates. This prototype has not installed such a
-live atlas adapter or replaced `e6-areas.js`.
+from the old UI's coordinates. The live adapter now transports the source
+atlas for this one adjacent chamber, and `e6-areas.js` accepts its
+corresponding effective basis.
 
 ## Evidence and remaining work
 
@@ -207,10 +211,10 @@ Hamiltonians, and three inverse-word round trips. In the initial run the
 worst norms were `6.72e-10` real and `2.30e-14` complex. These tests do
 not certify arbitrary nonzero-y source stability or global solver convergence.
 
-**Not implemented:** a chamber-to-word planner; continuous choices of
+**Remaining beyond this first live crossing:** a general chamber-to-word planner; continuous choices of
 quotient/kernel gauges; transported atlas transition functions and their
 bounded numerical seeds; non-diagonal grading transport; negative-beta
-flag rendering; UI chamber crossing; or a test battery for all chambers.
+flag rendering; general UI chamber crossing; or a test battery for all chambers.
 
 The generalization path is to choose a Weyl word carrying a requested
 regular chamber to the certified source chamber, pull its levels back,
