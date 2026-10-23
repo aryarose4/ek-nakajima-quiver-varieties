@@ -105,7 +105,7 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   if (!warm && previous && !previous.rebased && (!previous.chamberId || previous.chamberId==='default') && previous.family===chartFamily) warm=previous.logGauge;
   const canRebase=!options.initialLogGauge && !options.solverOptions && previous &&
     previous.parameterKey===parameterKey && previous.levelKey!==levelKey && previous.family===chartFamily && previous.balancedRep;
-  let rebased=false;
+  let rebased=false,levelContinuation=false,levelContinuationSteps=0;
   if (!finiteGauge(warm)) warm=null;
   let result, attempts=0, totalNfev=0;
   try {
@@ -142,13 +142,39 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
       totalNfev+=recovery.diagnostics.nfev;
       if(recovery.success || recovery.residuals.real_norm<result.residuals.real_norm) result=recovery;
     }
+    if (!result.success && !options.solverOptions) {
+      // A cold logarithm becomes ill-conditioned as a stable orbit approaches
+      // a wall. Follow real levels inside the same chamber instead, rebasing
+      // each correction on the preceding balanced representative. The target
+      // representation and target levels are never replaced by the seed.
+      const targetAudit=e6RootWallAudit(levels),seedAudit=e6RootWallAudit(E6_REGULAR_LEVELS);
+      if(targetAudit.regular && targetAudit.roots.every((root,i)=>root.weight*seedAudit.roots[i].weight>0)) {
+        levelContinuation=true;
+        const correctionOptions={analytic:true,centered:true,lambda0:1e-12,maxIter:100,max_nfev:7000,multistart:false};
+        attempts++;
+        let step=solveRealMomentMap(numericalRep,E6_REGULAR_LEVELS,correctionOptions);
+        totalNfev+=step.diagnostics.nfev;
+        if(step.success) {
+          for(const fraction of [.1,.01,.001,.0001,.00001,.000001,0]) {
+            const nextLevels=levels.map((row,i)=>row.map((value,j)=>value+fraction*(E6_REGULAR_LEVELS[i][j]-value)));
+            const base=step.solvedRep;
+            attempts++;
+            levelContinuationSteps++;
+            step=solveRealMomentMap(base,nextLevels,correctionOptions);
+            totalNfev+=step.diagnostics.nfev;
+            if(!step.success)break;
+            if(fraction===0){result=step;numericalRep=base;rebased=true;}
+          }
+        }
+      }
+    }
   } catch(e) { return failed(atlas,'solver_exception',String(e)); }
   const success=!!result.success;
   return {
     success, solvedRep:success ? result.solvedRep : null,
     logGauge:success ? result.logGauge : null, residuals:result.residuals,
     atlas, rawRep:atlas.rep, numericalRep,
-    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm || !!canRebase,rebased,chartFamily}),
+    diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm || !!canRebase,rebased,levelContinuation,levelContinuationSteps,chartFamily}),
     continuation:success ? {family:chartFamily,levelKey,chamberId:'default',logGauge:result.logGauge,
       parameterKey,rebased,balancedRep:result.solvedRep} : null,
   };
