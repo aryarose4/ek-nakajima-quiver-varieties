@@ -37,7 +37,7 @@ export function e6DisplayBeta(beta, chamberId = E6_DEFAULT_CHAMBER) {
   const desired=chamberSigns(chamberId), values=flat(beta);
   if(values.some(x=>x < -2e-7)||coefficients.some((c,i)=>desired[i]*weight(c,values)<-2e-7))throw new RangeError('Beta outside selected E6 chamber closure.');
   if (values.every(x=>x>0) && coefficients.every((c,i)=>desired[i]*weight(c,values)>=MARGIN*.99)) return beta.map(r=>r.slice());
-  const target=flat(chambers.has(chamberId)?chambers.get(chamberId).beta:chamberReference(chamberId));
+  const target=flat(chamberReference(chamberId));
   let fraction=0;
   coefficients.forEach((c,i)=>{
     const a=desired[i]*weight(c,values),b=desired[i]*weight(c,target);

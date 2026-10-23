@@ -45,6 +45,17 @@ for(const wall of first){
   const x=solveBalancedAtlas(fixtures[0],m.betaToLevels(target),{chamber:targetId});assert(x.success,targetId+' '+JSON.stringify(x.diagnostics));assert(x.residuals.real_norm<1e-9);solves++;
  }
 }
+// UI crossings retain physical wall beta. Replanning in its tiny collar must
+// never replace the robust chamber reference with a sub-margin target sample.
+let pinned=m.E6_DEFAULT_BETA,id='default';
+for(let hop=0;hop<8;hop++){
+ const options=m.e6ChamberWallOptions(pinned,id).filter(w=>w.canCross);
+ const selected=options[hop%options.length];
+ pinned=selected.wallBeta;id=selected.targetChamberId;
+ const interior=m.e6DisplayBeta(pinned,id);
+ assert(m.e6BetaInChamber(interior,id),'pinned UI crossing '+hop);
+ m.e6ChamberWallOptions(pinned,id);
+}
 assert.throws(()=>m.e6DisplayBeta(first[0].crossing.targetBeta,'default'),RangeError);
 assert.throws(()=>m.e6ChamberWord('weyl:9'),RangeError);
 assert.strictEqual(solveBalancedAtlas(fixtures[0],[[-1,1],[1,1],[1,1]],{chamber:'weyl:4'}).diagnostics.status,'unsupported_chamber_region');
