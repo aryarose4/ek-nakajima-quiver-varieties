@@ -12,6 +12,13 @@ for(const line of [[[0,0],[100,0]],[[0,0],[60,80]]]) {
   assert.ok(Math.abs(vectors[0][0]*d[1]-vectors[0][1]*d[0])<1e-10);
   for(const k of [1,2])assert.ok(Math.abs(vectors[k][0]*d[0]+vectors[k][1]*d[1])<1e-10);
   assert.strictEqual(cotangentArrowGeometry(p,line,null)[2],null);
+  // Target crossing and the former close-target cutoff cannot flip sides.
+  for(const center of [0,64/3]) {
+    const nearby=[-1e-6,1e-6].map(h=>cotangentArrowGeometry(p,line,p.map((x,j)=>x+(center+h)*d[j]/100)));
+    for(let k=0;k<3;k++)for(const endpoint of ['start','end'])
+      assert.ok(Math.hypot(...nearby[0][k][endpoint].map((x,j)=>x-nearby[1][k][endpoint][j]))<3e-6,'continuous arrow side at target crossing/cutoff');
+  }
+  assert.ok(vectors[1].reduce((s,x,j)=>s+x*vectors[2][j],0)<0,'normal arrows stay on opposite sides');
 }
 assert.strictEqual(cotangentArrowColor([0,0],false),null);
 assert.strictEqual(cotangentArrowOpacity([0,0]),0);

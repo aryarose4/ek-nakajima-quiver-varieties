@@ -32,21 +32,22 @@ export function incidenceFlashStrength(elapsed) {
 }
 
 // Fixed pixel lengths: geometry indicates the matrix component, not magnitude.
+// The tensor layout supplies oriented line endpoints from its dual affine
+// gauge. Keep these sides fixed as targets pass a point or approach it:
+// c12 approaches along the tangent, c13 along the normal, c23 opposite it.
 export function cotangentArrowGeometry(point, line, target) {
   const d=line[1].map((v,j)=>v-line[0][j]),length=Math.hypot(...d);
   if(length<1e-8)return [null,null,null];
   const tangent=d.map(v=>v/length),normal=[-tangent[1],tangent[0]];
-  const toward=target||line[0];
-  const sign=toward.reduce((s,v,j)=>s+(v-point[j])*tangent[j],0)>=0?1:-1;
   function arrow(p,offset,gap) {
     return {start:p.map((v,j)=>v+offset[j]*(gap+ARROW_LENGTH)),end:p.map((v,j)=>v+offset[j]*gap)};
   }
-  const close=target&&Math.hypot(...target.map((v,j)=>v-point[j]))<64/3;
+
   // Five pixels clears the line stroke and the tangent arrow's head, leaving
   // a small gap on the same side as the perpendicular arrow at this point.
   const tangentAnchor=point.map((v,j)=>v+5*normal[j]);
-  return [arrow(tangentAnchor,tangent.map(v=>v*sign),9),arrow(point,normal,8),
-    target?arrow(target,normal.map(v=>close?-v:v),3):null];
+  return [arrow(tangentAnchor,tangent,9),arrow(point,normal,8),
+    target?arrow(target,normal.map(v=>-v),3):null];
 }
 
 export function cotangentArrowColor(z, dark) {

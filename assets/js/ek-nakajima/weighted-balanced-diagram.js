@@ -111,15 +111,20 @@ export function balancedTensorDiagram(rep) {
     rawPoints.push(point);points.push(marker);pointMarkers.push({point:marker,clipped:extent>1||atInfinity,atInfinity,direction:unitReal(point)});
     let segment=[[0,0],[0,0]];
     if(n) {
-      const a=cSub(n[0],n[2]),b=cSub(n[1],n[2]);
-      const square=cAdd(cMul(a,a),cMul(b,b)),angle=.5*Math.atan2(square[1],square[0]);
-      const rotate=[Math.cos(angle),-Math.sin(angle)];
-      let normal=[cMul(a,rotate)[0],cMul(b,rotate)[0]];
+      // The dual affine gauge gives an oriented real equation. Unlike the
+      // square root of a quadratic normal, it has no hidden +/- branch cut.
+      // It remains only a real projection of a complex plane; its genuine
+      // chart/normal defects are exposed below.
+      const dualSum=n.reduce(cAdd,[0,0]);
+      const oriented=affinePhase(n);
+      const a=cSub(oriented[0],oriented[2]),b=cSub(oriented[1],oriented[2]);
+      let normal=[a[0],b[0]];
       const length=Math.hypot(...normal);
-      if(length<1e-12||abs(square)<1e-10*(abs(a)**2+abs(b)**2))cameraDefects.push({kind:'isotropic-projected-normal',flag:i});
+      if(abs(dualSum)<=1e-10)cameraDefects.push({kind:'dual-affine-phase',flag:i});
+      if(length<1e-12)cameraDefects.push({kind:'oriented-projected-normal',flag:i});
       if(length>1e-12) {
         normal=normal.map(x=>x/length);
-        const offset=SCALE*cMul(n[2],rotate)[0]/length;
+        const offset=SCALE*oriented[2][0]/length;
         // A point with vanishing weight stops steering its surviving plane.
         // A disappearing plane never changes its surviving marked point.
         const residual=normal[0]*point[0]+normal[1]*point[1]+offset;
@@ -178,5 +183,3 @@ export function balancedTensorDiagram(rep) {
 function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
 
 export const experimentalBalancedDiagram=balancedTensorDiagram;
-
-

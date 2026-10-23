@@ -8,7 +8,7 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
  const {balancedTensorDiagram:diagram}=await import(source('weighted-balanced-diagram.js'));
  const {solveBalancedAtlas}=await import(source('balanced-model.js'));
  const beta=[[1.5,.5],[1.5,1.05],[1.5,1.5]],adjacent=[[46/30,.5],[1.5,61/60],[44/30,46/30]];
- const errors=[];
+ const errors=[],orientedLineErrors=[];
  for(const h of [1e-3,1e-4,1e-5]){
    const pictures=[-1,1].map(side=>{
      const levels=beta.map((row,i)=>row.map((v,j)=>2*(v+(adjacent[i][j]-v)*(.5+side*h))));
@@ -21,7 +21,12 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
    });
    const values=pictures.map(d=>d.glyphs.flatMap(g=>g.coefficients.flat()));
    errors.push(Math.hypot(...values[0].map((x,i)=>x-values[1][i])));
+   // Ordered endpoints matter: reversing a line preserves its ink but flips
+   // every normal arrow. The dual affine orientation must converge too.
+   const lines=pictures.map(d=>d.layout.lines.flat(2));
+   orientedLineErrors.push(Math.hypot(...lines[0].map((x,i)=>x-lines[1][i])));
  }
  assert(errors[2]<.002&&errors[2]<errors[0]/5,'all cotangent coefficients converge across wall');
- console.log(JSON.stringify({wallGlyphErrors:errors}));
+ assert(orientedLineErrors[2]<.01&&orientedLineErrors[2]<orientedLineErrors[0]/5,'oriented lines converge across wall');
+ console.log(JSON.stringify({wallGlyphErrors:errors,orientedLineErrors}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
