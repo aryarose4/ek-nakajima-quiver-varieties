@@ -51,7 +51,11 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
       return failed(null,'singular_chamber_level','Use an explicit interior wall-limit sample.');
     if(sourceAudit.roots.some((root,i)=>root.weight*referenceAudit.roots[i].weight<=0))
       return failed(null,'chamber_mismatch','Levels do not lie in the selected adjacent chamber.');
-    const source=solveBalancedAtlas(parameters,sourceLevels,Object.assign({},options,{chamber:'default',previous:null}));
+    const previous=options.previous && (options.previous.continuation || options.previous);
+    const sourcePrevious=previous && previous.chamberId===chamberId ? previous.source : null;
+    const source=solveBalancedAtlas(parameters,sourceLevels,Object.assign({},options,{
+      chamber:'default',previous:sourcePrevious,initialLogGauge:null
+    }));
     if(!source.success)return source;
     try {
       const transported=e6TransportBalancedWord(source.solvedRep,sourceLevels,word);
@@ -67,7 +71,7 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
         return failed(source.atlas,'transport_residual','Transported moment-map residual exceeds tolerance: '+real+', '+complex);
       return Object.assign({},source,{solvedRep:transported.rep,logGauge:null,
         residuals:Object.assign({},source.residuals,{real_norm:real,complex_norm:complex}),
-        continuation:null,chamberId,
+        continuation:{chamberId,source:source.continuation},chamberId,
         diagnostics:Object.assign({},source.diagnostics,{chamberId,transported:true,transportWord:word.slice(),sourceLevels})});
     }catch(e){return failed(source.atlas,'transport_exception',String(e));}
   }

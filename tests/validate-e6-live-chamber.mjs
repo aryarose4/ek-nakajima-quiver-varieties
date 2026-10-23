@@ -21,6 +21,18 @@ for(const t of [0,.5,1])for(const outgoing of [false,true])if(!(outgoing&&t===1)
 for(const r of [0,1])for(const sphere of [1])fixtures.push({r,theta:0,t:.3,phi:.3,sphere,outgoing:true});
 assert.strictEqual(solveBalancedAtlas(fixtures[0],E6_REGULAR_LEVELS,{chamber:'side-zero-second'}).diagnostics.status,'chamber_mismatch');
 for(const p of fixtures){const result=solveBalancedAtlas(p,target,{chamber:'side-zero-second'});assert(result.success,JSON.stringify(p)+' '+JSON.stringify(result.diagnostics));assert(result.residuals.real_norm<1e-7);}
+const nearby=Object.assign({},fixtures[0],{r:fixtures[0].r+.0001});
+const first=solveBalancedAtlas(fixtures[0],target,{chamber:'side-zero-second'});
+const warm=solveBalancedAtlas(nearby,target,{chamber:'side-zero-second',previous:first});
+const cold=solveBalancedAtlas(nearby,target,{chamber:'side-zero-second'});
+assert(warm.success && cold.success);
+assert(warm.diagnostics.warmStart);
+assert(warm.continuation.chamberId==='side-zero-second');
+assert(warm.continuation.source.chamberId==='default');
+assert(warm.diagnostics.iterations<cold.diagnostics.iterations,'adjacent source warm start improves iterations');
+const rejected=solveBalancedAtlas(nearby,target,{chamber:'side-zero-second',previous:{continuation:{chamberId:'wrong',source:first.continuation.source}}});
+assert(rejected.success && !rejected.diagnostics.warmStart);
+console.log('Adjacent continuation source iterations: warm '+warm.diagnostics.iterations+', cold '+cold.diagnostics.iterations);
 const collarLevels=[[1.0504833333333334,.5],[1.01715,1.0166666666666666],[.9838166666666665,1.5333333333333334]].map(r=>r.map(x=>2*x));
 const collar=solveBalancedAtlas({r:.35,theta:.7,t:0,phi:.6,sphere:0},collarLevels,{chamber:'side-zero-second'});
 assert(collar.success);assert(collar.residuals.real_norm<1e-9);
