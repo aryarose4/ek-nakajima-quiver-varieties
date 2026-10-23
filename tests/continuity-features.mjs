@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
-const base=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets/js/ek-nakajima'),cache={};
+const base=process.env.EK_WIDGET_SOURCE_BASE?path.resolve(process.env.EK_WIDGET_SOURCE_BASE):path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets/js/ek-nakajima'),cache={};
 export function source(name){
   if(cache[name])return cache[name];
   const filename=name==='weighted-balanced-diagram.js'&&process.env.EK_CAMERA_SOURCE_FILE?process.env.EK_CAMERA_SOURCE_FILE:path.join(base,name);
