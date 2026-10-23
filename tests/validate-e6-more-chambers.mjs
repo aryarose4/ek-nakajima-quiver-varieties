@@ -13,14 +13,15 @@ function source(name) {
 (async function(){
 const m=await import(source('e6-parameters.js'));
 const {solveBalancedAtlas}=await import(source('balanced-model.js'));
-const {e6ReflectLevels}=await import(source('e6-chamber-transport.js'));
+const {e6ReflectLevels,e6TransportBalancedWord}=await import(source('e6-chamber-transport.js'));
+const {balancedObservables}=await import(source('balanced-observables.js'));
 const {e6CoreAreas}=await import(source('e6-areas.js'));
 const fixtures=[{r:.3,theta:.5,t:.2,phi:.7,sphere:0}];
 for(const r of [0,1])for(const sphere of [0,1])for(const t of [0,.5,1])fixtures.push({r,theta:0,t,phi:.4,sphere});
 fixtures.push({r:.5,theta:0,t:1,phi:0,sphere:0},{r:.5,theta:0,t:.3,phi:.4,sphere:0,outgoing:true});
 const first=m.e6ChamberWallOptions(m.E6_DEFAULT_BETA).filter(w=>w.canCross);
 assert.strictEqual(first.length,5);
-let solves=0;
+let solves=0,roundTrips=0;
 for(const wall of first){
  for(const epsilon of [1e-4,1e-6,1e-7]){
   const collar=wall.wallBeta.map((r,i)=>r.map((x,j)=>x+epsilon*(wall.crossing.targetBeta[i][j]-x)));
@@ -43,6 +44,13 @@ for(const wall of first){
   assert(m.e6BetaInChamber(target,targetId));assert(m.e6BetaInChamber(m.e6SourceBeta(target,targetId)));
   const back2=m.e6ChamberWallOptions(target,targetId).find(w=>w.id===next.id);assert.strictEqual(back2.targetChamberId,id);
   const x=solveBalancedAtlas(fixtures[0],m.betaToLevels(target),{chamber:targetId});assert(x.success,targetId+' '+JSON.stringify(x.diagnostics));assert(x.residuals.real_norm<1e-9);solves++;
+  if(roundTrips<3&&word.join('.')!==word.slice().reverse().join('.')){
+    const returned=e6TransportBalancedWord(x.solvedRep,m.betaToLevels(target),word.slice().reverse());
+    const features=rep=>{const o=balancedObservables(rep);return o.gram.flat(2).concat(o.cyclic.flat());};
+    const expected=features(x.continuation.source.balancedRep),actual=features(returned.rep);
+    assert(Math.max(...expected.map((value,i)=>Math.abs(value-actual[i])/(1+Math.abs(value))))<1e-7,'nonpalindromic balanced round trip');
+    roundTrips++;
+  }
  }
 }
 // UI crossings retain physical wall beta. Replanning in its tiny collar must
@@ -58,6 +66,7 @@ for(let hop=0;hop<8;hop++){
 }
 assert.throws(()=>m.e6DisplayBeta(first[0].crossing.targetBeta,'default'),RangeError);
 assert.throws(()=>m.e6ChamberWord('weyl:9'),RangeError);
+assert.strictEqual(roundTrips,3);
 assert.strictEqual(solveBalancedAtlas(fixtures[0],[[-1,1],[1,1],[1,1]],{chamber:'weyl:4'}).diagnostics.status,'unsupported_chamber_region');
 console.log('More E6 chambers: five first-hop facets, multihop/reverse, '+solves+' strict solves passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -307,19 +307,22 @@ balanced representative. This avoids a poorly conditioned solve in the
 original chart near a collapsing sphere. Analytic derivatives share a cached
 eigensystem per gauge block. Continuation and cold solves are checked against
 the same residual tolerances and rendered-data comparisons.
-The second sphere on the r=0 branch has an always-visible Cross Wall button
-with its current beta inequality. The button enables at the boundary.
-Clicking retains beta and the dot coordinates, changes the selected
-chamber, and allows dragging into the adjacent chamber or crossing back.
-For example, increase beta_1^(1) from 1.5 to its boundary near 1.55.
-Other walls remain locked; there is no two-dimensional chamber view yet.
+All five positive-beta facets of the initial chamber support crossing, as do
+positive-beta facets reached by subsequent crossings. A compact selector shows
+the current inequalities beside one always-visible Cross Wall button; arriving
+at a wall selects it automatically. The button enables at the boundary.
+Clicking retains beta and the dot coordinates, changes the selected chamber,
+and allows dragging farther or crossing back. For example, increase
+beta_1^(1) from 1.5 to its boundary near 1.55. Coordinate-zero walls remain
+locked; there is no two-dimensional chamber view yet.
 At the boundary, rendering uses an interior sample with crossed period at
 least `1e-7`; requested and displayed levels are separate DOM metadata.
 This is a numerical wall-limit approximation, not an exact singular solve.
 
 Adjacent representations use balanced reflection transport with independent
-real/complex residual checks. The two affected curve periods change as
-`c -> -c`, `b -> b+c` (second and first r=0 spheres respectively).
+real/complex residual checks. Ordered curve periods follow the same transport;
+for the original r=0 crossing the two affected classes change as
+`c -> -c`, `b -> b+c` (second and first spheres respectively).
 Worker epochs reject results and seeds from the previous chamber. See
 [wall controls](docs/e6-wall-controls.md) for scope and validation.
 
@@ -396,9 +399,10 @@ ADE period description extends this to other regular chambers by choosing
 the positive indecomposable roots for that chamber and pairing with the
 levels. This yields chamberwise linear areas, but changes the effective
 component labels: taking absolute values of these six formulas does not
-supply a global continuation of the current atlas. The first live wall uses
-the transported atlas described above; general chamber transitions remain
-unimplemented.
+supply a global continuation of the current atlas. The live chamber graph
+instead transports the atlas and its ordered curve classes through Weyl
+reflection words, evaluating each area's linear form on the pulled-back
+source parameters. Negative-beta flag displays remain unsupported.
 
 The fixed-point formulas were also checked against 15 balanced representatives
 at three level vectors in this chamber, with moment errors below 9e-10.

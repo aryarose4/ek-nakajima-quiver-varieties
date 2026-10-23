@@ -1,7 +1,7 @@
 # E6 adjacent-chamber transport prototype
 
 The original holomorphic prototype below is now complemented by balanced
-unitary transport for the first live adjacent chamber. See
+unitary transport and a live positive-beta chamber graph. See
 [`e6-wall-controls.md`](e6-wall-controls.md) for the current UI, solver,
 area integration and numerical wall-limit approximation. Run the original
 transport regression with:
@@ -211,15 +211,17 @@ Hamiltonians, and three inverse-word round trips. In the initial run the
 worst norms were `6.72e-10` real and `2.30e-14` complex. These tests do
 not certify arbitrary nonzero-y source stability or global solver convergence.
 
-**Remaining beyond this first live crossing:** a general chamber-to-word planner; continuous choices of
-quotient/kernel gauges; transported atlas transition functions and their
-bounded numerical seeds; non-diagonal grading transport; negative-beta
-flag rendering; general UI chamber crossing; or a test battery for all chambers.
+The live implementation now constructs facet reflection words, composes them
+for successive crossings, and transports the source atlas and ordered period
+formulas. A numerical battery covers all five initial positive-beta neighbors
+and selected multihop paths. Remaining work includes continuous choices of
+quotient/kernel gauges, non-diagonal grading transport, negative-beta flag
+rendering, and exhaustive validation throughout the chamber graph.
 
-The generalization path is to choose a Weyl word carrying a requested
-regular chamber to the certified source chamber, pull its levels back,
-construct a stable source representative at those pulled-back levels,
-then transport the representative and effective-root labels forward.
+The implementation chooses a Weyl word identifying the requested regular
+chamber with the source chamber, pulls its levels back, balances a source
+representative at those levels, then transports the representative and
+effective-root labels forward.
 Source stability still needs its own certificate or successful balancing;
 regularity of the levels alone never certifies a chosen chart. A word
-and root basis are not sufficient to make the current UI safe to unlock.
+and root basis alone do not replace the solver and continuity checks.
