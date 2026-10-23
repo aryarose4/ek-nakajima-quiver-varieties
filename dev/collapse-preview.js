@@ -67,7 +67,7 @@ function update() {
   const distance = start * Math.pow(1e-7 / start, values[4]);
   const betaValue = positive ? 1 + distance : distance;
   document.getElementById('beta-label').textContent = positive ? 'β₂⁽²⁾' : 'β₁⁽²⁾';
-  controls.forEach((input, i) => { input.nextElementSibling.value = i === 4 ? betaValue.toExponential(2) : values[i].toFixed(3); });
+  controls.forEach((input, i) => { input.nextElementSibling.value = i === 4 ? (positive ? betaValue.toFixed(7) : betaValue.toExponential(2)) : values[i].toFixed(3); });
   const parameters = { r: values[0], theta: values[1], t: values[2], phi: values[3], sphere: 0, outgoing: false };
   const beta = E6_DEFAULT_BETA.map(row => row.slice()); beta[positive ? 1 : 0][1] = betaValue;
   const levels = betaToLevels(beta), revision = ++requestNumber;
