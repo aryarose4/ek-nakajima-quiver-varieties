@@ -8,7 +8,7 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
  const {experimentalBalancedDiagram:diagram}=await import(source('weighted-balanced-diagram.js'));
  const {solveBalancedAtlas}=await import(source('balanced-model.js'));
  const {applyComplexGauge}=await import(source('solver.js'));
- const {eyeZ,cAdd,cMul,cConj}=await import(source('core-math.js'));
+ const {eyeZ,cAdd,cMul,cConj,matMul,matTrace}=await import(source('core-math.js'));
  const {compactFirstLineChart}=await import(source('branch-charts.js'));
  const levels=[[3,1],[3,2.1],[3,3]],U=[[[.6,0],[0,.8],[0,0]],[[0,.8],[.6,0],[0,0]],[[0,0],[0,0],[Math.cos(.8),Math.sin(.8)]]];
  let checks=0;const defects={},unavailable=[];
@@ -27,9 +27,10 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
  check(collapse[3].diameter<1e-4,'weighted picture contracts');check(collapse[3].diameter<collapse[2].diameter/500,'linear collapse scale');
  for(const r of [0,.5,1])for(const sphere of(r===.5?[0]:[0,1]))for(const t of[0,.4,1])for(const phi of[0,.7]){const rep=solve({r,t,sphere,phi}),d=inspect(rep,{r,t,sphere,phi});check(d.valid,'all default tips available');const rotated=diagram(applyComplexGauge(rep,U,[eyeZ(2),eyeZ(2),eyeZ(2)],[1,1,1]));check(rotated.valid,'gauge preserves availability');check(distance(signature(d),signature(rotated))<1e-6,'unitary gauge invariance');
    const inner=(u,v)=>u.reduce((s,z,j)=>cAdd(s,cMul(cConj(z),v[j])),[0,0]);
-   d.glyphs.forEach((g,i)=>{check(!!g,'full flag has cotangent glyph');const action=v=>d.operators[i].map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
-     const actual=[inner(g.basis[0],action(g.basis[1])),inner(g.basis[0],action(g.basis[2])),inner(g.basis[1],action(g.basis[2]))];
-     check(distance(g.coefficients.flat(),actual.flat())<1e-10,'glyph coefficient transform');
+   d.glyphs.forEach((g,i)=>{check(!!g,'full flag has cotangent glyph');const pairs=[[0,1],[0,2],[1,2]],blocks=pairs.map(([a,b])=>matMul(matMul(g.projectors[a],d.operators[i]),g.projectors[b]));
+     const actual=blocks.map(B=>matTrace(matMul(B,g.reference)));
+     check(distance(g.coefficients.flat(),actual.flat())<1e-10,'intrinsic block correlation transform');
+     check(distance(g.magnitudes,blocks.map(B=>Math.hypot(...B.flat(2))))<1e-10,'physical block magnitudes retained');
      check(distance(g.coefficients.flat(),rotated.glyphs[i].coefficients.flat())<1e-6,'glyph gauge invariance');
      const target=d.layout.cotangentTargets[i],other=rotated.layout.cotangentTargets[i];
      check(target.atInfinity===other.atInfinity&&target.clipped===other.clipped,'target gauge status');
@@ -52,7 +53,7 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
  const equation=([a,b])=>[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]];
  const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
- for(const r of[0,.5,1]){const d=inspect(solve({r,theta:0,t:0,phi:0}),'real incidence');check(d.valid,'real incidence camera');const l=d.layout,eq=l.lines.map(equation);l.rawPoints.forEach((p,i)=>check(Math.abs(dot(eq[i],p.concat(1)))<1e-7,'real own incidence before viewport clipping'));if(r===.5)check(Math.abs(dot(eq[0],cross(eq[1],eq[2])))<1e-7,'real concurrence');else check(Math.abs(dot(eq[0],l.rawPoints[r===0?1:2].concat(1)))<1e-7,'real special cross-incidence');}
+ for(const r of[0,.5,1]){const d=inspect(solve({r,theta:0,t:0,phi:0}),'real incidence');check(d.valid,'real incidence camera');const l=d.layout,eq=l.lines.map(equation);l.rawPoints.forEach((p,i)=>check(Math.abs(dot(eq[i],p.concat(1)))<1e-6,'real own incidence fit below .001 screen pixels'));if(r===.5)check(eq.every(e=>Math.abs(dot(e,l.concurrencyPoint.concat(1)))/Math.hypot(e[0],e[1])<1e-6),'real concurrence fit below .001 screen pixels');else check(Math.abs(dot(eq[0],l.rawPoints[r===0?1:2].concat(1)))<1e-6,'real special cross-incidence fit below .001 screen pixels');}
  // Stateless camera closes a phase loop; record any interior defects honestly.
  const loop=[];for(let k=0;k<=24;k++){const d=inspect(solve({r:.35,theta:2*Math.PI*k/24,t:0}),'loop '+k);check(d.valid,'central phase loop camera defined');loop.push(signature(d));}check(distance(loop[0],loop[24])<1e-7,'phase loop closes');
  const steps=[];for(let k=0;k<=10;k++){const d=inspect(solve({r:.35,theta:.7,t:0},[[3,.01+k*1e-5],[3,2.1],[3,3]]),'small beta');check(d.valid,'small beta camera defined');steps.push(signature(d));}check(Math.max(...steps.slice(1).map((s,i)=>distance(s,steps[i])))<.02,'small beta changes small');
@@ -65,7 +66,7 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
    const ds=[1-1e-6,1-1e-8,1].map(t=>diagram(solve({r,sphere:1,t,phi})));
    check(ds.every(d=>d.valid),'near-tip cameras available');
    const near=distance(signature(ds[1]),signature(ds[2])),far=distance(signature(ds[0]),signature(ds[2]));
-   check(near<.02&&near<far/4,'near-tip continuous convergence');
+   check(near<.02&&near<Math.max(1e-8,far/4),'near-tip continuous convergence above roundoff floor');
  }
  check(diagram(solve({r:.5,theta:0,t:0,phi:0})).layout.concurrencyPoint!==null,'true real concurrence location retained');
  check(unavailable.length===0,'no unavailable sampled cameras');

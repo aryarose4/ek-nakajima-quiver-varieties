@@ -16,13 +16,13 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
      assert(solve.success,'balanced side of wall');
      const d=diagram(solve.solvedRep);assert(d.valid,'phase camera available');
      assert(d.layout.pointOpacities.concat(d.layout.lineOpacities).every(x=>x===1),'no objects hidden');
-     assert(Math.hypot(...d.glyphs[0].coefficients[2])>1,'surviving coefficient stays large');
+     assert(d.glyphs[0].magnitudes[2]>1,'surviving physical cotangent block stays large');
      return d;
    });
-   const values=pictures.map(d=>d.glyphs.flatMap(g=>g.coefficients.flat()));
+   const values=pictures.map(d=>d.glyphs.flatMap(g=>g.coefficients.flat().concat(g.magnitudes)));
    errors.push(Math.hypot(...values[0].map((x,i)=>x-values[1][i])));
    // Ordered endpoints matter: reversing a line preserves its ink but flips
-   // every normal arrow. The dual affine orientation must converge too.
+   // every normal arrow. The globally oriented tensor tangent must converge too.
    const lines=pictures.map(d=>d.layout.lines.flat(2));
    orientedLineErrors.push(Math.hypot(...lines[0].map((x,i)=>x-lines[1][i])));
  }
