@@ -1,7 +1,8 @@
 // Numerical balance of the existing E6 atlas; no UI or shared mutable state.
 import { e6AtlasPoint } from './e6-atlas.js';
 import { branchMiddleChart, branchTipChart } from './branch-charts.js';
-import { e6ReflectLevels, e6TransportBalancedWord, E6_ADJACENT_WORD } from './e6-chamber-transport.js';
+import { e6ReflectLevels, e6TransportBalancedWord } from './e6-chamber-transport.js';
+import { e6ChamberWord } from './e6-parameters.js';
 import { e6RootWallAudit } from './e6-levels.js';
 import { realResidualNorm, complexResidualNorm } from './core-math.js';
 import { makeRep } from './core-math.js';
@@ -43,8 +44,8 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   const chamber=options.chamber || 'default';
   const chamberId=typeof chamber==='string' ? chamber : chamber.id;
   if(chamberId && chamberId!=='default') {
-    if(chamberId!=='side-zero-second')return failed(null,'unsupported_chamber','Unknown chamber.');
-    const word=E6_ADJACENT_WORD;
+    let word;
+    try { word=e6ChamberWord(chamberId); } catch(e) { return failed(null,'unsupported_chamber','Unknown chamber.'); }
     const sourceLevels=word.slice().reverse().reduce((z,v)=>e6ReflectLevels(z,v),levels);
     const sourceAudit=e6RootWallAudit(sourceLevels),referenceAudit=e6RootWallAudit(E6_REGULAR_LEVELS);
     if(!e6RootWallAudit(levels).regular || !sourceAudit.regular)
