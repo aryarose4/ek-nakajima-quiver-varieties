@@ -1,6 +1,9 @@
 // Numerical balance of the existing E6 atlas; no UI or shared mutable state.
 import { e6AtlasPoint } from './e6-atlas.js';
 import { branchMiddleChart, branchTipChart } from './branch-charts.js';
+import { e6ReflectLevels, e6TransportBalancedWord, E6_ADJACENT_WORD } from './e6-chamber-transport.js';
+import { e6RootWallAudit } from './e6-levels.js';
+import { realResidualNorm, complexResidualNorm } from './core-math.js';
 import { makeRep } from './core-math.js';
 import { E6_REGULAR_LEVELS } from './e6-levels.js';
 import { solveRealMomentMap } from './solver.js';
@@ -37,6 +40,30 @@ function boundedConcurrency(s) {
 // accepted within the same chart family, including changes in real levels.
 // Failed attempts never expose a previous representation as the current solve.
 export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, options = {}) {
+  const chamber=options.chamber || 'default';
+  const chamberId=typeof chamber==='string' ? chamber : chamber.id;
+  if(chamberId && chamberId!=='default') {
+    if(chamberId!=='side-zero-second')return failed(null,'unsupported_chamber','Unknown chamber.');
+    const word=E6_ADJACENT_WORD;
+    const sourceLevels=word.slice().reverse().reduce((z,v)=>e6ReflectLevels(z,v),levels);
+    const sourceAudit=e6RootWallAudit(sourceLevels),referenceAudit=e6RootWallAudit(E6_REGULAR_LEVELS);
+    if(!e6RootWallAudit(levels).regular || !sourceAudit.regular)
+      return failed(null,'singular_chamber_level','Use an explicit interior wall-limit sample.');
+    if(sourceAudit.roots.some((root,i)=>root.weight*referenceAudit.roots[i].weight<=0))
+      return failed(null,'chamber_mismatch','Levels do not lie in the selected adjacent chamber.');
+    const source=solveBalancedAtlas(parameters,sourceLevels,Object.assign({},options,{chamber:'default',previous:null}));
+    if(!source.success)return source;
+    try {
+      const transported=e6TransportBalancedWord(source.solvedRep,sourceLevels,word);
+      const real=realResidualNorm(transported.rep,levels),complex=complexResidualNorm(transported.rep);
+      if(!Number.isFinite(real)||!Number.isFinite(complex)||real>1e-9||complex>1e-8)
+        return failed(source.atlas,'transport_residual','Transported moment-map residual exceeds tolerance: '+real+', '+complex);
+      return Object.assign({},source,{solvedRep:transported.rep,logGauge:null,
+        residuals:Object.assign({},source.residuals,{real_norm:real,complex_norm:complex}),
+        continuation:null,chamberId,
+        diagnostics:Object.assign({},source.diagnostics,{chamberId,transported:true,transportWord:word.slice(),sourceLevels})});
+    }catch(e){return failed(source.atlas,'transport_exception',String(e));}
+  }
   let atlas;
   try { atlas = e6AtlasPoint(parameters); }
   catch(e) { return failed(null,'chart_error',String(e)); }
@@ -60,7 +87,7 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
   const solverOptions=Object.assign(defaults,options.solverOptions||{});
   const previous=options.previous && (options.previous.continuation || options.previous);
   let warm=options.initialLogGauge;
-  if (!warm && previous && previous.family===chartFamily) warm=previous.logGauge;
+  if (!warm && previous && (!previous.chamberId || previous.chamberId==='default') && previous.family===chartFamily) warm=previous.logGauge;
   if (!finiteGauge(warm)) warm=null;
   let result, attempts=0, totalNfev=0;
   try {
@@ -91,6 +118,7 @@ export function solveBalancedAtlas(parameters, levels = E6_REGULAR_LEVELS, optio
     logGauge:success ? result.logGauge : null, residuals:result.residuals,
     atlas, rawRep:atlas.rep, numericalRep,
     diagnostics:Object.assign({},result.diagnostics,{attempts,nfev:totalNfev,warmStart:!!warm,chartFamily}),
-    continuation:success ? {family:chartFamily,levelKey,logGauge:result.logGauge} : null,
+    continuation:success ? {family:chartFamily,levelKey,chamberId:'default',logGauge:result.logGauge} : null,
   };
 }
+

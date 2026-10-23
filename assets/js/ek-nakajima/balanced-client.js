@@ -4,7 +4,7 @@ import { BALANCED_WORKER_SOURCE } from './balanced-worker-source.js';
 import { solveBalancedAtlas } from './balanced-model.js';
 
 export function createBalancedClient(options = {}) {
-  let worker = null, active = null, queued = null, revision = 0, epoch = 0, previous = null;
+  let worker = null, active = null, queued = null, revision = 0, epoch = 0, previous = null, chamberKey = null;
   if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined') {
     const url = URL.createObjectURL(new Blob([BALANCED_WORKER_SOURCE], { type: 'text/javascript' }));
     try { worker = new Worker(url); } catch (_) { worker = null; }
@@ -28,10 +28,10 @@ export function createBalancedClient(options = {}) {
   }
   function start(request) {
     active = request;
-    if (worker) { worker.postMessage({ parameters: request.parameters, levels: request.levels }); return; }
+    if (worker) { worker.postMessage({ parameters: request.parameters, levels: request.levels, chamber:request.chamber, epoch:request.epoch }); return; }
     let result;
     try {
-      result = solveBalancedAtlas(request.parameters, request.levels, { previous });
+      result = solveBalancedAtlas(request.parameters, request.levels, { previous, chamber:request.chamber });
       if (result.success) previous = result;
     } catch (error) {
       result = { success: false, diagnostics: { status: 'solver_error', message: String(error) } };
@@ -39,12 +39,15 @@ export function createBalancedClient(options = {}) {
     deliver(result);
   }
   return {
-    request(parameters, callback, levels) {
-      const next = { id: ++revision, epoch, parameters: { ...parameters }, callback,
+    request(parameters, callback, levels, chamber = 'default') {
+      chamber=typeof chamber==='string' ? chamber : {id:chamber.id,word:chamber.word && chamber.word.slice()};
+      const key=JSON.stringify(chamber);
+      if(key!==chamberKey){revision++;epoch++;queued=null;previous=null;chamberKey=key;}
+      const next = { id: ++revision, epoch, chamber, parameters: { ...parameters }, callback,
         levels: levels && levels.map(row => row.slice()) };
       if (active) queued = next; else start(next);
     },
-    invalidate() { revision++; epoch++; queued = null; },
-    dispose() { revision++; epoch++; queued = null; if (worker) worker.terminate(); worker = null; }
+    invalidate() { revision++; epoch++; queued = null; previous=null; },
+    dispose() { revision++; epoch++; queued = null; previous=null; if (worker) worker.terminate(); worker = null; }
   };
 }

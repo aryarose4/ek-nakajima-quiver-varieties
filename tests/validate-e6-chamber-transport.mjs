@@ -11,7 +11,7 @@ function source(name) {
   return cache[name]='data:text/javascript;base64,'+Buffer.from(code).toString('base64');
 }
 (async function(){
-  const {e6TransportWord,e6ReflectRepresentation,e6ReflectLevels,E6_ADJACENT_WORD,e6VertexLevels}=await import(source('e6-chamber-transport.js'));
+  const {e6TransportBalancedWord,e6TransportWord,e6ReflectRepresentation,e6ReflectLevels,E6_ADJACENT_WORD,e6VertexLevels}=await import(source('e6-chamber-transport.js'));
   const {e6ChamberRoots,e6ReflectRoot}=await import(source('e6-chamber-roots.js'));
   const {E6_REGULAR_LEVELS,e6RootWallAudit}=await import(source('e6-levels.js'));
   const {stableBranchChart,branchMiddleChart,branchTipChart,branchFixedGrading,compactFirstLineChart}=await import(source('branch-charts.js'));
@@ -72,6 +72,11 @@ function source(name) {
     const out=e6TransportWord(rep,levels,E6_ADJACENT_WORD,grading);
     assert(complexResidualNorm(out.rep)<1e-9,name+' complex equation');
     const solved=balance(name,out.rep,out.levels);
+    const originalBalanced=balance(name+' balanced source',rep,levels);
+    const direct=e6TransportBalancedWord(originalBalanced,levels,E6_ADJACENT_WORD);
+    assert(realResidualNorm(direct.rep,direct.levels)<1e-7,name+' balanced direct real');
+    assert(complexResidualNorm(direct.rep)<1e-7,name+' balanced direct complex');
+    assert(Math.abs(F(direct.rep)-F(solved))<1e-7,name+' balanced direct Hamiltonian');
     if(grading) {
       assert.strictEqual(checkFixedPointGrading(out.rep,out.grading).residual,0);fixed++;
       const z=e6VertexLevels(out.levels);

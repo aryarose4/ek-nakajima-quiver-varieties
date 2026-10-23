@@ -1,6 +1,6 @@
 // Experimental holomorphic reflection transport. Not connected to the UI.
 // Vertex order: center, middle0..2, outer0..2. See docs/e6-chamber-transport.md.
-import {cAbs2,cSub,cMul,eyeZ,matMul,matScale,complexResidualNorm} from './core-math.js';
+import {cAbs2,cSub,cMul,eyeZ,matMul,matScale,matAdj,matAdd,matSub,frob2,complexResidualNorm} from './core-math.js';
 import {checkFixedPointGrading} from './fixed-point.js';
 export const E6_CHAMBER_EDGES = [[0,1],[0,2],[0,3],[1,4],[2,5],[3,6]];
 const dims=[3,2,2,2,1,1,1];
@@ -85,3 +85,50 @@ export function e6TransportWord(rep,levels,word,grading) {
 // Conjugated reflection in the current r=0 second sphere root.
 // root=(1; middle 1,0,1; outer 1,0,0), with the sign chosen for reduction.
 export const E6_ADJACENT_WORD = [4,1,0,3,0,1,4];
+
+// Balanced reflection: orthonormal bases affect only unitary gauge, hence
+// discontinuous coordinate pivots do not alter quotient observables.
+function complement(p) {
+  const n=p.length,d=p[0].length,basis=[];
+  const dot=(a,b)=>a.reduce((s,z,i)=>{const w=cMul([z[0],-z[1]],b[i]);return [s[0]+w[0],s[1]+w[1]];},[0,0]);
+  function orthogonal(v) {
+    for(let pass=0;pass<2;pass++)for(const u of basis){const z=dot(u,v);v=v.map((x,i)=>cSub(x,cMul(u[i],z)));}
+    const norm=Math.sqrt(v.reduce((s,z)=>s+cAbs2(z),0));
+    if(norm<1e-10)return null;
+    return v.map(z=>[z[0]/norm,z[1]/norm]);
+  }
+  for(let j=0;j<d;j++){const u=orthogonal(p.map(r=>r[j]));if(!u)throw new RangeError('Balanced reflection requires full rank.');basis.push(u);}
+  const out=[];
+  for(let i=0;i<n&&out.length<d;i++){const v=orthogonal(eyeZ(n).map(r=>r[i]));if(v){basis.push(v);out.push(v);}}
+  if(out.length!==d)throw new RangeError('Balanced reflection complement failed.');
+  return transpose(out);
+}
+function positiveSquareRoot(a) {
+  // Scaled Denman--Beavers iteration for matrices of size at most three.
+  const scale=Math.max(...a.map((r,i)=>Math.abs(r[i][0])),1e-30);
+  let y=matScale(a,1/scale),z=eyeZ(a.length);
+  for(let k=0;k<40;k++) {
+    const yy=matScale(matAdd(y,inverse(z)),.5),zz=matScale(matAdd(z,inverse(y)),.5);
+    const delta=Math.sqrt(frob2(matSub(yy,y)));y=yy;z=zz;
+    if(delta<1e-13)break;
+  }
+  return {root:matScale(y,Math.sqrt(scale)),inverseRoot:matScale(z,1/Math.sqrt(scale))};
+}
+export function e6ReflectBalancedRepresentation(rep,levels,vertex) {
+  const value=e6VertexLevels(levels)[vertex];
+  if(Math.abs(value)<1e-10)throw new RangeError('Reflection requires a nonzero vertex level.');
+  let {p,q}=localMaps(rep,vertex);
+  const negative=value<0;
+  if(negative){const pp=matAdj(q);q=matAdj(p);p=pp;}
+  const u=complement(p),Q=matMul(q,u);
+  const h=positiveSquareRoot(matAdd(matScale(eyeZ(dims[vertex]),Math.abs(value)),matMul(matAdj(Q),Q)));
+  let pp=matMul(matMul(p,Q),h.inverseRoot),qq=matMul(h.root,matAdj(u));
+  if(negative){const t=matAdj(qq);qq=matAdj(pp);pp=t;}
+  return {rep:install(rep,vertex,pp,qq),levels:e6ReflectLevels(levels,vertex)};
+}
+export function e6TransportBalancedWord(rep,levels,word) {
+  let out={rep:copy(rep),levels:copy(levels)};
+  for(const vertex of word)out=e6ReflectBalancedRepresentation(out.rep,out.levels,vertex);
+  return out;
+}
+
