@@ -18,6 +18,10 @@ export function renderedFeatures(d){
     const c=l.incidenceColors;
     for(const [h,s]of [[c.lineHues[i],lw*c.lineStrengths[i]],[c.pointHues[i],pw*c.pointStrengths[i]]])out.push(s*Math.cos((h||0)*Math.PI/180),s*Math.sin((h||0)*Math.PI/180));
   }
+  for(const [geometry,key]of [[l.transversal,'transversalOpacity'],[l.concurrencyPoint,'concurrencyOpacity']]){
+    const alpha=geometry?(l[key]===undefined?1:l[key]):0;
+    out.push(alpha,...(geometry?geometry.flat().map(x=>alpha*x):Array(key==='transversalOpacity'?4:2).fill(0)));
+  }
   return out;
 }
 export function glyphFeatures(d){
@@ -25,7 +29,7 @@ export function glyphFeatures(d){
   // Projected target positions are tested separately from Boolean UI statuses.
   return d.glyphs.flatMap((g,i)=>{
     const target=d.layout.cotangentTargets[i],p=target&&target.point;
-    return (g?g.coefficients.flat():[0,0,0,0,0,0]).concat(p?p:[0,0]);
+    return (g?g.coefficients.flat():[0,0,0,0,0,0]).concat(g&&g.magnitudes?g.magnitudes:[0,0,0],p?p:[0,0]);
   });
 }
 export const invariantFeatures=o=>o.gram.flat(2).concat(o.cyclic.flat());
@@ -39,7 +43,8 @@ export function arrowFeatures(d,geometry,opacity){
     const target=l.cotangentTargets[i],arrows=geometry(pixel(l.points[i]),l.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
     for(let k=0;k<3;k++){
       const z=d.glyphs[i]?d.glyphs[i].coefficients[k]:[0,0],m=Math.hypot(...z),a=arrows[k];
-      const alpha=a?opacity(z)*Math.min(l.pointOpacities[i],l.lineOpacities[i]):0;
+      const glyph=d.glyphs[i],physical=glyph&&glyph.magnitudes;
+      const alpha=a?(physical?opacity([physical[k],0]):opacity(z)*Math.min(l.pointOpacities[i],l.lineOpacities[i])):0;
       // Hue's constant 210-degree rotation preserves disk distances. The
       // magnitude/(1+magnitude) radius is the renderer's saturation curve.
       out.push(alpha,alpha*z[0]/(1+m),alpha*z[1]/(1+m));

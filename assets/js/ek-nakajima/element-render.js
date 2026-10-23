@@ -64,6 +64,21 @@ export function cotangentArrowOpacity(z) {
   return u*u*(3-2*u);
 }
 
+// Intrinsic block size controls ink independently of its complex correlation.
+// A zero correlation has no phase, so a nonzero block remains visible in gray.
+export function cotangentGlyphStyle(glyph,index,dark,visibility=1) {
+  const z=(glyph.phaseCorrelations||glyph.coefficients)[index];
+  if(glyph.magnitudes) return {
+    color:cotangentArrowColor(z,dark)||('hsl(0, 0%, '+(dark?55:28)+'%)'),
+    opacity:cotangentArrowOpacity([glyph.magnitudes[index],0])
+  };
+  return {color:cotangentArrowColor(z,dark),opacity:cotangentArrowOpacity(z)*visibility};
+}
+
+function guideOpacity(layout,key) {
+  return layout[key]===undefined?1:Math.max(0,Math.min(1,Number.isFinite(layout[key])?layout[key]:0));
+}
+
 // Shared by the canvas and the atlas integration checks.
 export function elementFrame(view) {
   if (view && view.balancedRep) return balancedTensorDiagram(view.balancedRep, { previous: view.previous });
@@ -208,7 +223,7 @@ export function makeElementView(host, opts) {
     ctx.textAlign = "left";
     if (layout.transversal) {
       const a = pixel(layout.transversal[0]), b = pixel(layout.transversal[1]);
-      ctx.strokeStyle = pal.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = pal.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.25 * guideOpacity(layout,'transversalOpacity');
       if (ctx.setLineDash) ctx.setLineDash([3, 5]);
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
       ctx.globalAlpha = 1;
@@ -233,7 +248,7 @@ export function makeElementView(host, opts) {
     if (ctx.setLineDash) ctx.setLineDash([]);
     if (layout.concurrencyPoint) {
       const q = pixel(layout.concurrencyPoint);
-      const opacity = Math.min(...[0, 1, 2].map(i => objectOpacity(layout, 'line', i)));
+      const opacity = guideOpacity(layout,'concurrencyOpacity') * Math.min(...[0, 1, 2].map(i => objectOpacity(layout, 'line', i)));
       glow(q, 3, pal.point, opacity);
       ctx.globalAlpha = opacity;
       ctx.fillStyle = pal.point;
@@ -267,17 +282,17 @@ export function makeElementView(host, opts) {
         if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
         ctx.stroke();
       }
-      // Tangential c12 and normal c13 arrows approach the marked point;
-      // normal c23 approaches the projected orthogonal flag direction.
+      // Tangential and normal arrows distinguish the three cotangent blocks.
       const glyph = glyphs[i];
       const target=layout.cotangentTargets&&layout.cotangentTargets[i];
       const arrows=cotangentArrowGeometry(p,layout.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
       if(showYData&&glyph)glyph.coefficients.forEach((z,k)=>{
-        const color=cotangentArrowColor(z,pal.dark),arrow=arrows[k];
+        const style=cotangentGlyphStyle(glyph,k,pal.dark,Math.min(pointOpacity,lineOpacity));
+        const color=style.color,arrow=arrows[k];
         if(!color||!arrow)return;
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
-        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=cotangentArrowOpacity(z)*Math.min(pointOpacity,lineOpacity);
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity;
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
