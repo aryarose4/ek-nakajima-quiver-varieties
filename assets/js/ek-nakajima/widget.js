@@ -10,6 +10,7 @@ import { createParametersPanel } from "./parameters-panel.js";
 import { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
+import { magneticValue } from "./slider-magnet.js";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -215,13 +216,9 @@ function activate(container) {
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
-    function refresh() { readout.textContent = format(Number(input.value)); }
+    function getValue() { return magneticValue(Number(input.value), snaps); }
+    function refresh() { readout.textContent = format(getValue()); }
     input.addEventListener("input", function () {
-      (snaps || []).some(function (snap) {
-        if (Math.abs(Number(input.value) - snap.value) > snap.tol) return false;
-        input.value = String(snap.value);
-        return true;
-      });
       refresh();
       apply();
     });
@@ -230,7 +227,7 @@ function activate(container) {
     box.appendChild(readout);
     host.appendChild(box);
     refresh();
-    return { input: input, refresh: refresh };
+    return { input: input, refresh: refresh, getValue: getValue };
   }
   const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
     function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity",
@@ -342,9 +339,9 @@ function activate(container) {
     else setTimeout(run, 0);
   }
   function update() {
-    const r = Number(rControl.input.value);
-    const theta = Number(thetaControl.input.value);
-    const phi = Number(phiControl.input.value);
+    const r = rControl.getValue();
+    const theta = thetaControl.getValue();
+    const phi = phiControl.getValue();
     const arm = armAt(layout, r, theta);
     if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
     const tMax = state.key !== 'E6' || e6HasInfinityLimit({r, theta, sphere:state.sphere, outgoing:state.outgoing}) ? 1 : .99;
