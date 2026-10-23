@@ -275,7 +275,12 @@ function activate(container) {
   const parametersPanel = createParametersPanel(right, {
     getChamberId: () => chamberId,
     wallActions: {
-      getOptions: beta => [{ id: 'side-zero-second', atWall: e6AtCrossingWall(beta), canCross: true }],
+      getOptions: beta => [{
+        id: 'side-zero-second', atWall: e6AtCrossingWall(beta), canCross: true, alwaysVisible: true,
+        label: '2\u03b2\u2081\u207d\u00b9\u207e+\u03b2\u2081\u207d\u00b2\u207e+\u03b2\u2083\u207d\u00b2\u207e ' +
+          (chamberId === 'default' ? '<' : '>') +
+          ' \u03b2\u2082\u207d\u00b9\u207e+\u03b2\u2083\u207d\u00b9\u207e+2\u03b2\u2082\u207d\u00b2\u207e'
+      }],
       onCross: function () {
         // Keep beta and the dot's chart coordinates pinned. At the collapsed
         // component these coordinates denote the selected side's regular

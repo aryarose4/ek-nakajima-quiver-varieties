@@ -13,7 +13,7 @@ export function createParametersPanel(host, options = {}) {
   const controls = [];
   function chamberId() { return options.getChamberId ? options.getChamberId() : undefined; }
   // Optional host adapter. Actions never mutate beta or assume solver support.
-  // Descriptors: {id, label, atWall, canApproach, canCross}. Cross changes the
+  // Descriptors: {id, label, atWall, canApproach, canCross, alwaysVisible}. Cross changes the
   // chamber at the pinned wall; transport and chamber areas belong to the host.
   const wallActions = options.wallActions;
   const wallRow = wallActions ? document.createElement('div') : null;
@@ -40,7 +40,10 @@ export function createParametersPanel(host, options = {}) {
     let count = 0;
     wallOptions().forEach(wall => {
       ['approach', 'cross'].forEach(action => {
-        if (!permitted(wall, action)) return;
+        const available = permitted(wall, action);
+        const persistent = enabled && action === 'cross' && wall.alwaysVisible === true &&
+          wall.canCross === true && typeof wallActions.onCross === 'function';
+        if (!available && !persistent) return;
         const box = document.createElement('span');
         box.style.cssText = 'display:inline-flex;align-items:center;gap:6px;border:1px solid currentColor;border-radius:4px;padding:3px 6px';
         if (wall.atWall === true) box.style.background = 'rgba(245,180,40,.2)';
@@ -48,6 +51,8 @@ export function createParametersPanel(host, options = {}) {
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ek-btn';
         button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
+        button.disabled = !available;
+        if (!available) button.title = wallPending ? 'Crossing wall' : 'Reach this wall to cross';
         button.addEventListener('click', () => {
           // Recheck live capability; detached buttons and double clicks are inert.
           if (revision !== wallRevision) return;
