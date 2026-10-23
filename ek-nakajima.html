@@ -7183,6 +7183,27 @@ function makeRepresentationReadout(host) {
 return { formatComplex, makeRepresentationReadout };
 })();
 
+// ---- module: slider-magnet ----
+const __ek_mod_slider_magnet = (function () {
+// A positional magnet, applied to the native thumb coordinate exactly once.
+// The inner fifth is exact; a monotone cubic shoulder joins identity with
+// matching first derivatives. Keeping the thumb raw lets keyboard steps escape.
+function magneticValue(raw, snaps) {
+  for (const snap of snaps || []) {
+    const delta = raw - snap.value, distance = Math.abs(delta);
+    const outer = snap.tol, inner = outer / 5;
+    if (distance >= outer) continue;
+    if (distance <= inner) return snap.value;
+    const s = (distance - inner) / (outer - inner);
+    const mapped = s * s * ((2 * outer + inner) - (outer + inner) * s);
+    return snap.value + Math.sign(delta) * mapped;
+  }
+  return raw;
+}
+
+return { magneticValue };
+})();
+
 // ---- module: widget ----
 const __ek_mod_widget = (function () {
 const { AFFINE_ADE } = __ek_mod_quiver_data;
@@ -7194,8 +7215,10 @@ const { createParametersPanel } = __ek_mod_parameters_panel;
 const { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } = __ek_mod_e6_parameters;
 const { makeRepresentationReadout } = __ek_mod_representation_readout;
 const { makeElementView } = __ek_mod_element_render;
+const { magneticValue } = __ek_mod_slider_magnet;
 // E6 complex representatives and simultaneous flag/moduli views.
 // Compact representatives and the schematic core flow share coordinate controls.
+
 
 
 
@@ -7411,13 +7434,9 @@ function activate(container) {
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
-    function refresh() { readout.textContent = format(Number(input.value)); }
+    function getValue() { return magneticValue(Number(input.value), snaps); }
+    function refresh() { readout.textContent = format(getValue()); }
     input.addEventListener("input", function () {
-      (snaps || []).some(function (snap) {
-        if (Math.abs(Number(input.value) - snap.value) > snap.tol) return false;
-        input.value = String(snap.value);
-        return true;
-      });
       refresh();
       apply();
     });
@@ -7426,7 +7445,7 @@ function activate(container) {
     box.appendChild(readout);
     host.appendChild(box);
     refresh();
-    return { input: input, refresh: refresh };
+    return { input: input, refresh: refresh, getValue: getValue };
   }
   const rControl = slider(firstRow, "ek-r", "r", 0, 1, 0.001, 0.5,
     function (v) { return v.toFixed(3); }, "z = r/(1-r) exp(i theta); r = 1 gives infinity",
@@ -7538,9 +7557,9 @@ function activate(container) {
     else setTimeout(run, 0);
   }
   function update() {
-    const r = Number(rControl.input.value);
-    const theta = Number(thetaControl.input.value);
-    const phi = Number(phiControl.input.value);
+    const r = rControl.getValue();
+    const theta = thetaControl.getValue();
+    const phi = phiControl.getValue();
     const arm = armAt(layout, r, theta);
     if (arm !== state.arm) { state.arm = arm; state.sphere = 0; state.outgoing = false; }
     const tMax = state.key !== 'E6' || e6HasInfinityLimit({r, theta, sphere:state.sphere, outgoing:state.outgoing}) ? 1 : .99;

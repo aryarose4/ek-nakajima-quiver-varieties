@@ -81,7 +81,10 @@ entries, horizontal scrolling, and per-branch copying. Cards stack on narrow
 hosts without changing height as values update. Newly gained dot/line or
 point coincidences and collinearity pulse the affected dots for 750 ms;
 new concurrence pulses its common marker. Unchanged incidences do not pulse.
-The sliders snap to the three radial attachments and zero phase. The limit
+The sliders snap to the three radial attachments and zero phase. A monotone,
+continuously differentiable magnet eases into a small exact plateau. The thumb
+keeps its raw position so dragging and keyboard steps can leave the plateau;
+the readout, balanced solve, and both views share the mapped coordinate. The limit
 buttons give one-sphere outward/inward navigation in the core portrait.
 The E6 t slider stops at readout 99 (compact coordinate .99) when its current
 path has no supported infinity endpoint; exact incoming branch limits retain
