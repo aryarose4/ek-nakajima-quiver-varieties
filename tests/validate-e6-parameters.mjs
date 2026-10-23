@@ -1,7 +1,7 @@
 ﻿import assert from 'assert';
 import { E6_DEFAULT_BETA, betaToLevels, e6BetaInChamber, e6BetaInterval, constrainE6Beta } from './e6-parameters.js';
 import { E6_REGULAR_LEVELS, e6RootWallAudit } from './e6-levels.js';
-assert.deepStrictEqual(betaToLevels(E6_DEFAULT_BETA), E6_REGULAR_LEVELS);
+assert.notDeepStrictEqual(betaToLevels(E6_DEFAULT_BETA), E6_REGULAR_LEVELS);
 assert(e6BetaInChamber(E6_DEFAULT_BETA));
 const signs = e6RootWallAudit(E6_REGULAR_LEVELS).roots.map(root => Math.sign(root.weight));
 let beta = E6_DEFAULT_BETA.map(row => row.slice());

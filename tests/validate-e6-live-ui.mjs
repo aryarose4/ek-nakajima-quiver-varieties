@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { E6_DEFAULT_BETA, constrainE6Beta, e6BetaInChamber, e6BetaInterval, e6DisplayBeta, e6AtCrossingWall, e6CrossedPeriod, betaToLevels } from './e6-parameters.js';
+import { E6_REFERENCE_BETA as E6_DEFAULT_BETA, constrainE6Beta, e6BetaInChamber, e6BetaInterval, e6DisplayBeta, e6AtCrossingWall, e6CrossedPeriod, betaToLevels } from './e6-parameters.js';
 import { e6CoreAreas } from './e6-areas.js';
 import { createParametersPanel } from './parameters-panel.js';
 const adjacent = 'side-zero-second';

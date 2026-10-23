@@ -4,7 +4,7 @@ import {balancedObservables} from './balanced-observables.js';
 import {balancedTensorDiagram} from './weighted-balanced-diagram.js';
 import {cotangentArrowGeometry,cotangentArrowOpacity} from './element-render.js';
 import {renderedFeatures,glyphFeatures,arrowFeatures} from './continuity-features.mjs';
-import {E6_DEFAULT_BETA,betaToLevels,e6DisplayBeta} from './e6-parameters.js';
+import {E6_REFERENCE_BETA as E6_DEFAULT_BETA,betaToLevels,e6DisplayBeta} from './e6-parameters.js';
 const path=[1.50125,1.505,1.5075,1.5125,1.51625,1.51875,1.5225,1.52625,1.53,1.53375,1.5375,1.5425,1.54625,1.55];
 for(const chamber of ['default','side-zero-second'])for(const t of [.4,.7]) {
   const p={r:0,theta:0,t,phi:0,sphere:1};let previous=null,last;

@@ -5,7 +5,7 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
   const {balancedTensorDiagram}=await import(source('weighted-balanced-diagram.js'));
   const {balancedObservables}=await import(source('balanced-observables.js'));
   const {cotangentArrowGeometry,cotangentArrowOpacity}=await import(source('element-render.js'));
-  const {E6_DEFAULT_BETA:defaultBeta,betaToLevels,e6ChamberWallOptions}=await import(source('e6-parameters.js'));
+  const {E6_DEFAULT_BETA:defaultBeta,E6_REFERENCE_BETA:referenceBeta,betaToLevels,e6ChamberWallOptions}=await import(source('e6-parameters.js'));
   const {e6WallTransitionOptions}=await import(source('e6-wall-transitions.js'));
   const adjacent=process.argv.includes('--adjacent');
   let E6_DEFAULT_BETA=adjacent?[[46/30,1/2],[3/2,61/60],[44/30,46/30]]:defaultBeta;
@@ -70,7 +70,7 @@ import {source,distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFe
   if(adjacent)for(const p of [{r:.35,theta:.7,t:0},{r:0,theta:0,t:.4,sphere:1}]){
     convergence('two-sided crossed wall '+JSON.stringify(p),h=>[-1,1].map(sign=>({p,
       chamber:sign<0?{id:'default'}:chamber,
-      beta:defaultBeta.map((row,i)=>row.map((x,j)=>(x+E6_DEFAULT_BETA[i][j])/2+sign*h*(E6_DEFAULT_BETA[i][j]-x)))
+      beta:referenceBeta.map((row,i)=>row.map((x,j)=>(x+E6_DEFAULT_BETA[i][j])/2+sign*h*(E6_DEFAULT_BETA[i][j]-x)))
     })));
   }
   console.log(JSON.stringify({chamber:chamber?chamber.id:'default',solves,cases:rows.length,rows,failures}));

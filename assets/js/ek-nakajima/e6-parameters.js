@@ -2,7 +2,10 @@
 import { e6ReflectLevels } from './e6-chamber-transport.js';
 import { e6WallTransitionOptions } from './e6-wall-transitions.js';
 
-export const E6_DEFAULT_BETA = E6_REGULAR_LEVELS.map(row => row.map(value => value / 2));
+// Keep the certified chamber reference independent of the live slider defaults.
+export const E6_REFERENCE_BETA = E6_REGULAR_LEVELS.map(row => row.map(value => value / 2));
+// Distinct interior coordinates keep a single slider from reaching a chamber corner.
+export const E6_DEFAULT_BETA = [[1.23, .40], [1.64, 1.41], [1.06, 1.82]];
 export const E6_BETA_DISPLAY_MAX = 3;
 const MARGIN = 1e-7;
 export const E6_DEFAULT_CHAMBER = 'default';
@@ -24,7 +27,7 @@ export function e6SourceBeta(beta, chamberId = E6_DEFAULT_CHAMBER) {
   return e6ChamberWord(chamberId).reverse().reduce((z,v) => e6ReflectLevels(z,v), beta);
 }
 function chamberReference(chamberId) {
-  return e6ChamberWord(chamberId).reduce((z,v)=>e6ReflectLevels(z,v),E6_DEFAULT_BETA);
+  return e6ChamberWord(chamberId).reduce((z,v)=>e6ReflectLevels(z,v),E6_REFERENCE_BETA);
 }
 function chamberSigns(chamberId = E6_DEFAULT_CHAMBER) {
   if(signCache.has(chamberId))return signCache.get(chamberId);
@@ -114,7 +117,7 @@ function reflectionWord(coeff) {
 }
 const signature=beta=>coefficients.map(c=>Math.sign(weight(c,flat(beta)))).join(',');
 function registerChamber(beta,word) {
-  if(!initialized){initialized=true;signatures.set(signature(E6_DEFAULT_BETA),E6_DEFAULT_CHAMBER);signatures.set(signature(chamberReference(E6_ADJACENT_CHAMBER)),E6_ADJACENT_CHAMBER);}
+  if(!initialized){initialized=true;signatures.set(signature(E6_REFERENCE_BETA),E6_DEFAULT_CHAMBER);signatures.set(signature(chamberReference(E6_ADJACENT_CHAMBER)),E6_ADJACENT_CHAMBER);}
   const sig=signature(beta);if(signatures.has(sig))return signatures.get(sig);
   const id='weyl:'+word.join('.');chambers.set(id,{beta:beta.map(r=>r.slice())});signatures.set(sig,id);return id;
 }
@@ -131,7 +134,7 @@ function wallInequality(coefficients) {
 export function e6ChamberWallOptions(beta,chamberId=E6_DEFAULT_CHAMBER) {
   const sample=e6DisplayBeta(beta,chamberId);
   if(!e6BetaInChamber(sample,chamberId))throw new RangeError('Beta outside selected E6 chamber.');
-  registerChamber(E6_DEFAULT_BETA,[]);
+  registerChamber(E6_REFERENCE_BETA,[]);
   signatures.set(signature(sample),chamberId);
   return e6WallTransitionOptions(sample).map(option=>{
     const period=weight(option.coefficients,flat(beta)),atWall=Math.abs(period)<=2e-7;

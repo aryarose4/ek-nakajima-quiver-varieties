@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { e6CoreAreas } from './e6-areas.js';
-import { E6_DEFAULT_BETA, constrainE6Beta } from './e6-parameters.js';
+import { E6_REFERENCE_BETA as E6_DEFAULT_BETA, constrainE6Beta } from './e6-parameters.js';
 import { AFFINE_ADE } from './quiver-data.js';
 import { buildSideLayout, coreFlow } from './core-view.js';
 let checks = 0;
