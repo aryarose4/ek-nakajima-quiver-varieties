@@ -90,20 +90,30 @@ import {source,distance,renderedFeatures,glyphFeatures,arrowFeatures} from './co
  const configurations=[
   {label:'equal planes and collinear points',planes:[[e1,e2],[e2,e1],[e12,e2]],concurrent:true,collinear:true},
   {label:'equal point distinct planes',planes:[[e1,e2],[e1,e3],[e1,e23]],concurrent:true,collinear:true},
+  {label:'equal planes unequal visibility',planes:[[e1,e2],[e2,e1],[e12,e2]],concurrent:true,collinear:true,dimPlane:true},
+  {label:'equal point unequal visibility',planes:[[e1,e2],[e1,e3],[e1,e23]],concurrent:true,collinear:true,dimPoint:true},
   {label:'distinct concurrent planes',planes:[[e2,e1],[e3,e1],[[1,1,1],e1]],concurrent:true,collinear:false}
  ];
  let equalPointPairs=0,equalPlanePairs=0;
  const equation=([a,b])=>[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]];
  for(const fixture of configurations){
   const rep={A:fixture.planes.map(([p,q])=>p.map((v,i)=>[[v,0],[q[i],0]])),a:Array.from({length:3},()=>[[[1,0]],[[0,0]]]),B:Array.from({length:3},()=>Array.from({length:2},()=>Array.from({length:3},()=>[0,0]))),b:Array.from({length:3},()=>[[[0,0],[0,0]]])};
+  if(fixture.dimPlane){
+   const factor=Math.pow(.075,.25);rep.A[0]=rep.A[0].map(row=>row.map(z=>z.map(v=>factor*v)));
+   rep.a[0][0][0]=[1/factor,0]; // preserve full point visibility independently.
+  }
+  if(fixture.dimPoint)rep.a[0][0][0]=[Math.sqrt(.075),0];
   const actual=flagIncidence(rep),d=diagram(rep);check(actual.valid&&d.valid,'synthetic flags available '+fixture.label);
+  if(fixture.dimPlane)check(Math.abs(d.layout.lineOpacities[0]-.5)<1e-12&&d.layout.lineOpacities[1]===1,'equal planes have unequal physical visibility');
+  if(fixture.dimPoint)check(Math.abs(d.layout.pointOpacities[0]-.5)<1e-12&&d.layout.pointOpacities[1]===1,'equal points have unequal physical visibility');
   check(actual.concurrent===fixture.concurrent&&actual.collinear===fixture.collinear,'nonvacuous synthetic classification '+fixture.label);
   const l=d.layout,eq=l.lines.map(equation);
   for(let i=0;i<3;i++)for(let k=0;k<3;k++){
    check(d.data.incident[i][k]===actual.incident[i][k],'synthetic complex incidence retained');
    if(actual.incident[i][k])check(Math.abs(eq[k][0]*l.points[i][0]+eq[k][1]*l.points[i][1]+eq[k][2])/Math.hypot(eq[k][0],eq[k][1])<1e-6,'true incidence fits below .001px');
-   if(i<k&&actual.pointEqual[i][k]){equalPointPairs++;check(distance(l.points[i],l.points[k])<1e-7,'equal source points coincide');}
-   if(i<k&&actual.lineEqual[i][k]){equalPlanePairs++;check(Math.min(distance(l.lines[i].flat(),l.lines[k].flat()),distance(l.lines[i].flat(),l.lines[k].slice().reverse().flat()))<1e-7,'equal source planes coincide');}
+   const equalityTolerance=fixture.dimPoint||fixture.dimPlane?1e-6:1e-7;
+   if(i<k&&actual.pointEqual[i][k]){equalPointPairs++;check(distance(l.points[i],l.points[k])<equalityTolerance,'equal source points coincide below .001px '+fixture.label);}
+   if(i<k&&actual.lineEqual[i][k]){equalPlanePairs++;check(Math.min(distance(l.lines[i].flat(),l.lines[k].flat()),distance(l.lines[i].flat(),l.lines[k].slice().reverse().flat()))<equalityTolerance,'equal source planes coincide below .001px '+fixture.label);}
   }
   if(actual.concurrent)check(eq.every(e=>Math.abs(e[0]*l.concurrencyPoint[0]+e[1]*l.concurrencyPoint[1]+e[2])/Math.hypot(e[0],e[1])<1e-6),'true concurrency guide fits all lines');
  }
