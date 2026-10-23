@@ -191,6 +191,25 @@ function expmTangent(H, direction) {
   return dE;
 }
 
+// Hermitian divided differences are regular at repeated eigenvalues. Cache
+// the eigensystem per log-gauge block, shared by all its Jacobian columns.
+function cachedExpmTangent(entry, basis, direction) {
+  const H=matScale(unpackHermitian(entry.coords,basis),.5);
+  try {
+    if(!entry.spectrum) entry.spectrum=jacobiHermitian(H);
+    const {vals,U}=entry.spectrum,adj=matAdj(U);
+    const rotated=matMul(matMul(adj,direction),U);
+    const derivative=rotated.map((row,i)=>row.map((z,j)=>{
+      const half=(vals[i]-vals[j])/2, square=half*half;
+      const sinhc=Math.abs(half)<1e-4 ? 1+square/6+square*square/120 : Math.sinh(half)/half;
+      const factor=Math.exp((vals[i]+vals[j])/2)*sinhc;
+      if(!Number.isFinite(factor)) throw new RangeError('Nonfinite divided difference');
+      return [z[0]*factor,z[1]*factor];
+    }));
+    return matMul(matMul(U,derivative),adj);
+  } catch (_) { return expmTangent(H,direction); }
+}
+
 // Eigenvalues of a Hermitian matrix (real, ascending not guaranteed).
 export function hermitianEigenvalues(H) {
   return jacobiHermitian(H).vals.slice();
@@ -376,10 +395,10 @@ function makePackedResidual(rep, levels, options = {}) {
     const columns=[];
     for(let j=0;j<N_GAUGE_REAL;j++) {
       let Lg=zerosZ(3,3), Lh=[0,1,2].map(()=>zerosZ(2,2)), lq=[0,0,0];
-      if(j<8) Lg=matMul(expmTangent(matScale(unpackHermitian(center.coords,CENTER_BASIS),.5),matScale(CENTER_BASIS[j],.5)),center.inverse);
+      if(j<8) Lg=matMul(cachedExpmTangent(center,CENTER_BASIS,matScale(CENTER_BASIS[j],.5)),center.inverse);
       else if(j<OUTER_START) {
         const i=Math.floor((j-MIDDLE_START)/4),k=(j-MIDDLE_START)%4;
-        Lh[i]=matMul(expmTangent(matScale(unpackHermitian(middle[i].coords,MIDDLE_BASIS),.5),matScale(MIDDLE_BASIS[k],.5)),middle[i].inverse);
+        Lh[i]=matMul(cachedExpmTangent(middle[i],MIDDLE_BASIS,matScale(MIDDLE_BASIS[k],.5)),middle[i].inverse);
       } else lq[j-OUTER_START]=.5;
       const outer=[],mid=[];let central=zerosZ(3,3);
       for(let i=0;i<NB;i++) {
