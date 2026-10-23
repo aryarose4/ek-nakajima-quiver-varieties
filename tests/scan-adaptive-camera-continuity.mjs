@@ -1,10 +1,13 @@
 // Deterministic adaptive scanner. --extended adds chamber/direction coverage;
 // --source-base=<directory> validates another worktree without copying source.
+// --critical retains the three historical jump locations; --strata samples tips.
+// --incidence checks screen geometry; --synthetic tests algebraic shared flags.
+// Dense grid plus adaptive bisection is a numerical search, not a global proof.
 import fs from 'fs';
 import {structuralDefects} from './structural-screen-features.mjs';
 import path from 'path';
 import {fileURLToPath,pathToFileURL} from 'url';
-import {distance,renderedFeatures,glyphFeatures,invariantFeatures,arrowFeatures} from './continuity-features.mjs';
+import {distance,renderedFeatures,invariantFeatures} from './continuity-features.mjs';
 const arg=name=>process.argv.find(x=>x.startsWith('--'+name+'='));
 const base=arg('source-base')?path.resolve(arg('source-base').split('=').slice(1).join('=')):path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../assets/js/ek-nakajima');
 const cache={};
@@ -35,6 +38,7 @@ for(const f of fixtures){
  if(process.argv.includes('--critical')){for(const r of (f.label==='default'?[.5748772323131561,.7803880870342255]:[.8028704226016998])){const errors=[1e-3,1e-4,1e-5].map(h=>delta(sample(f,{r:r-h}),sample(f,{r:r+h})));if(errors[2].some((v,k)=>v>2e-6&&(v>.6*errors[0][k]||v>.8*errors[1][k])))failures.push({fixture:f.label,label:'historical jump '+r,errors});console.log(JSON.stringify({critical:f.label,r,errors}));}continue;}for(const theta of (extended?[0,.03,.7,Math.PI-1e-6]:[0,.7]))line(f,'r theta='+theta,x=>({r:x,theta}));if(extended){for(const r of [0,1])overlap(f,r);line(f,'theta seam',x=>({r:.78,theta:2*Math.PI*x-Math.PI}));for(const r of [0,.5,1])for(const sphere of (r===.5?[0]:[0,1])){line(f,'t '+r+':'+sphere,x=>({r,sphere,t:x}));line(f,'phi '+r+':'+sphere,x=>({r,sphere,t:.4,phi:2*Math.PI*x-Math.PI}));}for(let j=0;j<6;j++){const original=f.beta;line(f,'beta '+j,x=>({r:.78,beta:original.map((row,i)=>row.map((v,k)=>v+(2*i+k===j?.04*(x-.5):0)))}));}}console.log(JSON.stringify({progress:f.label,solves,failures:failures.length}));}
  console.log(JSON.stringify({sourceBase:base,solves,strata,suspects:suspects.length,failures}));if(failures.length)process.exitCode=1;
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
 
 
 
