@@ -31,10 +31,16 @@ function clip(anchor,direction) {
 
 export function balancedTensorDiagram(rep) {
   const observables=balancedObservables(rep),bs=observables.branches;
-  const H=sum(bs.map((b,i)=>matScale(b.H,[1,2,4][i])));
+  const baseH=sum(bs.map((b,i)=>matScale(b.H,[1,2,4][i])));
   const T=sum(bs.map((b,i)=>matAdd(matScale(b.J,[3,1,2][i]),
     matAdd(matScale(matAdd(b.K,matAdj(b.K)),[1,3,2][i]),
       matScale(matSub(b.K,matAdj(b.K)),[0,[2,1,3][i]])))));
+  // The weighted branch tensor can have crossing eigenvalues on real
+  // outgoing strata, exchanging ordered axes at a regular point. Mix in
+  // the same fixed Hermitian correlation tensor used below, so its nonzero
+  // coupling also resolves that camera crossing. This remains equivariant and
+  // stateless; genuine repeated eigenvalues are still reported as defects.
+  const H=matAdd(baseH,matScale(T,.125));
   const eigenvalues=eigvalsHermitian3(H),size=Math.max(1,...eigenvalues.map(Math.abs));
   const gap=Math.min(eigenvalues[0]-eigenvalues[1],eigenvalues[1]-eigenvalues[2]);
   if(gap<1e-8*size)return {valid:false,reason:'Tensor camera has a repeated eigenvalue.',cameraDefects:[{kind:'eigenvalue-gap'}]};
