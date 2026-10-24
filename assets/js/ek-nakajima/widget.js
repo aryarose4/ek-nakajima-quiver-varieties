@@ -198,7 +198,9 @@ function activate(container) {
   secondRow.style.marginTop = "6px";
   modPanel.appendChild(secondRow);
 
-  let pendingSnap = false;
+  // Keep intent through coalesced inputs and obsolete worker progress until
+  // the latest accepted result settles (or the request is invalidated).
+  let outstandingSnap = false;
   function slider(host, id, label, min, max, step, value, format, title, snaps) {
     const box = document.createElement("div");
     box.className = "ek-mod";
@@ -221,7 +223,7 @@ function activate(container) {
     function getValue() { return Number(input.value); }
     function refresh() { readout.textContent = format(getValue()); }
     input.addEventListener("input", function () {
-      pendingSnap = snapInput();
+      outstandingSnap = snapInput() || outstandingSnap;
       refresh();
       apply();
     });
@@ -264,7 +266,7 @@ function activate(container) {
   let chamberId = 'default';
   let chamberEpoch = 0;
   const balancedClient = createBalancedClient({ onProgress: function (result, parameters, levels) {
-    displayBalanced(result, parameters, levels);
+    displayBalanced(result, parameters, levels, outstandingSnap);
     // This is a validated intermediate representation, not the latest request.
     incidenceFrame.setAttribute('aria-busy', 'true');
     incidenceFrame.setAttribute('data-balanced', 'pending');
@@ -282,7 +284,7 @@ function activate(container) {
         // limit; data-requested/displayed-levels report the interior sample.
         chamberId = wall.targetChamberId;
         chamberEpoch++;
-        balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
+        outstandingSnap = false; balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
         container.setAttribute('data-e6-chamber', chamberId);
         container.setAttribute('data-e6-chamber-epoch', String(chamberEpoch));
         parametersPanel.refresh(); refreshCoreLayout(); apply();
@@ -342,8 +344,6 @@ function activate(container) {
     else setTimeout(run, 0);
   }
   function update() {
-    const animateSnap = pendingSnap;
-    pendingSnap = false;
     const r = rControl.getValue();
     const theta = thetaControl.getValue();
     const phi = phiControl.getValue();
@@ -365,7 +365,7 @@ function activate(container) {
     coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
     coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
-      balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+      outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
@@ -386,7 +386,10 @@ function activate(container) {
       incidenceFrame.setAttribute('data-requested-levels', JSON.stringify(requestedLevels));
       incidenceFrame.setAttribute('data-wall-approximation', JSON.stringify(levels) !== JSON.stringify(requestedLevels) ? 'true' : 'false');
       const key = JSON.stringify({ parameters, levels, chamberId });
-      if (key === lastBalancedKey) return;
+      if (key === lastBalancedKey) {
+        if (incidenceFrame.getAttribute('aria-busy') !== 'true') outstandingSnap = false;
+        return;
+      }
       lastBalancedKey = key;
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
@@ -394,17 +397,19 @@ function activate(container) {
         if (epoch !== chamberEpoch || key !== lastBalancedKey) return;
         incidenceFrame.setAttribute('aria-busy', 'false');
         if (!result.success) {
+          outstandingSnap = false;
           incidenceFrame.setAttribute('data-balanced', 'false');
           matrices.setData(null);
           incidenceView.setData(null);
           incidenceView.setStatus('Balanced representation unavailable', 'error');
           return;
         }
-        displayBalanced(result, parameters, levels, animateSnap);
+        displayBalanced(result, parameters, levels, outstandingSnap);
+        outstandingSnap = false;
         incidenceFrame.setAttribute('data-balanced', 'true');
       }, levels, chamber);
     } catch (error) {
-      balancedClient.invalidate(); lastBalancedKey = null;
+      outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");

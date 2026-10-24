@@ -349,6 +349,35 @@ async function main() {
       check("outgoing wing finite " + phase + "/" + t, flow.dot.every(Number.isFinite) && flow.dot[0] > tip.dot[0]);
     });
   });
+  // A delayed worker exercises obsolete progress and coalesced native input.
+  const {solveBalancedAtlas}=await import('./balanced-model.js');
+  let worker;
+  global.Blob=class {};
+  global.URL.createObjectURL=()=> 'blob:queued-test';
+  global.URL.revokeObjectURL=()=> {};
+  global.Worker=class {
+    constructor(){worker=this;this.requests=[];}
+    postMessage(request){this.requests.push(request);}
+    finish(){const request=this.requests.shift();this.onmessage({data:solveBalancedAtlas(request.parameters,request.levels,{chamber:request.chamber})});}
+  };
+  const asyncContainer=makeEl('div');registry['ek-nakajima-widget']=asyncContainer;
+  await import('./widget.js?queued-snap');flushRaf();worker.finish();
+  const asyncElements=walk(asyncContainer,[]),asyncRadius=asyncElements.find(e=>e.id==='ek-r');
+  const asyncIncidence=asyncElements.find(e=>e.id==='ek-incidence-view');
+  const asyncCanvas=walk(asyncIncidence,[]).find(e=>e.tagName==='CANVAS');
+  set(asyncRadius,.3);worker.finish();
+  set(asyncRadius,.49); // Start snapped request; leave it in flight.
+  asyncRadius.value='.47';asyncRadius._fire('input');
+  asyncRadius.value='.46';asyncRadius._fire('input');flushRaf();
+  worker.finish(); // Obsolete snapped request is validated progress.
+  check('obsolete snapped worker progress retains easing intent',asyncCanvas.getAttribute('data-snap-transition')==='true');
+  worker.finish(); // Latest coalesced nonsnap request completes.
+  check('coalesced nonsnap final retains pending snap ease',asyncCanvas.getAttribute('data-snap-transition')==='true');
+  check('coalesced final remains mathematically exact',JSON.parse(asyncIncidence.getAttribute('data-displayed-parameters')).r===.46);
+  const realDateNow=Date.now,future=Date.now()+1000;Date.now=()=>future;
+  set(asyncRadius,.4);worker.finish();
+  check('accepted final clears snap intent for ordinary later inputs',asyncCanvas.getAttribute('data-snap-transition')==='false');
+  Date.now=realDateNow;
   console.log("smoke-widget: " + pass + "/" + (pass+fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);
 }
