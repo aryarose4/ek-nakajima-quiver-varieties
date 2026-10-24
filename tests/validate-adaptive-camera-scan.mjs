@@ -3,6 +3,7 @@
 import assert from 'assert';
 import {spawnSync} from 'child_process';
 import {fileURLToPath} from 'url';
+import './validate-structural-screen-features.mjs';
 const scanner=fileURLToPath(new URL('./scan-adaptive-camera-continuity.mjs',import.meta.url));
 for(const args of [['--steps=32','--incidence'],['--critical','--incidence'],['--strata','--incidence'],['--synthetic']]){
   const result=spawnSync(process.execPath,[scanner,...args],{encoding:'utf8',maxBuffer:20*1024*1024});
