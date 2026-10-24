@@ -143,7 +143,10 @@ Physical visibility is separate from camera clipping and projection defects.
 Selected coordinate-wall limits and positive-beta contractions have numerical
 regressions; this does not certify every camera chart at every wall.
 
-Line phase cues come from complex cyclic traces of the balanced tensors.
+Line phase cues come from the signed complex correlation of the first two
+dual-line coordinates in the common-phase QR camera. The correlation is
+unchanged by a common phase of the line coordinates; no component's phase
+is normalized individually. It moves each line within its separate hue band.
 Dot hues use the true complex incidence residuals against the other planes;
 a matching hue indicates that pairing, while a double match becomes neutral.
 Disappearing planes also lose their influence on dot color. These cues are

@@ -6,7 +6,7 @@ import {source,distance} from './continuity-features.mjs';
  const {incidenceColors}=await import(source('balanced-diagram.js'));
  const {E6_DEFAULT_BETA,betaToLevels}=await import(source('e6-parameters.js'));
  const {applyComplexGauge}=await import(source('solver.js'));
- const {eyeZ,cScale}=await import(source('core-math.js'));
+ const {eyeZ}=await import(source('core-math.js'));
  const solve=p=>{const s=solveBalancedAtlas({r:.35,theta:0,t:0,phi:0,sphere:0,...p},betaToLevels(E6_DEFAULT_BETA));assert(s.success);return s.solvedRep;};
  const hues=rep=>{const d=diagram(rep);assert(d.valid);assert(d.layout.phaseVectors.flat().every(Number.isFinite));assert(d.layout.phaseVectors.every(z=>Math.hypot(...z)<=1+1e-10));return d.layout.incidenceColors.lineHues;};
  const plus=hues(solve({theta:.7})),minus=hues(solve({theta:-.7}));

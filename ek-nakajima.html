@@ -6137,9 +6137,11 @@ function balancedTensorDiagram(rep) {
       }
     }
     lines.push(segment);
-    // Signed complex polynomial trace, compressed without phase normalization.
-    const z=observables.cyclic[i];
-    phaseVectors.push(cScale(z,1/Math.hypot(...z,1)));
+    // Restore the signed dual-coordinate correlation used by balancedDiagram.
+    // The homogeneous phase cancels; no argument or phase normalization is
+    // needed, including when the correlation vanishes. The unitary QR frame
+    // keeps 2*|n0*conj(n1)| <= 1. An absent plane has zero visible opacity.
+    phaseVectors.push(n?cScale(cMul(n[0],cConj(n[1])),2):[0,0]);
   }
   const colors=incidenceColors({...data,residuals:residuals.map(row=>row.map(r=>r===null?1:r))},phaseVectors);
   colors.pointStrengths=colors.pointStrengths.map((s,i)=>s*[0,1,2].filter(j=>j!==i).reduce((p,j)=>p*lineOpacities[j],1));

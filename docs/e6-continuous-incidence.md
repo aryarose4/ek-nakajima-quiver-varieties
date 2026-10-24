@@ -62,7 +62,17 @@ These limits were disclosed before the prototype was promoted for iteration.
 No claim is made that every complex flag configuration has a faithful planar
 straight-line realization under this camera.
 
-## Cotangent arrows and validation
+## Line hues, cotangent arrows and validation
+
+Line hue uses twice the product n0 conjugate(n1), where n is the normalized
+dual-line vector in the QR camera. This restores the earlier projected
+complex phase cue without choosing the phase of an individual component.
+A common phase cancels in the product, and a zero component makes the
+correlation vanish continuously. The separate hue bands and dot colors
+computed from actual complex incidence residuals remain in use.
+The weighted renderer had instead used tr(J_i H_j H_k). Its imaginary part
+vanishes on the central zero-cotangent locus, so it failed to provide the
+intended changing hue there.
 
 The three physical block norms ||E1 K E2||, ||E1 K E3|| and ||E2 K E3|| still
 control arrow opacity. Complex contractions against the declared balanced
