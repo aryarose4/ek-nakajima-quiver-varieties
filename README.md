@@ -124,22 +124,22 @@ the outgoing paraboloid at the short arm's tip, rather than a second sphere.
 The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
-The live incidence view is a stateless, gauge-invariant tensor schematic.
-Bounded traces of the balanced point and plane projectors determine coordinate
-priors and continuously oriented line normals. A strictly positive definite
-12-variable fit aligns incidences, equal flags, collinearity and concurrency.
-A common smooth bound keeps its geometry inside the panel. This removes the
-ordered eigenvectors, phase anchoring and affine divisions that caused the
-earlier jumps; it uses the same rule throughout the supported chambers.
-See [the continuous incidence construction](docs/e6-continuous-incidence.md).
+The live incidence view uses a representation-derived unitary camera. A
+Hermitian tensor and its spectral correlations determine a projective seed q;
+QR orthonormalization of q, Hq and Rq supplies three axes sharing one common
+phase. The common phase cancels in the affine coordinates, avoiding the old
+independent phase-reference flips. The same rule applies across chambers.
+There is no incidence fitting or residual-dependent attraction. See
+[the camera construction and current limits](docs/e6-continuous-incidence.md).
 
 Point visibility follows `||x_i^(2) x_i^(1)||^2`; plane visibility follows
 `||wedge^2 x_i^(2)||^2`. Both reach full opacity at weight `.15` (a display
 parameter). Thus loss of a plane can leave its marked point visible, and
 loss of a marked point can leave its plane visible. A beta approaching zero
 does not itself force either to disappear: the actual balanced maps decide.
-The coordinate-wall collapse and a positive-beta wall contraction are
-numerically tested separately. At the latter, all flags remain visible.
+Physical visibility is separate from camera clipping and projection defects.
+Selected coordinate-wall limits and positive-beta contractions have numerical
+regressions; this does not certify every camera chart at every wall.
 
 Line phase cues come from complex cyclic traces of the balanced tensors.
 Dot hues use the true complex incidence residuals against the other planes;
@@ -148,14 +148,15 @@ Disappearing planes also lose their influence on dot color. These cues are
 separate from the cotangent arrows. Nearly incident configurations can have
 perceptually indistinguishable hues, so color is not an exact certificate.
 
-The diagram is a continuous schematic, rather than an exact embedding of
-complex projective flags in a real affine plane. Fully visible equal objects
-match by symmetry; true incidences are fitted to subpixel accuracy. Exact
-complex classifications and hues still come from the representation itself.
-The construction avoids the old camera singularities, while finite numerical
-tests cannot certify every solver input or all floating-point behavior.
-Historical camera code remains solely as a regression fixture. No additional
-on-page explanation accompanies this change.
+The screen remains a real projection of complex flags, rather than a complete
+invariant. Source classifications and hues use the actual complex pairings.
+Some complex incidences do not become exact real intersections; the known
+near-pixel discrepancy and degenerate synthetic camera failures are recorded
+in the camera documentation. Spectral collisions, affine infinity and vanishing
+projected normals remain possible. Tests cover the reported phase jumps,
+unitary gauge invariance, slider motion and selected wall limits. Historical
+camera code remains as a regression fixture. No additional on-page explanation
+accompanies this change.
 The outgoing coordinate has weight two under reverse-arrow scaling:
 `v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
 meaning of the controls; the outgoing circle action has a half-turn stabilizer.
