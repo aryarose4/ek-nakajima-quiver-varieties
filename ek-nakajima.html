@@ -6136,6 +6136,22 @@ function balancedTensorDiagram(rep) {
         if(!segment){cameraDefects.push({kind:'line-outside-camera',flag:i});segment=[[0,0],[0,0]];}
       }
     }
+    // An off-screen point is indicated along a ray from its visible plane,
+    // rather than radially from the canvas origin. When the raw point lies on
+    // its own line this puts the boundary arrow exactly at that line's exit.
+    // The raw projective position and all complex incidence tests are unchanged.
+    if(extent>1&&!atInfinity&&segment&&normRealDifference(segment[0],segment[1])>1e-12) {
+      const center=segment[0].map((x,j)=>(x+segment[1][j])/2);
+      const direction=point.map((x,j)=>x-center[j]);
+      let fraction=1;
+      for(let j=0;j<2;j++)if(direction[j]!==0) {
+        const boundary=direction[j]>0?LIMIT:-LIMIT;
+        fraction=Math.min(fraction,(boundary-center[j])/direction[j]);
+      }
+      fraction=Math.max(0,fraction);
+      marker.forEach((_,j)=>{marker[j]=center[j]+fraction*direction[j];});
+      pointMarkers[i].direction=unitReal(direction);
+    }
     lines.push(segment);
     // Restore the signed dual-coordinate correlation used by balancedDiagram.
     // The homogeneous phase cancels; no argument or phase normalization is
@@ -6179,6 +6195,7 @@ function balancedTensorDiagram(rep) {
       reconstruction:{chart:'Candidate common-phase tensor QR frame',camera:frame}}};
 }
 function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
+function normRealDifference(a,b){return Math.hypot(...a.map((x,j)=>x-b[j]));}
 
 const experimentalBalancedDiagram=balancedTensorDiagram;
 

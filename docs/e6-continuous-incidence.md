@@ -36,7 +36,12 @@ Points use a fixed-scale real affine projection. Dual lines use the common
 camera's adjugate and an oriented real equation. Own-point anchoring is the
 earlier projection convention. Source flags decide classification and hue;
 the screen equation does not redefine complex incidence. Boundary markers
-report clipping. Concurrency and collinearity guides appear only when source
+report clipping. A clipped point's boundary marker follows a ray from the
+midpoint of its visible own-line segment toward its raw point. This keeps
+an own-incident off-screen point's marker at that line's viewport exit;
+radial clipping from the canvas origin did not. Entering and leaving the
+viewport remains continuous. Raw coordinates and complex classification
+are untouched. Concurrency and collinearity guides appear only when source
 classification and the screen geometry agree.
 
 ## Current limitations
@@ -55,8 +60,16 @@ classification and the screen geometry agree.
   beta_2^(2)=1+epsilon on the reference r=1 branch, the tested diagram diameter
   is about .0665 at epsilon=1e-7, exceeding the .001 target. This is retained
   as a real camera regression, not waived as a change of architecture.
+  A subsequent audit measured .00665 at epsilon=1e-9, indicating roughly
+  square-root convergence rather than a demonstrated nonzero limiting jump.
+  The third QR residual tends to zero while the spectral gaps remain
+  separated. The tested affine point, projected-normal and dual-phase
+  denominators stay bounded away from zero, so a fixed chart adjustment
+  has no identified projection singularity to repair.
 - Clipped boundary markers need not retain the affine incidence of their
   off-screen raw points. Tests distinguish raw geometry from clipped markers.
+  The own-line marker correction cannot put an off-screen intersection of
+  two distinct lines simultaneously on both lines at the viewport boundary.
 
 These limits were disclosed before the prototype was promoted for iteration.
 No claim is made that every complex flag configuration has a faithful planar
@@ -98,3 +111,14 @@ The wall-glyph phase error converges but exceeds its finite-resolution bound
 passed their parameter and arrow continuity checks (234 multichamber cases,
 1,404 strict solves). Browser checks passed for modular and bundled pages,
 including snaps, infinity access and amber wall buttons.
+
+After the boundary-marker correction, the full registered suite has 64
+batteries: 60 pass and the same four named batteries fail. The adaptive
+scanner now proceeds past the old own-line marker error and exposes further
+cuts: default r approximately .425744 and .612256 cross affine infinity,
+while the asymmetric chamber has a third-QR-axis cancellation near .396861.
+Comparison with the preceding source confirms these cuts are inherited.
+The boundary correction does not claim to resolve them. A tested complex
+quadrature bridge removes the latter axis flip but breaks real special
+incidences; it was rejected. Browser checks retain native snaps, smooth
+snap animation and changing line hues in modular and bundled versions.
