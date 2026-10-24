@@ -77,3 +77,14 @@ that a camera moves naturally. The former incidence fit and rejected camera
 experiments must not be used as hidden fallbacks.
 Strict tests for unresolved contraction and degenerate configurations remain
 registered and failing; this iteration does not claim an entirely green suite.
+
+The promotion run completed 62 Node batteries: 58 passed and four remained
+red (`validate-weighted-balanced-diagram`, `validate-global-camera-contract`,
+`validate-adaptive-camera-scan`, `validate-wall-glyph-phase`). The adaptive
+failure distinguishes a clipped marker from its incident raw point; its
+additional modes also expose complex cross-incidence and synthetic limits.
+The wall-glyph phase error converges but exceeds its finite-resolution bound
+(.011887 versus .01). Default, adjacent and all six tested multichamber paths
+passed their parameter and arrow continuity checks (234 multichamber cases,
+1,404 strict solves). Browser checks passed for modular and bundled pages,
+including snaps, infinity access and amber wall buttons.
