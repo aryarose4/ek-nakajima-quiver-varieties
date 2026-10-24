@@ -5,6 +5,26 @@ import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
 
+// Only projected drawing coordinates move; classification and tensors remain
+// those of the exact target representation throughout the short transition.
+export function interpolateScreenLayout(from, target, progress) {
+  if (!from || !from.valid || !target || !target.valid || progress >= 1) return target;
+  const u = Math.max(0, progress), t = u * u * (3 - 2 * u);
+  function coordinates(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return b;
+    return b.map((v, i) => Array.isArray(v) ? coordinates(a[i], v) :
+      Number.isFinite(a[i]) && Number.isFinite(v) ? a[i] + t * (v - a[i]) : v);
+  }
+  const result = { ...target };
+  for (const key of ['points', 'lines', 'transversal', 'concurrencyPoint']) {
+    if (from[key] && target[key]) result[key] = coordinates(from[key], target[key]);
+  }
+  if (target.cotangentTargets) result.cotangentTargets = target.cotangentTargets.map((v, i) =>
+    v && from.cotangentTargets && from.cotangentTargets[i] ? { ...v,
+      point: coordinates(from.cotangentTargets[i].point, v.point) } : v);
+  return result;
+}
+
 // Missing opacity arrays retain the legacy full-strength drawing.
 export function objectOpacity(layout, kind, index) {
   const values = layout && layout[kind + 'Opacities'];
@@ -167,6 +187,14 @@ export function makeElementView(host, opts) {
   let statusKind = "";
   let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
   let animationFrame = null;
+  let transition = null;
+  function displayedLayout(now) {
+    if (!transition) return layout;
+    const progress = (now - transition.start) / 160;
+    const result = interpolateScreenLayout(transition.from, layout, progress);
+    if (progress >= 1) transition = null;
+    return result;
+  }
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -180,6 +208,9 @@ export function makeElementView(host, opts) {
   }
 
   function draw() {
+    // Shadow the mathematical target with a temporary screen-only layout.
+    const layout = displayedLayout(Date.now());
+    canvas.setAttribute('data-snap-transition', String(!!transition));
     const pal = palette();
     yToggleLabel.style.color = pal.text;
     canvas.setAttribute('data-y-data', String(showYData));
@@ -302,12 +333,14 @@ export function makeElementView(host, opts) {
       });
       ctx.globalAlpha=1;
     }
-    if (flashing.length && animationFrame === null && typeof requestAnimationFrame === 'function') {
+    if ((flashing.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
       animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
 
   function setData(view) {
+    const from = displayedLayout(Date.now());
+    const wasTransitioning = !!transition;
     const frame = elementFrame(view);
     canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
     canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
@@ -327,6 +360,8 @@ export function makeElementView(host, opts) {
       });
     }
     data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
+    transition = view && (view.animateSnap || wasTransitioning) && from && from.valid && layout && layout.valid ?
+      { from, start: now } : null;
     draw();
     return frame;
   }

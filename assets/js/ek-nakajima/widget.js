@@ -10,7 +10,7 @@ import { createParametersPanel } from "./parameters-panel.js";
 import { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
 import { makeRepresentationReadout } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
-import { magneticValue } from "./slider-magnet.js";
+import { snapSliderInput } from "./slider-magnet.js";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
 
@@ -198,6 +198,7 @@ function activate(container) {
   secondRow.style.marginTop = "6px";
   modPanel.appendChild(secondRow);
 
+  let pendingSnap = false;
   function slider(host, id, label, min, max, step, value, format, title, snaps) {
     const box = document.createElement("div");
     box.className = "ek-mod";
@@ -216,9 +217,11 @@ function activate(container) {
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
-    function getValue() { return magneticValue(Number(input.value), snaps); }
+    const snapInput = snapSliderInput(input, snaps);
+    function getValue() { return Number(input.value); }
     function refresh() { readout.textContent = format(getValue()); }
     input.addEventListener("input", function () {
+      pendingSnap = snapInput();
       refresh();
       apply();
     });
@@ -290,9 +293,9 @@ function activate(container) {
     refreshCoreLayout();
     apply();
   } });
-  function displayBalanced(result, parameters, levels) {
+  function displayBalanced(result, parameters, levels, animateSnap) {
     matrices.setData(result.solvedRep);
-    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame, animateSnap: !!animateSnap });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
     incidenceFrame.setAttribute('data-displayed-levels', JSON.stringify(levels));
@@ -339,6 +342,8 @@ function activate(container) {
     else setTimeout(run, 0);
   }
   function update() {
+    const animateSnap = pendingSnap;
+    pendingSnap = false;
     const r = rControl.getValue();
     const theta = thetaControl.getValue();
     const phi = phiControl.getValue();
@@ -395,7 +400,7 @@ function activate(container) {
           incidenceView.setStatus('Balanced representation unavailable', 'error');
           return;
         }
-        displayBalanced(result, parameters, levels);
+        displayBalanced(result, parameters, levels, animateSnap);
         incidenceFrame.setAttribute('data-balanced', 'true');
       }, levels, chamber);
     } catch (error) {
