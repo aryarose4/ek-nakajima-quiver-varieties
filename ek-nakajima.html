@@ -6723,6 +6723,26 @@ const { balancedTensorDiagram } = __ek_mod_weighted_balanced_diagram;
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
 
+// Only projected drawing coordinates move; classification and tensors remain
+// those of the exact target representation throughout the short transition.
+function interpolateScreenLayout(from, target, progress) {
+  if (!from || !from.valid || !target || !target.valid || progress >= 1) return target;
+  const u = Math.max(0, progress), t = u * u * (3 - 2 * u);
+  function coordinates(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return b;
+    return b.map((v, i) => Array.isArray(v) ? coordinates(a[i], v) :
+      Number.isFinite(a[i]) && Number.isFinite(v) ? a[i] + t * (v - a[i]) : v);
+  }
+  const result = { ...target };
+  for (const key of ['points', 'lines', 'transversal', 'concurrencyPoint']) {
+    if (from[key] && target[key]) result[key] = coordinates(from[key], target[key]);
+  }
+  if (target.cotangentTargets) result.cotangentTargets = target.cotangentTargets.map((v, i) =>
+    v && from.cotangentTargets && from.cotangentTargets[i] ? { ...v,
+      point: coordinates(from.cotangentTargets[i].point, v.point) } : v);
+  return result;
+}
+
 // Missing opacity arrays retain the legacy full-strength drawing.
 function objectOpacity(layout, kind, index) {
   const values = layout && layout[kind + 'Opacities'];
@@ -6885,6 +6905,14 @@ function makeElementView(host, opts) {
   let statusKind = "";
   let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
   let animationFrame = null;
+  let transition = null;
+  function displayedLayout(now) {
+    if (!transition) return layout;
+    const progress = (now - transition.start) / 160;
+    const result = interpolateScreenLayout(transition.from, layout, progress);
+    if (progress >= 1) transition = null;
+    return result;
+  }
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -6898,6 +6926,9 @@ function makeElementView(host, opts) {
   }
 
   function draw() {
+    // Shadow the mathematical target with a temporary screen-only layout.
+    const layout = displayedLayout(Date.now());
+    canvas.setAttribute('data-snap-transition', String(!!transition));
     const pal = palette();
     yToggleLabel.style.color = pal.text;
     canvas.setAttribute('data-y-data', String(showYData));
@@ -7020,12 +7051,14 @@ function makeElementView(host, opts) {
       });
       ctx.globalAlpha=1;
     }
-    if (flashing.length && animationFrame === null && typeof requestAnimationFrame === 'function') {
+    if ((flashing.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
       animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
 
   function setData(view) {
+    const from = displayedLayout(Date.now());
+    const wasTransitioning = !!transition;
     const frame = elementFrame(view);
     canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
     canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
@@ -7045,6 +7078,8 @@ function makeElementView(host, opts) {
       });
     }
     data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
+    transition = view && (view.animateSnap || wasTransitioning) && from && from.valid && layout && layout.valid ?
+      { from, start: now } : null;
     draw();
     return frame;
   }
@@ -7068,7 +7103,7 @@ function makeElementView(host, opts) {
   };
 }
 
-return { objectOpacity, newIncidenceHighlights, incidenceFlashStrength, cotangentArrowGeometry, cotangentArrowColor, cotangentArrowOpacity, cotangentGlyphStyle, elementFrame, phaseColor, makeElementView };
+return { interpolateScreenLayout, objectOpacity, newIncidenceHighlights, incidenceFlashStrength, cotangentArrowGeometry, cotangentArrowColor, cotangentArrowOpacity, cotangentGlyphStyle, elementFrame, phaseColor, makeElementView };
 })();
 
 // ---- module: representation-readout ----
@@ -7248,23 +7283,33 @@ return { formatComplex, makeRepresentationReadout };
 
 // ---- module: slider-magnet ----
 const __ek_mod_slider_magnet = (function () {
-// A positional magnet, applied to the native thumb coordinate exactly once.
-// The inner fifth is exact; a monotone cubic shoulder joins identity with
-// matching first derivatives. Keeping the thumb raw lets keyboard steps escape.
+// Native range inputs use exact snap values. Keyboard steps bypass attraction so
+// an arrow key can always leave a snapped value.
 function magneticValue(raw, snaps) {
   for (const snap of snaps || []) {
-    const delta = raw - snap.value, distance = Math.abs(delta);
-    const outer = snap.tol, inner = outer / 5;
-    if (distance >= outer) continue;
-    if (distance <= inner) return snap.value;
-    const s = (distance - inner) / (outer - inner);
-    const mapped = s * s * ((2 * outer + inner) - (outer + inner) * s);
-    return snap.value + Math.sign(delta) * mapped;
+    if (Math.abs(raw - snap.value) <= snap.tol) return snap.value;
   }
   return raw;
 }
 
-return { magneticValue };
+function snapSliderInput(input, snaps) {
+  let keyboard = false;
+  input.addEventListener('keydown', function (event) {
+    keyboard = /^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|PageUp|PageDown|Home|End)$/.test(event.key);
+  });
+  input.addEventListener('keyup', function () { keyboard = false; });
+  input.addEventListener('blur', function () { keyboard = false; });
+  input.addEventListener('pointerdown', function () { keyboard = false; });
+  return function () {
+    const raw = Number(input.value);
+    const value = keyboard ? raw : magneticValue(raw, snaps);
+    const changed = value !== raw;
+    input.value = String(value);
+    return changed;
+  };
+}
+
+return { magneticValue, snapSliderInput };
 })();
 
 // ---- module: widget ----
@@ -7278,7 +7323,7 @@ const { createParametersPanel } = __ek_mod_parameters_panel;
 const { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } = __ek_mod_e6_parameters;
 const { makeRepresentationReadout } = __ek_mod_representation_readout;
 const { makeElementView } = __ek_mod_element_render;
-const { magneticValue } = __ek_mod_slider_magnet;
+const { snapSliderInput } = __ek_mod_slider_magnet;
 // E6 complex representatives and simultaneous flag/moduli views.
 // Compact representatives and the schematic core flow share coordinate controls.
 
@@ -7479,6 +7524,9 @@ function activate(container) {
   secondRow.style.marginTop = "6px";
   modPanel.appendChild(secondRow);
 
+  // Keep intent through coalesced inputs and obsolete worker progress until
+  // the latest accepted result settles (or the request is invalidated).
+  let outstandingSnap = false;
   function slider(host, id, label, min, max, step, value, format, title, snaps) {
     const box = document.createElement("div");
     box.className = "ek-mod";
@@ -7497,9 +7545,11 @@ function activate(container) {
     input.title = title;
     const readout = document.createElement("span");
     readout.className = "ek-readout";
-    function getValue() { return magneticValue(Number(input.value), snaps); }
+    const snapInput = snapSliderInput(input, snaps);
+    function getValue() { return Number(input.value); }
     function refresh() { readout.textContent = format(getValue()); }
     input.addEventListener("input", function () {
+      outstandingSnap = snapInput() || outstandingSnap;
       refresh();
       apply();
     });
@@ -7542,7 +7592,7 @@ function activate(container) {
   let chamberId = 'default';
   let chamberEpoch = 0;
   const balancedClient = createBalancedClient({ onProgress: function (result, parameters, levels) {
-    displayBalanced(result, parameters, levels);
+    displayBalanced(result, parameters, levels, outstandingSnap);
     // This is a validated intermediate representation, not the latest request.
     incidenceFrame.setAttribute('aria-busy', 'true');
     incidenceFrame.setAttribute('data-balanced', 'pending');
@@ -7560,7 +7610,7 @@ function activate(container) {
         // limit; data-requested/displayed-levels report the interior sample.
         chamberId = wall.targetChamberId;
         chamberEpoch++;
-        balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
+        outstandingSnap = false; balancedClient.invalidate(); balancedFrame = null; lastBalancedKey = null;
         container.setAttribute('data-e6-chamber', chamberId);
         container.setAttribute('data-e6-chamber-epoch', String(chamberEpoch));
         parametersPanel.refresh(); refreshCoreLayout(); apply();
@@ -7571,9 +7621,9 @@ function activate(container) {
     refreshCoreLayout();
     apply();
   } });
-  function displayBalanced(result, parameters, levels) {
+  function displayBalanced(result, parameters, levels, animateSnap) {
     matrices.setData(result.solvedRep);
-    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame });
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame, animateSnap: !!animateSnap });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
     incidenceFrame.setAttribute('data-displayed-levels', JSON.stringify(levels));
@@ -7641,7 +7691,7 @@ function activate(container) {
     coreFrame.setAttribute("data-flow", lastFlow ? lastFlow.kind : "");
     coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
-      balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+      outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
@@ -7662,7 +7712,10 @@ function activate(container) {
       incidenceFrame.setAttribute('data-requested-levels', JSON.stringify(requestedLevels));
       incidenceFrame.setAttribute('data-wall-approximation', JSON.stringify(levels) !== JSON.stringify(requestedLevels) ? 'true' : 'false');
       const key = JSON.stringify({ parameters, levels, chamberId });
-      if (key === lastBalancedKey) return;
+      if (key === lastBalancedKey) {
+        if (incidenceFrame.getAttribute('aria-busy') !== 'true') outstandingSnap = false;
+        return;
+      }
       lastBalancedKey = key;
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
@@ -7670,17 +7723,19 @@ function activate(container) {
         if (epoch !== chamberEpoch || key !== lastBalancedKey) return;
         incidenceFrame.setAttribute('aria-busy', 'false');
         if (!result.success) {
+          outstandingSnap = false;
           incidenceFrame.setAttribute('data-balanced', 'false');
           matrices.setData(null);
           incidenceView.setData(null);
           incidenceView.setStatus('Balanced representation unavailable', 'error');
           return;
         }
-        displayBalanced(result, parameters, levels);
+        displayBalanced(result, parameters, levels, outstandingSnap);
+        outstandingSnap = false;
         incidenceFrame.setAttribute('data-balanced', 'true');
       }, levels, chamber);
     } catch (error) {
-      balancedClient.invalidate(); lastBalancedKey = null;
+      outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null;
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
