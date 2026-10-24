@@ -11,10 +11,10 @@ import {source,distance,renderedFeatures,arrowFeatures} from './continuity-featu
   assert(s.success&&s.residuals.real_norm<1e-9&&s.residuals.complex_norm<1e-8,'strict balanced representative');
   const d=balancedTensorDiagram(s.solvedRep),l=d.layout;
   assert(d.valid);assert.deepStrictEqual(l.cameraDefects,[]);
-  assert.strictEqual(d.diagnostics.camera,'bounded-invariant-incidence-fit');
+  assert.strictEqual(d.diagnostics.camera,'common-phase-qr-candidate');
+  // renderedFeatures includes actual guide visibility and handles absent guides.
   const features=renderedFeatures(d).concat(arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity),
-   d.glyphs.flatMap(g=>g?g.coefficients.flat().concat(g.magnitudes):Array(9).fill(0)),
-   [l.concurrencyOpacity,...l.concurrencyPoint.map(x=>x*l.concurrencyOpacity),l.transversalOpacity,...l.transversal.flat().map(x=>x*l.transversalOpacity)]);
+   d.glyphs.flatMap(g=>g?g.coefficients.flat().concat(g.magnitudes):Array(9).fill(0)));
   assert(features.every(Number.isFinite));
   return features;
  };

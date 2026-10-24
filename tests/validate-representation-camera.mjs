@@ -11,8 +11,8 @@ import {source,distance,renderedFeatures,arrowFeatures} from './continuity-featu
  const gauge=[[[.6,0],[0,.8],[0,0]],[[0,.8],[.6,0],[0,0]],[[0,0],[0,0],[Math.cos(.8),Math.sin(.8)]]];
  const phase=[Math.cos(.3),Math.sin(.3)],minimumNorms=[Infinity,Infinity,Infinity];
  const sites=[...Array.from({length:11},(_,i)=>({r:i/10,t:0,sphere:0})),...[1].flatMap(sphere=>[0,1].flatMap(r=>[0,.4,1].map(t=>({sphere,r,t}))))];
- for(const site of sites){
-  const solved=solveBalancedAtlas({theta:0,phi:.6,...site},[[3,1],[3,2.1],[3,3]]);assert(solved.success,JSON.stringify(site));
+ for(const siteLevels of [levels,[[3,1],[3,2.1],[3,3]]])for(const site of sites){
+  const solved=solveBalancedAtlas({theta:0,phi:.6,...site},siteLevels);assert(solved.success,JSON.stringify(site));
   const d=diagram(solved.solvedRep);assert(d.valid,'sampled QR camera exists');
   d.diagnostics.qrNorms.forEach((n,i)=>{assert(n>1e-8,'positive QR residual');minimumNorms[i]=Math.min(minimumNorms[i],n);});
   for(let i=0;i<3;i++)if(d.layout.lineOpacities[i]>.9)assert(distance(...d.layout.lines[i])>1e-7,'full physical plane has a visible segment');
@@ -36,7 +36,7 @@ import {source,distance,renderedFeatures,arrowFeatures} from './continuity-featu
  }
  // This is a local regression, not a global camera theorem. Spectral collisions,
  // affine infinity and zero projected normals remain separate failure modes.
- console.log(JSON.stringify({cases:rows.length,sites:sites.length,minimumNorms,rows}));
+ console.log(JSON.stringify({cases:rows.length,sites:sites.length*2,levelFixtures:2,minimumNorms,rows}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
 
