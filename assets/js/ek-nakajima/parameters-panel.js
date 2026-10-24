@@ -56,6 +56,12 @@ export function createParametersPanel(host, options = {}) {
         button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
         button.disabled = !available;
         button.style.flexShrink = '0';
+        if (action === 'cross' && wall.atWall === true) {
+          if (button.setAttribute) button.setAttribute('data-at-wall', 'true');
+          button.style.backgroundColor = '#d4a64b';
+          button.style.borderColor = '#a97920';
+          button.style.color = '#241b0d';
+        }
         if (!available) button.title = wallPending ? 'Crossing wall' : wall.canCross === true ? 'Reach this wall to cross' : 'Crossing this wall is not supported';
         button.addEventListener('click', () => {
           // Recheck live capability; detached buttons and double clicks are inert.
