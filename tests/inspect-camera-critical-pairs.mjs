@@ -18,7 +18,7 @@ import {structuralDefects} from './structural-screen-features.mjs';
   if(!d.valid)return {valid:false,reason:d.reason};
   const arrows=arrowFeatures(d,cotangentArrowGeometry,cotangentArrowOpacity);
   const rawDefects=structuralDefects({...d,layout:{...d.layout,points:d.layout.rawPoints||d.layout.points}});
-  return {valid:true,currentGlyphContract:d.glyphs.every(g=>!g||Array.isArray(g.magnitudes)),arrowNorm:Math.hypot(...arrows),classification:{pointEqual:d.data.pointEqual,lineEqual:d.data.lineEqual,collinear:d.data.collinear,concurrent:d.data.concurrent},features:[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),arrows],diagnostics:d.diagnostics,defects:structuralDefects(d),rawDefects,cameraDefects:d.layout.cameraDefects,points:d.layout.rawPoints||d.layout.points};
+  return {valid:true,currentGlyphContract:d.glyphs.every(g=>!g||Array.isArray(g.magnitudes)),arrowNorm:Math.hypot(...arrows),lines:d.layout.lines,lineWeights:d.layout.lineWeights,classification:{pointEqual:d.data.pointEqual,lineEqual:d.data.lineEqual,collinear:d.data.collinear,concurrent:d.data.concurrent},features:[invariantFeatures(balancedObservables(s.solvedRep)),renderedFeatures(d),arrows],diagnostics:d.diagnostics,defects:structuralDefects(d),rawDefects,cameraDefects:d.layout.cameraDefects,points:d.layout.rawPoints||d.layout.points};
  }
  if(process.argv.includes('--branches')){
   const rows=[];
