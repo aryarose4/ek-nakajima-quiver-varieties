@@ -22,6 +22,25 @@ export function interpolateScreenLayout(from, target, progress) {
   if (target.cotangentTargets) result.cotangentTargets = target.cotangentTargets.map((v, i) =>
     v && from.cotangentTargets && from.cotangentTargets[i] ? { ...v,
       point: coordinates(from.cotangentTargets[i].point, v.point) } : v);
+  if (target.pointMarkers) result.pointMarkers=target.pointMarkers.map((m,i)=>{
+    const old=from.pointMarkers&&from.pointMarkers[i];
+    if(!old||(!m.boundaryPair&&!old.boundaryPair))return m;
+    function expanded(marker,point,reference) {
+      if(marker.boundaryPair)return marker.boundaryPair;
+      const nearest=reference.reduce((best,v,k)=>
+        Math.hypot(...v.point.map((x,j)=>x-point[j]))<Math.hypot(...reference[best].point.map((x,j)=>x-point[j]))?k:best,0);
+      return reference.map((v,k)=>({...v,point,weight:k===nearest?1:0}));
+    }
+    const reference=m.boundaryPair||old.boundaryPair;
+    let a=expanded(old,from.points[i],reference);
+    const b=expanded(m,target.points[i],reference);
+    const cost=(x,y)=>Math.hypot(...x.point.map((v,j)=>v-y.point[j]));
+    if(old.boundaryPair&&m.boundaryPair&&cost(a[0],b[1])+cost(a[1],b[0])<cost(a[0],b[0])+cost(a[1],b[1]))a=[a[1],a[0]];
+    return {...m,clipped:true,boundaryPair:b.map((v,k)=>({...v,
+      point:coordinates(a[k].point,v.point),
+      direction:coordinates(a[k].direction,v.direction),
+      weight:a[k].weight+t*(v.weight-a[k].weight)}))};
+  });
   return result;
 }
 
@@ -298,16 +317,20 @@ export function makeElementView(host, opts) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
       ctx.strokeStyle = layout.incidenceColors ? incidenceColor(layout.incidenceColors.pointHues[i], layout.incidenceColors.pointStrengths[i], pal.dark) : layout.pointPhaseVectors ? balancedPhaseColor(layout.pointPhases[i], layout.pointPhaseVectors[i], pal.dark) : pal.point;
-      glow(p, i, ctx.strokeStyle, pointOpacity);
+      const marks=marker&&marker.clipped&&marker.boundaryPair?marker.boundaryPair:[{point:layout.points[i],direction:marker&&marker.direction,weight:1}];
+      marks.forEach(mark=>glow(pixel(mark.point),i,ctx.strokeStyle,pointOpacity*mark.weight));
       ctx.globalAlpha = pointOpacity;
       ctx.lineWidth = 2;
       if (marker && marker.clipped) {
-        const d = [marker.direction[0], -marker.direction[1]];
+        marks.forEach(mark=>{
+        const p=pixel(mark.point),d=[mark.direction[0],-mark.direction[1]];
+        ctx.globalAlpha=pointOpacity*mark.weight;
         ctx.beginPath();
         ctx.moveTo(p[0] - 8 * d[0] - 4 * d[1], p[1] - 8 * d[1] + 4 * d[0]);
         ctx.lineTo(p[0], p[1]);
         ctx.lineTo(p[0] - 8 * d[0] + 4 * d[1], p[1] - 8 * d[1] - 4 * d[0]);
         ctx.stroke();
+        });
       } else {
         ctx.beginPath(); ctx.arc(p[0], p[1], 4 + 3 * groupIndex, 0, Math.PI * 2);
         if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
@@ -318,18 +341,21 @@ export function makeElementView(host, opts) {
       const target=layout.cotangentTargets&&layout.cotangentTargets[i];
       const arrows=cotangentArrowGeometry(p,layout.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
       if(showYData&&glyph)glyph.coefficients.forEach((z,k)=>{
+        const anchors=k<2?marks:[{point:layout.points[i],weight:1}];
+        anchors.forEach(mark=>{
         const style=cotangentGlyphStyle(glyph,k,pal.dark,Math.min(pointOpacity,lineOpacity));
-        const color=style.color,arrow=arrows[k];
+        const color=style.color,arrow=k<2?cotangentArrowGeometry(pixel(mark.point),layout.lines[i].map(pixel),null)[k]:arrows[k];
         if(!color||!arrow)return;
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
-        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity;
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity*mark.weight;
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
           ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
         }
         ctx.stroke();
+        });
       });
       ctx.globalAlpha=1;
     }

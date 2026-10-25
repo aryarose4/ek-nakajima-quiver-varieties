@@ -140,7 +140,7 @@ export function balancedTensorDiagram(rep) {
       const W=p.reduce(cAdd,[0,0]);
       atInfinity=abs(W)<1e-9;
       if(atInfinity)cameraDefects.push({kind:'affine-infinity',flag:i});
-      else point=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
+      if(abs(W)>1e-15)point=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
     }
     const extent=Math.max(1,...point.map(x=>Math.abs(x)/LIMIT));
     const marker=point.map(x=>x/extent);
@@ -169,7 +169,7 @@ export function balancedTensorDiagram(rep) {
         // this equals the ordinary marked-point anchor; at true real incidence
         // the correction is zero for every weight.
         const opacity=pointOpacities[i];
-        const correction=opacity*residual/(1+(1-opacity)*Math.abs(residual));
+        const correction=atInfinity?0:opacity*residual/(1+(1-opacity)*Math.abs(residual));
         const anchor=normal.map(x=>x*(-offset+correction));
         segment=clip(anchor,[normal[1],-normal[0]]);
         if(!segment){cameraDefects.push({kind:'line-outside-camera',flag:i});segment=[[0,0],[0,0]];}
@@ -179,17 +179,22 @@ export function balancedTensorDiagram(rep) {
     // rather than radially from the canvas origin. When the raw point lies on
     // its own line this puts the boundary arrow exactly at that line's exit.
     // The raw projective position and all complex incidence tests are unchanged.
-    if(extent>1&&!atInfinity&&segment&&normRealDifference(segment[0],segment[1])>1e-12) {
-      const center=segment[0].map((x,j)=>(x+segment[1][j])/2);
-      const direction=point.map((x,j)=>x-center[j]);
-      let fraction=1;
-      for(let j=0;j<2;j++)if(direction[j]!==0) {
-        const boundary=direction[j]>0?LIMIT:-LIMIT;
-        fraction=Math.min(fraction,(boundary-center[j])/direction[j]);
+    if(extent>1||atInfinity) {
+      const visible=segment&&normRealDifference(segment[0],segment[1])>1e-12;
+      const center=visible?segment[0].map((x,j)=>(x+segment[1][j])/2):[0,0];
+      const ray=atInfinity&&visible?segment[1].map((x,j)=>x-segment[0][j]):point.map((x,j)=>x-center[j]);
+      const direction=unitReal(ray),exits=clip(center,direction);
+      if(exits) {
+        const distance=normRealDifference(point,center);
+        const eta=atInfinity?0:Math.min(1,normRealDifference(exits[1],center)/distance);
+        const pair=exits.map((p,k)=>({point:p,direction:direction.map(x=>x*(k?1:-1)),weight:.5*(1+(k?1:-1)*eta)}));
+        // Geometric ordering is independent of which affine end contains the point.
+        pair.sort((a,b)=>a.point[0]-b.point[0]||a.point[1]-b.point[1]);
+        pointMarkers[i].boundaryPair=pair;
+        const primary=pair.reduce((a,b)=>a.weight>b.weight?a:b);
+        marker.forEach((_,j)=>{marker[j]=primary.point[j];});
+        pointMarkers[i].direction=primary.direction;
       }
-      fraction=Math.max(0,fraction);
-      marker.forEach((_,j)=>{marker[j]=center[j]+fraction*direction[j];});
-      pointMarkers[i].direction=unitReal(direction);
     }
     lines.push(segment);
     // Restore the signed dual-coordinate correlation used by balancedDiagram.
