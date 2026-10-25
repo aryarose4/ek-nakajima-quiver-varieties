@@ -52,7 +52,8 @@ export function arrowFeatures(d,geometry,opacity){
       const alpha=a?(physical?opacity([physical[k],0]):opacity(z)*Math.min(l.pointOpacities[i],l.lineOpacities[i])):0;
       // Hue's constant 210-degree rotation preserves disk distances. The
       // magnitude/(1+magnitude) radius is the renderer's saturation curve.
-      out.push(alpha,alpha*z[0]/(1+m),alpha*z[1]/(1+m));
+      const radius=glyph&&glyph.phaseConfidence?physical[k]/(1+physical[k])*glyph.phaseConfidence[k]:m/(1+m);
+      out.push(alpha,alpha*(m?z[0]/m:0)*radius,alpha*(m?z[1]/m:0)*radius);
       out.push(...(a?a.start.concat(a.end).map(v=>alpha*v/173):[0,0,0,0]));
     }
   }

@@ -107,6 +107,12 @@ export function cotangentArrowOpacity(z) {
 // A zero correlation has no phase, so a nonzero block remains visible in gray.
 export function cotangentGlyphStyle(glyph,index,dark,visibility=1) {
   const z=(glyph.phaseCorrelations||glyph.coefficients)[index];
+  if(glyph.phaseConfidence) {
+    const m=glyph.magnitudes[index],confidence=glyph.phaseConfidence[index];
+    const hue=Math.hypot(...z)>0?(210+Math.atan2(z[1],z[0])*180/Math.PI+360)%360:0;
+    return {color:'hsl('+hue+', '+(85*m/(1+m)*confidence)+'%, '+(dark?55:28)+'%)',
+      opacity:cotangentArrowOpacity([m,0])};
+  }
   if(glyph.magnitudes) return {
     color:cotangentArrowColor(z,dark)||('hsl(0, 0%, '+(dark?55:28)+'%)'),
     opacity:cotangentArrowOpacity([glyph.magnitudes[index],0])

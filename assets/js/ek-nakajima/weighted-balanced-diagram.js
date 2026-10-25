@@ -18,6 +18,18 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
+// The camera's common phase cancels between the two normalized projections.
+// Confidence is a smooth display regularizer, never a mathematical rank test.
+export function projectedBlockPhases(E,K,seed) {
+  const u=E.map(P=>apply(P,seed)),lengths=u.map(norm);
+  const phaseConfidence=[];
+  const coefficients=[[0,1],[0,2],[1,2]].map(([a,b])=>{
+    const product=lengths[a]*lengths[b];
+    phaseConfidence.push(product/Math.hypot(product,.001));
+    return product>0?cScale(inner(u[a],apply(K,u[b])),1/product):[0,0];
+  });
+  return {coefficients,phaseConfidence};
+}
 // One fixed affine scale keeps the default comparison's surviving points in
 // view. It is never fitted to the current flags or their visibility weights.
 const LIMIT=.9,SCALE=.085;
@@ -98,15 +110,16 @@ export function balancedTensorDiagram(rep) {
   const hh=bs.map(b=>bounded(b.H)),jj=bs.map(b=>bounded(b.J));
   const Y=matScale(matSub(matAdd(hh[0],hh[1]),matScale(hh[2],2)),Math.sqrt(3)/2);
   const reference=matAdd(sum(jj.map((J,i)=>matScale(J,[1,2,4][i]))),matScale(Y,[0,1]));
+  const phaseSeed=frame.reduce((v,f)=>v.map((z,j)=>cAdd(z,cScale(f[j],1/Math.sqrt(3)))) ,[[0,0],[0,0],[0,0]]);
   const glyphs=bs.map((b,i)=>{
     if(!pointPresent[i]||!linePresent[i])return null;
     const P=matScale(b.J,1/pointWeights[i]),N=matScale(b.plane,1/lineWeights[i]);
     const E=[P,matSub(matSub(eyeZ(3),P),N),N],magnitudes=[],visibility=pointOpacities[i]*lineOpacities[i];
-    const coefficients=[[0,1],[0,2],[1,2]].map(([a,c])=>{
+    [[0,1],[0,2],[1,2]].forEach(([a,c])=>{
       const block=matMul(matMul(E[a],b.K),E[c]);magnitudes.push(visibility*Math.hypot(...block.flat().map(abs)));
-      return cScale(matTrace(matMul(block,reference)),visibility);
     });
-    return {coefficients,phaseCorrelations:coefficients,magnitudes,projectors:E,reference,kind:'intrinsic-block-contractions'};
+    const {coefficients,phaseConfidence}=projectedBlockPhases(E,b.K,phaseSeed);
+    return {coefficients,phaseCorrelations:coefficients,phaseConfidence,magnitudes,projectors:E,reference,kind:'intrinsic-block-contractions'};
   });
   const points=[],rawPoints=[],lines=[],pointMarkers=[],cameraDefects=[],phaseVectors=[];
   for(let i=0;i<3;i++) {

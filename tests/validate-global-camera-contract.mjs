@@ -53,12 +53,16 @@ import {source,distance,renderedFeatures,glyphFeatures,arrowFeatures} from './co
    const b=observables.branches[i],g=d.glyphs[i],P=matScale(b.J,1/matTrace(b.J)[0]),N=matScale(b.plane,1/b.planeWeight);
    const E=[P,matSub(matSub(eyeZ(3),P),N),N],visibility=d.layout.pointOpacities[i]*d.layout.lineOpacities[i];
    check(g.kind==='intrinsic-block-contractions','declared intrinsic glyph contract');
+   check(distance(g.reference.flat(2),C.flat(2))<1e-10,'reference tensor unchanged');
    const expectedMagnitudes=[];
    [[0,1],[0,2],[1,2]].forEach(([a,c],k)=>{
     const block=matMul(matMul(E[a],b.K),E[c]),magnitude=visibility*Math.hypot(...block.flat(2));
-    const correlation=cScale(matTrace(matMul(block,C)),visibility);expectedMagnitudes.push(magnitude);
+    const seed=d.frame[0].map((_,j)=>d.frame.reduce((sum,f)=>cAdd(sum,cScale(f[j],1/Math.sqrt(3))),[0,0]));
+    const apply=(M,v)=>M.map(row=>row.reduce((sum,z,j)=>cAdd(sum,cMul(z,v[j])),[0,0]));
+    const u=apply(E[a],seed),v=apply(E[c],seed),product=Math.hypot(...u.flat())*Math.hypot(...v.flat());
+    const correlation=product?cScale(inner(u,apply(b.K,v)),1/product):[0,0];expectedMagnitudes.push(magnitude);
     check(Math.abs(g.magnitudes[k]-magnitude)<1e-8*Math.max(1,magnitude),'physical block magnitude');
-    check(distance(g.phaseCorrelations[k],correlation)<1e-8*Math.max(1,...correlation.map(Math.abs)),'physical complex contraction');
+    check(distance(g.phaseCorrelations[k],correlation)<1e-8*Math.max(1,...correlation.map(Math.abs)),'normalized camera-projection phase');
    });
    const expected=Math.hypot(...b.K.flat(2))*visibility;
    check(Math.abs(Math.hypot(...expectedMagnitudes)-expected)<1e-7*Math.max(1,expected),'blocks retain physical cotangent norm');

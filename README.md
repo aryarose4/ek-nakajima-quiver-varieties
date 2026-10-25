@@ -421,3 +421,13 @@ source parameters. Negative-beta flag displays remain unsupported.
 The fixed-point formulas were also checked against 15 balanced representatives
 at three level vectors in this chamber, with moment errors below 9e-10.
 This numerical check supports the grading derivation; it is not its proof.
+
+Cotangent arrow hue uses normalized projections of the existing camera seed
+`(f_1+f_2+f_3)/sqrt(3)` into the three orthogonal flag lines:
+`c_ab = e_a^* K e_b`. This phase convention is invariant under central and
+branch unitary gauge and under the common camera phase. Physical block norm
+(including object visibility) determines saturation `85 m/(1+m)` and opacity.
+Hue confidence multiplies saturation by `p/hypot(p,.001)`, where `p` is the
+product of the two seed-projection norms. The `.001` is a smooth display
+regularizer, not a rank threshold. At zero projection, phase is undefined
+and the nonzero physical arrow remains neutral at its physical opacity.
