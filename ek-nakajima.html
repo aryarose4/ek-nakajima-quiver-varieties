@@ -6101,7 +6101,7 @@ function balancedTensorDiagram(rep) {
       const W=p.reduce(cAdd,[0,0]);
       atInfinity=abs(W)<1e-9;
       if(atInfinity)cameraDefects.push({kind:'affine-infinity',flag:i});
-      else point=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
+      if(abs(W)>1e-15)point=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
     }
     const extent=Math.max(1,...point.map(x=>Math.abs(x)/LIMIT));
     const marker=point.map(x=>x/extent);
@@ -6130,7 +6130,7 @@ function balancedTensorDiagram(rep) {
         // this equals the ordinary marked-point anchor; at true real incidence
         // the correction is zero for every weight.
         const opacity=pointOpacities[i];
-        const correction=opacity*residual/(1+(1-opacity)*Math.abs(residual));
+        const correction=atInfinity?0:opacity*residual/(1+(1-opacity)*Math.abs(residual));
         const anchor=normal.map(x=>x*(-offset+correction));
         segment=clip(anchor,[normal[1],-normal[0]]);
         if(!segment){cameraDefects.push({kind:'line-outside-camera',flag:i});segment=[[0,0],[0,0]];}
@@ -6140,17 +6140,22 @@ function balancedTensorDiagram(rep) {
     // rather than radially from the canvas origin. When the raw point lies on
     // its own line this puts the boundary arrow exactly at that line's exit.
     // The raw projective position and all complex incidence tests are unchanged.
-    if(extent>1&&!atInfinity&&segment&&normRealDifference(segment[0],segment[1])>1e-12) {
-      const center=segment[0].map((x,j)=>(x+segment[1][j])/2);
-      const direction=point.map((x,j)=>x-center[j]);
-      let fraction=1;
-      for(let j=0;j<2;j++)if(direction[j]!==0) {
-        const boundary=direction[j]>0?LIMIT:-LIMIT;
-        fraction=Math.min(fraction,(boundary-center[j])/direction[j]);
+    if(extent>1||atInfinity) {
+      const visible=segment&&normRealDifference(segment[0],segment[1])>1e-12;
+      const center=visible?segment[0].map((x,j)=>(x+segment[1][j])/2):[0,0];
+      const ray=atInfinity&&visible?segment[1].map((x,j)=>x-segment[0][j]):point.map((x,j)=>x-center[j]);
+      const direction=unitReal(ray),exits=clip(center,direction);
+      if(exits) {
+        const distance=normRealDifference(point,center);
+        const eta=atInfinity?0:Math.min(1,normRealDifference(exits[1],center)/distance);
+        const pair=exits.map((p,k)=>({point:p,direction:direction.map(x=>x*(k?1:-1)),weight:.5*(1+(k?1:-1)*eta)}));
+        // Geometric ordering is independent of which affine end contains the point.
+        pair.sort((a,b)=>a.point[0]-b.point[0]||a.point[1]-b.point[1]);
+        pointMarkers[i].boundaryPair=pair;
+        const primary=pair.reduce((a,b)=>a.weight>b.weight?a:b);
+        marker.forEach((_,j)=>{marker[j]=primary.point[j];});
+        pointMarkers[i].direction=primary.direction;
       }
-      fraction=Math.max(0,fraction);
-      marker.forEach((_,j)=>{marker[j]=center[j]+fraction*direction[j];});
-      pointMarkers[i].direction=unitReal(direction);
     }
     lines.push(segment);
     // Restore the signed dual-coordinate correlation used by balancedDiagram.
@@ -6759,6 +6764,25 @@ function interpolateScreenLayout(from, target, progress) {
   if (target.cotangentTargets) result.cotangentTargets = target.cotangentTargets.map((v, i) =>
     v && from.cotangentTargets && from.cotangentTargets[i] ? { ...v,
       point: coordinates(from.cotangentTargets[i].point, v.point) } : v);
+  if (target.pointMarkers) result.pointMarkers=target.pointMarkers.map((m,i)=>{
+    const old=from.pointMarkers&&from.pointMarkers[i];
+    if(!old||(!m.boundaryPair&&!old.boundaryPair))return m;
+    function expanded(marker,point,reference) {
+      if(marker.boundaryPair)return marker.boundaryPair;
+      const nearest=reference.reduce((best,v,k)=>
+        Math.hypot(...v.point.map((x,j)=>x-point[j]))<Math.hypot(...reference[best].point.map((x,j)=>x-point[j]))?k:best,0);
+      return reference.map((v,k)=>({...v,point,weight:k===nearest?1:0}));
+    }
+    const reference=m.boundaryPair||old.boundaryPair;
+    let a=expanded(old,from.points[i],reference);
+    const b=expanded(m,target.points[i],reference);
+    const cost=(x,y)=>Math.hypot(...x.point.map((v,j)=>v-y.point[j]));
+    if(old.boundaryPair&&m.boundaryPair&&cost(a[0],b[1])+cost(a[1],b[0])<cost(a[0],b[0])+cost(a[1],b[1]))a=[a[1],a[0]];
+    return {...m,clipped:true,boundaryPair:b.map((v,k)=>({...v,
+      point:coordinates(a[k].point,v.point),
+      direction:coordinates(a[k].direction,v.direction),
+      weight:a[k].weight+t*(v.weight-a[k].weight)}))};
+  });
   return result;
 }
 
@@ -7035,16 +7059,20 @@ function makeElementView(host, opts) {
         if (data.pointEqual && data.pointEqual[i][j]) groupIndex++;
       }
       ctx.strokeStyle = layout.incidenceColors ? incidenceColor(layout.incidenceColors.pointHues[i], layout.incidenceColors.pointStrengths[i], pal.dark) : layout.pointPhaseVectors ? balancedPhaseColor(layout.pointPhases[i], layout.pointPhaseVectors[i], pal.dark) : pal.point;
-      glow(p, i, ctx.strokeStyle, pointOpacity);
+      const marks=marker&&marker.clipped&&marker.boundaryPair?marker.boundaryPair:[{point:layout.points[i],direction:marker&&marker.direction,weight:1}];
+      marks.forEach(mark=>glow(pixel(mark.point),i,ctx.strokeStyle,pointOpacity*mark.weight));
       ctx.globalAlpha = pointOpacity;
       ctx.lineWidth = 2;
       if (marker && marker.clipped) {
-        const d = [marker.direction[0], -marker.direction[1]];
+        marks.forEach(mark=>{
+        const p=pixel(mark.point),d=[mark.direction[0],-mark.direction[1]];
+        ctx.globalAlpha=pointOpacity*mark.weight;
         ctx.beginPath();
         ctx.moveTo(p[0] - 8 * d[0] - 4 * d[1], p[1] - 8 * d[1] + 4 * d[0]);
         ctx.lineTo(p[0], p[1]);
         ctx.lineTo(p[0] - 8 * d[0] + 4 * d[1], p[1] - 8 * d[1] - 4 * d[0]);
         ctx.stroke();
+        });
       } else {
         ctx.beginPath(); ctx.arc(p[0], p[1], 4 + 3 * groupIndex, 0, Math.PI * 2);
         if (groupIndex === 0) { ctx.fillStyle = pal.background; ctx.fill(); }
@@ -7055,18 +7083,21 @@ function makeElementView(host, opts) {
       const target=layout.cotangentTargets&&layout.cotangentTargets[i];
       const arrows=cotangentArrowGeometry(p,layout.lines[i].map(pixel),target&&target.point?pixel(target.point):null);
       if(showYData&&glyph)glyph.coefficients.forEach((z,k)=>{
+        const anchors=k<2?marks:[{point:layout.points[i],weight:1}];
+        anchors.forEach(mark=>{
         const style=cotangentGlyphStyle(glyph,k,pal.dark,Math.min(pointOpacity,lineOpacity));
-        const color=style.color,arrow=arrows[k];
+        const color=style.color,arrow=k<2?cotangentArrowGeometry(pixel(mark.point),layout.lines[i].map(pixel),null)[k]:arrows[k];
         if(!color||!arrow)return;
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
-        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity;
+        ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity*mark.weight;
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
           ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
         }
         ctx.stroke();
+        });
       });
       ctx.globalAlpha=1;
     }

@@ -122,3 +122,23 @@ The boundary correction does not claim to resolve them. A tested complex
 quadrature bridge removes the latter axis flip but breaks real special
 incidences; it was rejected. Browser checks retain native snaps, smooth
 snap animation and changing line hues in modular and bundled versions.
+
+## Paired boundary indicators
+
+Off-screen marked points now have two outward boundary indicators with
+complementary brightness. At the two tested real affine-infinity crossings
+(default r approximately .425744384 and .612256178), both indicators approach
+half brightness, avoiding an abrupt exchange of viewport ends. The camera,
+line hues and complex incidence classifications are unchanged. The first
+two cotangent arrows share the indicators' weights; the third remains at
+its existing line target. Screen-only snap interpolation matches endpoints
+and handles entering and leaving the paired display.
+
+The registered paired-boundary battery checks both crossings, rendered
+chevrons and nonzero cotangent arrows, viewport entry, snap transitions and
+unitary gauge invariance. Modular and bundled browser checks also retain
+native snaps and changing line hues. This is a fix for the tested real
+infinity crossings, not a global continuity claim for arbitrary complex
+poles or the separate QR-axis cancellation. The legacy single primary
+marker coordinate can still exchange ends; continuity checks must examine
+the actual weighted pair drawn by the renderer.
