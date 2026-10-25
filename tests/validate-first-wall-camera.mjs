@@ -30,4 +30,3 @@ import {source} from './continuity-features.mjs';
  }
  console.log('First-wall camera: '+compared+' exact geometry matches, '+defects+' matched historical defects; '+chambers.length+' default/first-hop/multihop chamber paths.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
-
