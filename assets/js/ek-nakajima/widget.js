@@ -75,6 +75,7 @@ function ensureStyles() {
     "}",
     "#ek-nakajima-widget .ek-quiver { margin: 12px 0 20px; color: inherit; }",
     "#ek-nakajima-widget .ek-quiver img { display: block; width: 100%; max-width: 520px; height: auto; margin: auto; }",
+    '#ek-nakajima-widget .ek-quiver[data-type="E6"] img { max-width: 400px; }',
     "#ek-nakajima-widget .ek-quiver .ek-quiver-dark { display: none; }",
     '[data-theme="dark"] #ek-nakajima-widget .ek-quiver .ek-quiver-light { display: none; }',
     '[data-theme="dark"] #ek-nakajima-widget .ek-quiver .ek-quiver-dark { display: block; }',
@@ -150,8 +151,9 @@ function introMarkup(key) {
     return INTRO_QUIVER_IMAGES ? INTRO_QUIVER_IMAGES[name] : 'assets/img/ek-nakajima/' + name;
   };
   const alt = 'Doubled ' + key + ' quiver, dimensions ' + q.marks.join(', ') + '. Left, right and upper branches; x points inward and y outward. Central SL(' + q.rStar + ', C), GL at other vertices; no framing.';
-  return '<figure class="ek-quiver"><img class="ek-quiver-light" src="'+image('light')+'" alt="'+alt+'"><img class="ek-quiver-dark" src="'+image('dark')+'" alt="'+alt+'"><figcaption>Q: doubled affine E<sub>'+key.slice(1)+'</sub> quiver</figcaption></figure>'+
-    '<div class="intro"><p>'+(key === "E6" ? "The sliders" : "In the E6 explorer, the sliders")+' parameterize &beta;-stable representations (x,y) of Q with complex moment 0, up to the action of the complex symmetry group. The solver finds a complex gauge transformation that balances (x, y) at &mu;<sub>&Ropf;</sub> = &beta;; the flag incidence panel displays the result.</p><p>For generic &beta;, this moduli space of four real dimensions is the minimal resolution of &Copf;&sup2;/&Gamma;, where &Gamma; &sub; SU(2) is the binary '+group+' group. With its hyperk&auml;hler metric, it is the ALE '+key+' gravitational instanton.</p><p class="ek-intro-note">'+(key === 'E6' ? 'The live solver and flag-incidence view currently support E6.' : 'The '+key+' quiver and schematic core are available; its solver and flag-incidence view are not yet implemented.')+'</p></div>';
+  const typeMarkup = 'E<sub>' + key.slice(1) + '</sub>';
+  return '<figure class="ek-quiver" data-type="'+key+'"><img class="ek-quiver-light" src="'+image('light')+'" alt="'+alt+'"><img class="ek-quiver-dark" src="'+image('dark')+'" alt="'+alt+'"><figcaption>Q: doubled affine '+typeMarkup+' quiver</figcaption></figure>'+
+    '<div class="intro"><p>'+(key === "E6" ? "The sliders" : "In the E<sub>6</sub> explorer, the sliders")+' parameterize &beta;-stable representations (x,y) of Q with complex moment 0, up to the action of the complex symmetry group. The solver finds a complex gauge transformation that balances (x, y) at &mu;<sub>&Ropf;</sub> = &beta;; the flag incidence panel displays the result.</p><p>For generic &beta;, this moduli space of four real dimensions is the minimal resolution of &Copf;&sup2;/&Gamma;, where &Gamma; &sub; SU(2) is the binary '+group+' group. With its hyperk&auml;hler metric, it is the ALE-'+typeMarkup+' gravitational instanton.</p><p class="ek-intro-note">'+(key === 'E6' ? 'The live solver and flag-incidence view currently support E<sub>6</sub>.' : 'The '+typeMarkup+' quiver and schematic core are available; its solver and flag-incidence view are not yet implemented.')+'</p></div>';
 }
 
 function activate(container) {
