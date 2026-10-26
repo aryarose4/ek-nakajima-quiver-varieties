@@ -1,4 +1,19 @@
-// Live complex arrow matrices, before real moment-map balancing.
+// Live arrow matrices in the selected representative.
+import { applyComplexGauge } from './solver.js';
+
+export function representativeForDisplay(result, mode) {
+  if (!result || !result.success || !result.solvedRep) return null;
+  if (mode !== 'complex') return result.solvedRep;
+  if (!result.chamberId || result.chamberId === 'default') return result.rawRep;
+  // rawRep belongs to the SOURCE chamber after reflection transport.
+  // Central diag(2,1,1/2), with identity leg gauges, is a fixed positive
+  // determinant-one complex gauge of the TARGET balanced representation.
+  // It preserves its complex moment map and orbit without another solve.
+  const identity = [[[1,0],[0,0]],[[0,0],[1,0]]];
+  return applyComplexGauge(result.solvedRep,
+    [[[2,0],[0,0],[0,0]],[[0,0],[1,0],[0,0]],[[0,0],[0,0],[0.5,0]]],
+    [identity,identity,identity], [1,1,1]);
+}
 export function formatComplex(z) {
   if (z == null) return "\u2014";
   const real = typeof z === "number" ? z : z[0];

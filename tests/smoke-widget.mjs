@@ -208,6 +208,25 @@ async function main() {
   const balanced = () => incidence.getAttribute('data-balanced') === 'true' && Number(incidence.getAttribute('data-real-residual')) < 1e-7;
   const matrixText = () => cells.map(e => e.textContent).join(',');
   check('initial displayed matrices are balanced', balanced());
+  const balancedButton = all.find(e => e.id === 'ek-representative-balanced');
+  const complexButton = all.find(e => e.id === 'ek-representative-complex');
+  check('balanced representative selected by default', balancedButton.getAttribute('aria-pressed') === 'true' && complexButton.getAttribute('aria-pressed') === 'false');
+  const balancedText = matrixText();
+  const incidenceBeforeRepresentativeToggle = incidence.getAttribute('data-displayed-parameters');
+  complexButton._fire('click');
+  check('complex selector changes matrices without changing incidence', matrixText() !== balancedText && incidence.getAttribute('data-displayed-parameters') === incidenceBeforeRepresentativeToggle && complexButton.getAttribute('aria-pressed') === 'true');
+  const copied = [];
+  Object.defineProperty(globalThis, 'navigator', {configurable:true,value:{clipboard:{writeText(text) {copied.push(text); return Promise.resolve();}}}});
+  const copyButton = all.find(e => e.className === 'ek-rep-copy');
+  copyButton._fire('click'); await Promise.resolve(); await Promise.resolve();
+  check('copy follows selected complex matrices', copied.length === 1 && copied[0].includes(cells[0].textContent));
+  set(radius, 0.3);
+  check('complex selection persists across slider changes', complexButton.getAttribute('aria-pressed') === 'true' && cells.every(e => e.textContent !== '\u2014'));
+  set(radius, 0.5);
+  balancedButton._fire('click');
+  check('balanced toggle restores balanced matrices', matrixText() === balancedText && balancedButton.getAttribute('aria-pressed') === 'true');
+  copyButton._fire('click'); await Promise.resolve(); await Promise.resolve();
+  check('copy changes with representative selection', copied.length === 2 && copied[0] !== copied[1]);
   const beta0 = all.find(e => e.id === 'ek-beta-0');
   const matricesBeforeBeta = matrixText();
   set(beta0, 1.52);
@@ -283,6 +302,9 @@ async function main() {
   check("leaving an arm resets sphere selection and restores finite chart", balanced());
   set(radius, 0); set(t, 1); limit._fire("click", { type: "click" }); flushRaf();
   findByText(container, "E7")._fire("click", {type:"click"}); flushRaf();
+  complexButton._fire('click');
+  check('unsupported complex toggle cannot restore stale matrices', cells.every(e => e.textContent === '\u2014'));
+  balancedButton._fire('click');
   check("unsupported type clears stale representative", cells.every(function(e) { return e.textContent === "\u2014"; }));
   findByText(container, "E6")._fire("click", {type:"click"}); flushRaf();
   check("returning to E6 restores representative", balanced());
@@ -366,7 +388,13 @@ async function main() {
   const asyncIncidence=asyncElements.find(e=>e.id==='ek-incidence-view');
   const asyncCanvas=walk(asyncIncidence,[]).find(e=>e.tagName==='CANVAS');
   set(asyncRadius,.3);worker.finish();
+  const asyncCells=asyncElements.filter(e=>e.className==='ek-rep-cell');
+  const asyncComplex=asyncElements.find(e=>e.id==='ek-representative-complex');
+  const asyncBalanced=asyncElements.find(e=>e.id==='ek-representative-balanced');
   set(asyncRadius,.49); // Start snapped request; leave it in flight.
+  asyncComplex._fire('click');
+  check('pending toggle keeps stale matrices cleared without another solve', asyncCells.every(e=>e.textContent==='\u2014') && worker.requests.length===1);
+  asyncBalanced._fire('click');
   asyncRadius.value='.47';asyncRadius._fire('input');
   asyncRadius.value='.46';asyncRadius._fire('input');flushRaf();
   worker.finish(); // Obsolete snapped request is validated progress.
@@ -378,6 +406,22 @@ async function main() {
   set(asyncRadius,.4);worker.finish();
   check('accepted final clears snap intent for ordinary later inputs',asyncCanvas.getAttribute('data-snap-transition')==='false');
   Date.now=realDateNow;
+  const {E6_ADJACENT_WORD,e6ReflectLevels}=await import('./e6-chamber-transport.js');
+  const {E6_REGULAR_LEVELS}=await import('./e6-levels.js');
+  const targetLevels=E6_ADJACENT_WORD.reduce((z,v)=>e6ReflectLevels(z,v),E6_REGULAR_LEVELS);
+  set(asyncRadius,.42); const chamberRequest=worker.requests.shift();
+  asyncComplex._fire('click');
+  const transportedResult=solveBalancedAtlas(chamberRequest.parameters,targetLevels,{chamber:'side-zero-second'});
+  worker.onmessage({data:transportedResult});
+  const {representativeForDisplay,formatComplex}=await import('./representation-readout.js');
+  const expectedComplex=representativeForDisplay(transportedResult,'complex');
+  const expectedCells=[];
+  for(let branch=0;branch<3;branch++) for(const key of ['a','A','b','B']) for(const row of expectedComplex[key][branch]) for(const z of row) expectedCells.push(formatComplex(z));
+  check('selected complex mode follows transported chamber result',asyncComplex.getAttribute('aria-pressed')==='true' && asyncCells.map(e=>e.textContent).join(',')===expectedCells.join(','));
+  set(asyncRadius,.41);
+  worker.requests.shift(); worker.onmessage({data:{success:false}});
+  asyncComplex._fire('click');
+  check('failed solve cannot restore previous complex representation',asyncCells.every(e=>e.textContent==='\u2014'));
   console.log("smoke-widget: " + pass + "/" + (pass+fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);
 }

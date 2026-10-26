@@ -8,7 +8,7 @@ import { createBalancedClient } from './balanced-client.js';
 import { e6CoreAreas } from "./e6-areas.js";
 import { createParametersPanel } from "./parameters-panel.js";
 import { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
-import { makeRepresentationReadout } from "./representation-readout.js";
+import { makeRepresentationReadout, representativeForDisplay } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
 import { snapSliderInput } from "./slider-magnet.js";
 
@@ -131,6 +131,9 @@ function ensureStyles() {
     "#ek-nakajima-widget .ek-btn { padding: 2px 10px; border: 1px solid var(--ek-btn-bd);",
     "  border-radius: 6px; background: transparent; color: var(--ek-btn-tx);",
     "  font-size: 0.85em; cursor: pointer; font-family: inherit; }",
+    "#ek-nakajima-widget .ek-btn[aria-pressed='true'] { background: var(--ek-btn-tx); border-color: var(--ek-btn-tx); color: #fff; }",
+    "[data-theme='dark'] #ek-nakajima-widget .ek-btn[aria-pressed='true'] { color: #14181e; }",
+    "#ek-nakajima-widget .ek-btn:focus-visible { outline:2px solid currentColor; outline-offset:2px; }",
     "#ek-nakajima-widget .ek-btn:hover { border-color: var(--ek-btn-tx); }",
   ].join("\n");
   document.head.appendChild(style);
@@ -184,9 +187,47 @@ function activate(container) {
   container.appendChild(matrixHost);
   const matrixLabel = document.createElement("div");
   matrixLabel.className = "ek-sec";
-  matrixLabel.textContent = "Balanced representative";
+  matrixLabel.textContent = "Balanced Representative";
   matrixHost.appendChild(matrixLabel);
+  let representationMode = 'balanced';
+  let displayedResult = null;
+  const representationButtons = {};
+  const representationSelector = document.createElement("div");
+  representationSelector.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px";
+  representationSelector.setAttribute('role', 'group');
+  representationSelector.setAttribute('aria-label', 'Representative');
+  matrixHost.appendChild(representationSelector);
+  [['balanced', 'Balanced Representative'], ['complex', 'Complex Orbit Representative']].forEach(function(entry) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ek-btn';
+    button.id = 'ek-representative-' + entry[0];
+    button.textContent = entry[1];
+    button.setAttribute('aria-pressed', entry[0] === representationMode ? 'true' : 'false');
+    button.addEventListener('click', function() {
+      representationMode = entry[0];
+      refreshRepresentation();
+    });
+    representationButtons[entry[0]] = button;
+    representationSelector.appendChild(button);
+  });
   const matrices = makeRepresentationReadout(matrixHost);
+  function refreshRepresentation() {
+    Object.keys(representationButtons).forEach(function(mode) {
+      const selected = mode === representationMode;
+      representationButtons[mode].setAttribute('aria-pressed', selected ? 'true' : 'false');
+      representationButtons[mode].classList.toggle('active', selected);
+    });
+    matrixLabel.textContent = representationButtons[representationMode].textContent;
+    const rep = representativeForDisplay(displayedResult, representationMode);
+    matrixHost.title = representationMode === 'complex' ? 'A gauge-equivalent representative of the current complex orbit' : '';
+    matrices.setData(rep);
+  }
+  function clearRepresentation() {
+    displayedResult = null;
+    refreshRepresentation();
+  }
+  refreshRepresentation();
 
   const row = document.createElement("div");
   row.className = "ek-row";
@@ -210,8 +251,8 @@ function activate(container) {
     col.appendChild(label);
     return box;
   }
-  const incidenceFrame = frame(left, "ek-incidence-view", "Flag incidence");
-  const coreFrame = frame(right, "ek-moduli-view", "Moduli space");
+  const incidenceFrame = frame(left, "ek-incidence-view", "Flag Incidence");
+  const coreFrame = frame(right, "ek-moduli-view", "Moduli Space");
   const modPanel = document.createElement("div");
   modPanel.className = "ek-panel";
   left.appendChild(modPanel);
@@ -325,7 +366,8 @@ function activate(container) {
     apply();
   } });
   function displayBalanced(result, parameters, levels, animateSnap) {
-    matrices.setData(result.solvedRep);
+    displayedResult = result;
+    refreshRepresentation();
     const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame, animateSnap: !!animateSnap });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
@@ -398,7 +440,7 @@ function activate(container) {
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
-      matrices.setData(null);
+      clearRepresentation();
       incidenceView.setData(null);
       incidenceView.setStatus("E6 only", "warn");
       return;
@@ -420,6 +462,7 @@ function activate(container) {
         return;
       }
       lastBalancedKey = key;
+      clearRepresentation();
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
       balancedClient.request(parameters, function (result) {
@@ -428,7 +471,7 @@ function activate(container) {
         if (!result.success) {
           outstandingSnap = false;
           incidenceFrame.setAttribute('data-balanced', 'false');
-          matrices.setData(null);
+          clearRepresentation();
           incidenceView.setData(null);
           incidenceView.setStatus('Balanced representation unavailable', 'error');
           return;
@@ -442,7 +485,7 @@ function activate(container) {
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
-      matrices.setData(null);
+      clearRepresentation();
       incidenceView.setData(null);
       incidenceView.setStatus("Representation unavailable", "error");
     }
