@@ -73,7 +73,15 @@ function ensureStyles() {
     "  --ek-btn-bd: #4a525e;",
     "  --ek-btn-tx: #a0a8b2;",
     "}",
-    "#ek-nakajima-widget { position: relative; }",
+    "#ek-nakajima-widget { position: relative; --ek-node-bg: #fff; }",
+    '[data-theme="dark"] #ek-nakajima-widget { --ek-node-bg: #1c1c1d; }',
+    "#ek-nakajima-widget .ek-quiver { margin: 12px 0 20px; color: inherit; }",
+    "#ek-nakajima-widget .ek-quiver svg { display: block; width: 100%; max-width: 650px; height: auto; margin: auto; font: 16px Georgia, serif; }",
+    "#ek-nakajima-widget .ek-quiver svg text { fill: currentColor; }",
+    "#ek-nakajima-widget .ek-quiver figcaption { text-align: center; font-size: .8em; color: var(--ek-box-tx); }",
+    "#ek-nakajima-widget .ek-arrow-label { font-style: italic; font-size: 14px; }",
+    "#ek-nakajima-widget .ek-intro-note { color: var(--ek-box-tx); font-size: .85em; }",
+    "#ek-nakajima-widget .ek-introduction { margin-bottom: 24px; }",
     "#ek-nakajima-widget .ek-tabs { display: flex; flex-wrap: wrap; gap: 6px;",
     "  align-items: center; margin-bottom: 12px; }",
     "#ek-nakajima-widget .ek-tab { padding: 2px 12px; border: 1px solid var(--ek-btn-bd);",
@@ -131,6 +139,48 @@ function ensureStyles() {
 // ---------------------------------------------------------------------------
 // Mount.
 // ---------------------------------------------------------------------------
+// The doubled affine quiver, with x directed toward the central vertex.
+// In E6 these are the atlas maps a_i: C -> C^2 and A_i: C^2 -> C^3;
+// y denotes the reverse maps b_i and B_i. No extra framing vertex is added.
+function introMarkup(key) {
+  const q = AFFINE_ADE[key];
+  const arms = key === "E6" ? [[1,0],[3,4],[5,6]] : key === "E7" ? [[2,1,0],[4,5,6],[7]] : [[4,3,2,1,0],[6,7],[8]];
+  const angles = [Math.PI, 0, -Math.PI / 2];
+  const center = [430, 220], step = 72;
+  const positions = {}; positions[q.junction] = center;
+  let edges = "";
+  arms.forEach(function (arm, a) {
+    let parent = q.junction;
+    arm.forEach(function (node, j) {
+      const angle = angles[a], dx = Math.cos(angle), dy = Math.sin(angle);
+      const pos = [center[0] + (j+1)*step*dx, center[1] + (j+1)*step*dy];
+      positions[node] = pos;
+      const prev = positions[parent], nx = -dy, ny = dx;
+      [1,-1].forEach(function (sign) {
+        const start = sign === 1 ? pos : prev, end = sign === 1 ? prev : pos;
+        const ux = sign === 1 ? -dx : dx, uy = sign === 1 ? -dy : dy;
+        edges += '<path d="M '+(start[0]+ux*21+nx*sign*6)+' '+(start[1]+uy*21+ny*sign*6)+' L '+(end[0]-ux*24+nx*sign*6)+' '+(end[1]-uy*24+ny*sign*6)+'" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#ek-intro-arrow)"/>';
+        edges += '<text x="'+((pos[0]+prev[0])/2+nx*sign*18)+'" y="'+((pos[1]+prev[1])/2+ny*sign*18+4)+'" text-anchor="middle" class="ek-arrow-label">'+(sign===1?'x':'y')+'</text>';
+      });
+      parent=node;
+    });
+  });
+  let nodes = "";
+  Object.keys(positions).forEach(function (i) {
+    const p=positions[i];
+    nodes += '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="19" fill="var(--ek-node-bg, #fff)" stroke="currentColor" stroke-width="1.4"'+(Number(i)===q.affineNode?' stroke-dasharray="3 3"':'')+'/><text x="'+p[0]+'" y="'+(p[1]+5)+'" text-anchor="middle">'+q.marks[i]+'</text>';
+  });
+  const points = Object.keys(positions).map(function (i) { return positions[i]; });
+  const minX = Math.min.apply(null, points.map(function (p) { return p[0]; })) - 40;
+  const minY = Math.min.apply(null, points.map(function (p) { return p[1]; })) - 40;
+  const maxX = Math.max.apply(null, points.map(function (p) { return p[0]; })) + 40;
+  const maxY = Math.max.apply(null, points.map(function (p) { return p[1]; })) + 40;
+  const viewBox = [minX, minY, maxX - minX, maxY - minY].join(" ");
+  const group = key === "E6" ? "tetrahedral" : key === "E7" ? "octahedral" : "icosahedral";
+  return '<figure class="ek-quiver"><svg viewBox="'+viewBox+'" role="img" aria-labelledby="ek-quiver-title ek-quiver-desc"><title id="ek-quiver-title">Doubled affine '+key+' quiver</title><desc id="ek-quiver-desc">Vertex labels give dimension vector delta = ('+q.marks.join(', ')+'). Each edge has x directed toward the central vertex and y in reverse. The dashed vertex is affine.</desc><defs><marker id="ek-intro-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor"/></marker></defs>'+edges+nodes+'</svg><figcaption>Doubled affine '+key+' quiver &middot; vertex labels: dimensions &delta; &middot; dashed vertex: affine</figcaption></figure>'+
+    '<div class="intro"><p>'+(key === "E6" ? "The sliders" : "In the E6 explorer, the sliders")+' parameterize &beta;-stable representations (x, y) satisfying &mu;<sub>&Copf;</sub> = 0, up to complex symmetries. The solver finds a complex gauge transformation that balances (x, y) at &mu;<sub>&Ropf;</sub> = &beta;; the flag incidence panel displays the result.</p><p>For generic &beta;, this moduli space of four real dimensions is the minimal resolution of &Copf;&sup2;/&Gamma;, where &Gamma; &sub; SU(2) is the binary '+group+' group. With its hyperk&auml;hler metric, it is the ALE '+key+' gravitational instanton.</p><p class="ek-intro-note">'+(key === 'E6' ? 'The live solver and flag-incidence view currently support E6.' : 'The '+key+' quiver and schematic core are available; its solver and flag-incidence view are not yet implemented.')+'</p></div>';
+}
+
 function activate(container) {
   ensureStyles();
   container.setAttribute("data-e6-levels", JSON.stringify(betaToLevels(E6_DEFAULT_BETA)));
@@ -148,6 +198,10 @@ function activate(container) {
     tabs.appendChild(button);
     tabButtons[key] = button;
   });
+
+  const intro = document.createElement("section");
+  intro.className = "ek-introduction";
+  container.appendChild(intro);
 
   const matrixHost = document.createElement("div");
   matrixHost.className = "ek-panel";
@@ -424,9 +478,11 @@ function activate(container) {
     if (coreView) coreView.setLayout(layout);
   }
   function sync() {
+    intro.innerHTML = introMarkup(state.key);
     parametersPanel.setEnabled(state.key === "E6");
     Object.keys(tabButtons).forEach(function (key) {
       tabButtons[key].classList.toggle("ek-active", key === state.key);
+      tabButtons[key].setAttribute("aria-pressed", String(key === state.key));
     });
     refreshCoreLayout();
     state.arm = -1;
