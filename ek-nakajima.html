@@ -6751,6 +6751,9 @@ return { viewBasis, projectPoint, projectDepth, fitCamera, elementScreen };
 // ---- module: incidence-indicators ----
 const __ek_mod_incidence_indicators = (function () {
 // Describe solved numerical flags only; display geometry is not evidence.
+function incidenceIndicatorKey(label) {
+  return label.indexOf('im(ϕ')===0 ? label.slice(0,label.indexOf(')')+1) : label;
+}
 function incidenceIndicators(data) {
   if (!data || !data.valid) return [];
   const ids = [0, 1, 2], subs = ['₁', '₂', '₃'];
@@ -6792,9 +6795,10 @@ function incidenceIndicators(data) {
   }
   const ordered=labels.map((label, index) => ({ label, index, height: height(label) }))
     .sort((a, b) => a.height - b.height || a.index - b.index).map(entry => entry.label);
-  // Image facts follow base flags and their chamber/arm's canonical climb.
+  // Compose image facts; reflected frames apply a combined canonical order
+  // below so every new badge follows surviving base and image badges.
   if (data.chamberId && data.chamberId !== 'default' && data.imageIncidences) {
-    (data.imageSourceOrder||ids).forEach(i=>{
+    ids.forEach(i=>{
       const image=data.imageIncidences[i];
       if(!image)return;
       const pg=points.filter(g=>g.some(j=>image.points[j]));
@@ -6804,10 +6808,18 @@ function incidenceIndicators(data) {
       if(targets.length)ordered.push('im(ϕ'+subs[i]+')⊂'+targets.join('∩'));
     });
   }
+  if(data.incidenceOrder) {
+    const rank=label=>{
+      const index=data.incidenceOrder.indexOf(incidenceIndicatorKey(label));
+      return index<0?data.incidenceOrder.length:index;
+    };
+    return ordered.map((label,index)=>({label,index,rank:rank(label)}))
+      .sort((a,b)=>a.rank-b.rank||a.index-b.index).map(entry=>entry.label);
+  }
   return ordered;
 }
 
-return { incidenceIndicators };
+return { incidenceIndicatorKey, incidenceIndicators };
 })();
 
 // ---- module: image-incidence-order ----
@@ -6816,10 +6828,12 @@ const { e6AtlasPoint } = __ek_mod_e6_atlas;
 const { e6TransportWord } = __ek_mod_e6_chamber_transport;
 const { e6ChamberWord } = __ek_mod_e6_parameters;
 const { E6_REGULAR_LEVELS } = __ek_mod_e6_levels;
-const { cSub, cMul, cScale } = __ek_mod_core_math;
+const { cAdd, cSub, cMul, cScale, matMul } = __ek_mod_core_math;
 const { fullImageIncidences } = __ek_mod_weighted_balanced_diagram;
+const { incidenceIndicators, incidenceIndicatorKey } = __ek_mod_incidence_indicators;
 // Canonical samples determine display order only. Current solved flags remain
 // the sole evidence for badges; this cache never manufactures an incidence.
+
 
 
 
@@ -6829,6 +6843,23 @@ const { fullImageIncidences } = __ek_mod_weighted_balanced_diagram;
 const cache=new Map(),ids=[0,1,2];
 const cross=(u,v)=>ids.map(i=>cSub(cMul(u[(i+1)%3],v[(i+2)%3]),cMul(u[(i+2)%3],v[(i+1)%3])));
 const norm=v=>Math.hypot(...v.map(z=>Math.hypot(...z)));
+// Pure normalized complex flags, including collapsed/missing flags. No camera
+// is consulted when deciding canonical badge order.
+function canonicalIncidences(rep,chamberId) {
+  const points=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
+  const lines=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
+  const pointPresent=points.map(p=>norm(p)>1e-12),linePresent=lines.map(n=>norm(n)>1e-12);
+  const unit=v=>norm(v)>1e-12?v.map(z=>cScale(z,1/norm(v))):v;
+  const ps=points.map(unit),ns=lines.map(unit),matrix=f=>ids.map(i=>ids.map(j=>f(i,j)));
+  const pairing=(p,n)=>Math.hypot(...p.reduce((s,z,i)=>cAdd(s,cMul(z,n[i])),[0,0]));
+  return {valid:true,chamberId,pointPresent,linePresent,
+    incident:matrix((i,j)=>pointPresent[i]&&linePresent[j]&&pairing(ps[i],ns[j])<=1e-8),
+    pointEqual:matrix((i,j)=>pointPresent[i]&&pointPresent[j]&&norm(cross(ps[i],ps[j]))<=1e-8),
+    lineEqual:matrix((i,j)=>linePresent[i]&&linePresent[j]&&norm(cross(ns[i],ns[j]))<=1e-8),
+    collinear:pointPresent.every(Boolean)&&pairing(ps[0],cross(ps[1],ps[2]))<=1e-8,
+    concurrent:linePresent.every(Boolean)&&pairing(ns[0],cross(ns[1],ns[2]))<=1e-8,
+    imageIncidences:fullImageIncidences(rep)};
+}
 function informativeImageSources(rep) {
   const normals=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
   const equal=(i,j)=>norm(normals[i])>1e-12&&norm(normals[j])>1e-12&&
@@ -6837,11 +6868,11 @@ function informativeImageSources(rep) {
     image.points.some(Boolean)||image.planes.some((yes,j)=>yes&&!equal(i,j)))?i:null)
     .filter(i=>i!==null);
 }
-function imageSourceOrder(chamberId,parameters) {
-  if(!chamberId||chamberId==='default'||!parameters)return ids.slice();
+function combinedIncidenceOrder(chamberId,parameters) {
+  if(!chamberId||chamberId==='default'||!parameters)return [];
   const {r,theta,t,outgoing}=parameters,sphere=parameters.sphere||0;
   const short=r===.5&&theta===0,long=r===0||r===1;
-  if(!short&&!long)return ids.slice();
+  if(!short&&!long)return [];
   const key=chamberId+':'+r;
   if(!cache.has(key)) {
     try {
@@ -6850,7 +6881,8 @@ function imageSourceOrder(chamberId,parameters) {
       const word=e6ChamberWord(chamberId);let order=[];
       const orders=stages.map(([stageSphere,stageT,stageOutgoing])=>{
         const raw=e6AtlasPoint({r,theta:0,phi:.37,sphere:stageSphere,t:stageT,outgoing:stageOutgoing}).rep;
-        const present=informativeImageSources(e6TransportWord(raw,E6_REGULAR_LEVELS,word).rep);
+        const rep=e6TransportWord(raw,E6_REGULAR_LEVELS,word).rep;
+        const present=incidenceIndicators(canonicalIncidences(rep,chamberId)).map(incidenceIndicatorKey);
         order=order.filter(i=>present.includes(i)).concat(present.filter(i=>!order.includes(i)));
         return order.slice();
       });
@@ -6862,14 +6894,14 @@ function imageSourceOrder(chamberId,parameters) {
     }
   }
   const orders=cache.get(key);
-  if(!orders)return ids.slice();
+  if(!orders)return [];
   const stage=outgoing?(short?3:5):short?(t===0?0:t===1?2:1):
     sphere===0?(t===0?0:t===1?2:1):(t===0?2:t===1?4:3);
   const order=orders[stage]||[];
-  return order.concat(ids.filter(i=>!order.includes(i)));
+  return order.slice();
 }
 
-return { informativeImageSources, imageSourceOrder };
+return { canonicalIncidences, informativeImageSources, combinedIncidenceOrder };
 })();
 
 // ---- module: element-render ----
@@ -6877,7 +6909,7 @@ const __ek_mod_element_render = (function () {
 const { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } = __ek_mod_flag_diagram;
 const { balancedTensorDiagram } = __ek_mod_weighted_balanced_diagram;
 const { incidenceIndicators } = __ek_mod_incidence_indicators;
-const { imageSourceOrder } = __ek_mod_image_incidence_order;
+const { combinedIncidenceOrder } = __ek_mod_image_incidence_order;
 // Balanced flags use hue for cross-incidence; legacy charts use phase.
 
 
@@ -6994,7 +7026,7 @@ function elementFrame(view) {
     const frame=balancedTensorDiagram(view.balancedRep, { previous: view.previous });
     if(frame.data) {
       frame.data.chamberId=view.chamberId;
-      frame.data.imageSourceOrder=imageSourceOrder(view.chamberId,view.parameters);
+      frame.data.incidenceOrder=combinedIncidenceOrder(view.chamberId,view.parameters);
     }
     return frame;
   }

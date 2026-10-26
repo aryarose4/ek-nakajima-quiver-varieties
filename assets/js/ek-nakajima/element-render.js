@@ -2,7 +2,7 @@
 import { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } from "./flag-diagram.js";
 import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
 import { incidenceIndicators } from './incidence-indicators.js';
-import { imageSourceOrder } from './image-incidence-order.js';
+import { combinedIncidenceOrder } from './image-incidence-order.js';
 
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
@@ -114,7 +114,7 @@ export function elementFrame(view) {
     const frame=balancedTensorDiagram(view.balancedRep, { previous: view.previous });
     if(frame.data) {
       frame.data.chamberId=view.chamberId;
-      frame.data.imageSourceOrder=imageSourceOrder(view.chamberId,view.parameters);
+      frame.data.incidenceOrder=combinedIncidenceOrder(view.chamberId,view.parameters);
     }
     return frame;
   }

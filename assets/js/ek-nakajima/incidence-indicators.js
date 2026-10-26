@@ -1,4 +1,7 @@
 // Describe solved numerical flags only; display geometry is not evidence.
+export function incidenceIndicatorKey(label) {
+  return label.indexOf('im(ϕ')===0 ? label.slice(0,label.indexOf(')')+1) : label;
+}
 export function incidenceIndicators(data) {
   if (!data || !data.valid) return [];
   const ids = [0, 1, 2], subs = ['₁', '₂', '₃'];
@@ -40,9 +43,10 @@ export function incidenceIndicators(data) {
   }
   const ordered=labels.map((label, index) => ({ label, index, height: height(label) }))
     .sort((a, b) => a.height - b.height || a.index - b.index).map(entry => entry.label);
-  // Image facts follow base flags and their chamber/arm's canonical climb.
+  // Compose image facts; reflected frames apply a combined canonical order
+  // below so every new badge follows surviving base and image badges.
   if (data.chamberId && data.chamberId !== 'default' && data.imageIncidences) {
-    (data.imageSourceOrder||ids).forEach(i=>{
+    ids.forEach(i=>{
       const image=data.imageIncidences[i];
       if(!image)return;
       const pg=points.filter(g=>g.some(j=>image.points[j]));
@@ -51,6 +55,14 @@ export function incidenceIndicators(data) {
       const targets=pg.map(g=>name('L',g[0])).concat(lg.map(g=>name('P',g[0])));
       if(targets.length)ordered.push('im(ϕ'+subs[i]+')⊂'+targets.join('∩'));
     });
+  }
+  if(data.incidenceOrder) {
+    const rank=label=>{
+      const index=data.incidenceOrder.indexOf(incidenceIndicatorKey(label));
+      return index<0?data.incidenceOrder.length:index;
+    };
+    return ordered.map((label,index)=>({label,index,rank:rank(label)}))
+      .sort((a,b)=>a.rank-b.rank||a.index-b.index).map(entry=>entry.label);
   }
   return ordered;
 }
