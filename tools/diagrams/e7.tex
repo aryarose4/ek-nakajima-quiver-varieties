@@ -5,7 +5,7 @@
 \definecolor{cdcolor}{RGB}{CDCOLOR}
 \usetikzlibrary{arrows.meta}
 \begin{document}
-\begin{tikzpicture}[x=1.65cm,y=1.5cm,color=cdcolor,>=Stealth,
+\begin{tikzpicture}[x=1.65cm,y=1.9cm,color=cdcolor,>=Stealth,
  every node/.style={text=cdcolor},vertex/.style={inner sep=5pt}]
 \node[vertex] (c) at (0,0) {$4$};
 \node[vertex] (v00) at (-1,0) {$3$};
@@ -27,7 +27,7 @@
 \draw[->,transform canvas={yshift=2pt}] (v12) -- node[midway,above,font=\small] {$x_{2}^{(1)}$} (v11);
 \draw[->,transform canvas={yshift=-2pt}] (v11) -- node[midway,below,font=\small] {$y_{2}^{(1)}$} (v12);
 \node[vertex] (v20) at (0,1) {$2$};
-\draw[->,transform canvas={xshift=2pt}] (v20) -- node[midway,right,font=\small] {$x_{3}^{(1)}$} (c);
-\draw[->,transform canvas={xshift=-2pt}] (c) -- node[midway,left,font=\small] {$y_{3}^{(1)}$} (v20);
+\draw[->,transform canvas={xshift=2pt}] (v20) -- node[pos=0.32,right,font=\small] {$x_{3}^{(1)}$} (c);
+\draw[->,transform canvas={xshift=-2pt}] (c) -- node[pos=0.68,left,font=\small] {$y_{3}^{(1)}$} (v20);
 \end{tikzpicture}
 \end{document}
