@@ -81,6 +81,10 @@ entries, horizontal scrolling, and per-branch copying. Cards stack on narrow
 hosts without changing height as values update. Newly gained dot/line or
 point coincidences and collinearity pulse the affected dots for 750 ms;
 new concurrence pulses its common marker. Unchanged incidences do not pulse.
+Cotangent-image incidence gains pulse the visible arrows ending at that image
+on every branch. The normal arrow at a branch's marked point participates
+when that point equals the image; equal images do not suppress another
+branch's arrow.
 The slider thumbs snap to the three radial attachments and zero phase;
 the readout, balanced solve and moduli view use the exact snapped coordinate.
 Only the incidence drawing eases to the new position over 160 ms. Further
