@@ -383,7 +383,11 @@ async function main() {
     finish(){const request=this.requests.shift();this.onmessage({data:solveBalancedAtlas(request.parameters,request.levels,{chamber:request.chamber})});}
   };
   const asyncContainer=makeEl('div');registry['ek-nakajima-widget']=asyncContainer;
-  await import('./widget.js?queued-snap');flushRaf();worker.finish();
+  await import('./widget.js?queued-snap');flushRaf();
+  const initialStatus=walk(asyncContainer,[]).find(e=>e.id==='ek-representative-status');
+  check('initial pending solve shows status before any representative',initialStatus.textContent==='Solving\u2026' && initialStatus.parentNode.parentNode.getAttribute('aria-busy')==='true');
+  worker.finish();
+  check('successful initial solve clears status',initialStatus.textContent==='' && initialStatus.parentNode.parentNode.getAttribute('aria-busy')==='false');
   const asyncElements=walk(asyncContainer,[]),asyncRadius=asyncElements.find(e=>e.id==='ek-r');
   const asyncIncidence=asyncElements.find(e=>e.id==='ek-incidence-view');
   const asyncCanvas=walk(asyncIncidence,[]).find(e=>e.tagName==='CANVAS');
@@ -391,15 +395,22 @@ async function main() {
   const asyncCells=asyncElements.filter(e=>e.className==='ek-rep-cell');
   const asyncComplex=asyncElements.find(e=>e.id==='ek-representative-complex');
   const asyncBalanced=asyncElements.find(e=>e.id==='ek-representative-balanced');
-  set(asyncRadius,.49); // Start snapped request; leave it in flight.
+  const previousBalanced=asyncCells.map(e=>e.textContent).join(',');
   asyncComplex._fire('click');
-  check('pending toggle keeps stale matrices cleared without another solve', asyncCells.every(e=>e.textContent==='\u2014') && worker.requests.length===1);
+  const previousComplex=asyncCells.map(e=>e.textContent).join(',');
+  asyncBalanced._fire('click');
+  set(asyncRadius,.49); // Start snapped request; leave it in flight.
+  check('pending solve retains balanced matrices and shows status',asyncCells.map(e=>e.textContent).join(',')===previousBalanced && initialStatus.textContent==='Solving\u2026');
+  asyncComplex._fire('click');
+  check('pending toggle uses previous complex representative without another solve', asyncCells.map(e=>e.textContent).join(',')===previousComplex && worker.requests.length===1);
   asyncBalanced._fire('click');
   asyncRadius.value='.47';asyncRadius._fire('input');
   asyncRadius.value='.46';asyncRadius._fire('input');flushRaf();
   worker.finish(); // Obsolete snapped request is validated progress.
   check('obsolete snapped worker progress retains easing intent',asyncCanvas.getAttribute('data-snap-transition')==='true');
+  check('obsolete progress keeps latest request status busy',initialStatus.textContent==='Solving\u2026');
   worker.finish(); // Latest coalesced nonsnap request completes.
+  check('latest completion clears status',initialStatus.textContent==='');
   check('coalesced nonsnap final retains pending snap ease',asyncCanvas.getAttribute('data-snap-transition')==='true');
   check('coalesced final remains mathematically exact',JSON.parse(asyncIncidence.getAttribute('data-displayed-parameters')).r===.46);
   const realDateNow=Date.now,future=Date.now()+1000;Date.now=()=>future;
@@ -422,6 +433,12 @@ async function main() {
   worker.requests.shift(); worker.onmessage({data:{success:false}});
   asyncComplex._fire('click');
   check('failed solve cannot restore previous complex representation',asyncCells.every(e=>e.textContent==='\u2014'));
+  check('failed solve clears status',initialStatus.textContent==='' && initialStatus.parentNode.parentNode.getAttribute('aria-busy')==='false');
+  set(asyncRadius,.43);
+  findByText(asyncContainer,'E7')._fire('click',{type:'click'});flushRaf();
+  check('unsupported type clears matrices and solving status',asyncCells.every(e=>e.textContent==='\u2014') && initialStatus.textContent==='');
+  worker.finish();
+  check('obsolete completion cannot restore unsupported matrices or status',asyncCells.every(e=>e.textContent==='\u2014') && initialStatus.textContent==='');
   console.log("smoke-widget: " + pass + "/" + (pass+fail) + " checks passed");
   process.exit(fail === 0 ? 0 : 1);
 }

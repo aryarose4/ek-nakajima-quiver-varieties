@@ -185,18 +185,27 @@ function activate(container) {
   matrixHost.className = "ek-panel";
   matrixHost.style.marginBottom = "12px";
   container.appendChild(matrixHost);
-  const matrixLabel = document.createElement("div");
-  matrixLabel.className = "ek-sec";
-  matrixLabel.textContent = "Balanced Representative";
-  matrixHost.appendChild(matrixLabel);
+  const matrixTop = document.createElement("div");
+  matrixTop.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:10px";
+  matrixHost.appendChild(matrixTop);
   let representationMode = 'balanced';
   let displayedResult = null;
   const representationButtons = {};
   const representationSelector = document.createElement("div");
-  representationSelector.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px";
+  representationSelector.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;min-width:0";
   representationSelector.setAttribute('role', 'group');
   representationSelector.setAttribute('aria-label', 'Representative');
-  matrixHost.appendChild(representationSelector);
+  matrixTop.appendChild(representationSelector);
+  const solvingStatus = document.createElement('span');
+  solvingStatus.id = 'ek-representative-status';
+  solvingStatus.style.cssText = "margin-left:auto;color:#888;white-space:nowrap;min-width:5em;min-height:1.5em;text-align:right";
+  solvingStatus.setAttribute('role', 'status');
+  matrixTop.appendChild(solvingStatus);
+  function setRepresentationBusy(busy) {
+    matrixHost.setAttribute('aria-busy', String(busy));
+    solvingStatus.textContent = busy ? 'Solving\u2026' : '';
+  }
+  setRepresentationBusy(false);
   [['balanced', 'Balanced Representative'], ['complex', 'Complex Orbit Representative']].forEach(function(entry) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -218,7 +227,6 @@ function activate(container) {
       representationButtons[mode].setAttribute('aria-pressed', selected ? 'true' : 'false');
       representationButtons[mode].classList.toggle('active', selected);
     });
-    matrixLabel.textContent = representationButtons[representationMode].textContent;
     const rep = representativeForDisplay(displayedResult, representationMode);
     matrixHost.title = representationMode === 'complex' ? 'A gauge-equivalent representative of the current complex orbit' : '';
     matrices.setData(rep);
@@ -437,6 +445,7 @@ function activate(container) {
     coreFrame.setAttribute("data-sphere", String(state.sphere));
     if (state.key !== "E6") {
       outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null; balancedFrame = null;
+      setRepresentationBusy(false);
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
@@ -462,11 +471,12 @@ function activate(container) {
         return;
       }
       lastBalancedKey = key;
-      clearRepresentation();
+      setRepresentationBusy(true);
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
       balancedClient.request(parameters, function (result) {
         if (epoch !== chamberEpoch || key !== lastBalancedKey) return;
+        setRepresentationBusy(false);
         incidenceFrame.setAttribute('aria-busy', 'false');
         if (!result.success) {
           outstandingSnap = false;
@@ -482,6 +492,7 @@ function activate(container) {
       }, levels, chamber);
     } catch (error) {
       outstandingSnap = false; balancedClient.invalidate(); lastBalancedKey = null;
+      setRepresentationBusy(false);
       incidenceFrame.setAttribute('aria-busy', 'false');
       incidenceFrame.setAttribute('data-balanced', 'false');
       coreFrame.setAttribute("data-fixed", "false");
