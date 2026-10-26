@@ -61,6 +61,7 @@ const MODULES = [
   "element-model",
   "element-screen",
   "element-render",
+  "incidence-indicators",
   "flag-incidence",
   "flag-diagram",
   "representation-readout",

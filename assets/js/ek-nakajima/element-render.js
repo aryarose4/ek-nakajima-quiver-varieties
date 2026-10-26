@@ -1,6 +1,7 @@
 // Balanced flags use hue for cross-incidence; legacy charts use phase.
 import { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } from "./flag-diagram.js";
 import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
+import { incidenceIndicators } from './incidence-indicators.js';
 
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
@@ -177,6 +178,14 @@ export function makeElementView(host, opts) {
   yToggleText.textContent = 'y data';
   yToggleLabel.appendChild(yToggleText);
   host.appendChild(yToggleLabel);
+  const indicators = document.createElement('div');
+  indicators.className = 'ek-incidence-indicators';
+  Object.assign(indicators.style, { position: 'absolute', top: '8px', right: '8px',
+    left: '90px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+    gap: '3px', pointerEvents: 'none', fontSize: '.78em' });
+  indicators.setAttribute('aria-label', 'Numerical Flag Incidences');
+  host.appendChild(indicators);
+  let indicatorKey = null;
   const ctx = canvas.getContext ? canvas.getContext("2d") : null;
   const status = document.createElement("div");
   status.className = "ek-elem-status";
@@ -210,6 +219,21 @@ export function makeElementView(host, opts) {
   function draw() {
     canvas.setAttribute('data-snap-transition', 'false');
     const pal = palette();
+    const indicatorLabels = incidenceIndicators(layout && layout.valid ? data : null);
+    const nextIndicatorKey = String(pal.dark) + ':' + indicatorLabels.join('|');
+    if (indicatorKey !== nextIndicatorKey) {
+      indicatorKey = nextIndicatorKey;
+      indicators.textContent = '';
+      indicatorLabels.forEach(text => {
+      const badge = document.createElement('div');
+      badge.textContent = text;
+      Object.assign(badge.style, { padding: '1px 7px', border: '1px solid #a67c00',
+        borderRadius: '6px', background: pal.dark ? '#453a19' : '#f6ecc2',
+        color: pal.dark ? '#e8c84a' : '#7a5c00', fontWeight: '600', maxWidth: '100%',
+        boxSizing: 'border-box', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' });
+      indicators.appendChild(badge);
+      });
+    }
     yToggleLabel.style.color = pal.text;
     canvas.setAttribute('data-y-data', String(showYData));
     status.style.color = statusKind === "error" ? "#d64545" : "#b27c22";
