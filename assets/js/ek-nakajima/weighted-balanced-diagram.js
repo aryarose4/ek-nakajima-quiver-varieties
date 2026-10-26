@@ -215,28 +215,50 @@ export function balancedTensorDiagram(rep) {
     return target;
 
   });
-  // A true complex incidence need not survive this real projection. Show
-  // geometric guides only when both classifications and screen equations agree.
+  // Guides indicate approximate screen incidence in a narrow, fixed collar.
+  // Their opacity reaches one at exact incidence and zero at the collar edge;
+  // the numerical mathematical classifications above are left unchanged.
+  // Gating full-strength ink on a tolerance boolean made a guide pop at a tip.
   const pairs=[[0,1],[0,2],[1,2]];
-  const equations=lines.map(([a,b])=>[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]]);
-  let concurrencyPoint=null,transversal=null;
-  if(data.concurrent)for(const [i,j]of pairs){
-    const a=equations[i],b=equations[j],det=a[0]*b[1]-a[1]*b[0];
-    if(Math.abs(det)<1e-10)continue;
-    const p=[(a[1]*b[2]-a[2]*b[1])/det,(a[2]*b[0]-a[0]*b[2])/det];
-    if(p.every(v=>Math.abs(v)<=LIMIT)&&equations.every(e=>Math.hypot(e[0],e[1])>1e-10&&Math.abs(e[0]*p[0]+e[1]*p[1]+e[2])<1e-8))concurrencyPoint=p;
-    break;
+  const equations=lines.map(([a,b])=>{
+    const e=[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]],n=Math.hypot(e[0],e[1]);
+    return n>1e-12?e.map(v=>v/n):null;
+  });
+  const collar=(residual,width)=>{const u=residual/width;return u<1?(1-u*u)**2:0;};
+  let concurrencyPoint=null,transversal=null,concurrencyOpacity=0,transversalOpacity=0;
+  if(linePresent.every(Boolean)&&equations.every(Boolean)){
+    // The least-squares intersection uses all lines without selecting a pair.
+    const aa=equations.reduce((s,e)=>s+e[0]*e[0],0),ab=equations.reduce((s,e)=>s+e[0]*e[1],0),bb=equations.reduce((s,e)=>s+e[1]*e[1],0);
+    const ac=equations.reduce((s,e)=>s+e[0]*e[2],0),bc=equations.reduce((s,e)=>s+e[1]*e[2],0),det=aa*bb-ab*ab;
+    if(det>1e-12){
+      const p=[(ab*bc-bb*ac)/det,(ab*ac-aa*bc)/det];
+      const screen=Math.hypot(...equations.map(e=>e[0]*p[0]+e[1]*p[1]+e[2]));
+      const complex=pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]));
+      const edge=Math.max(0,...p.map(v=>Math.abs(v)-.85));
+      concurrencyOpacity=collar(screen,.01)*collar(complex,.01)*collar(edge,.05)*collar(1e-8/det,1)*lineOpacities.reduce((a,b)=>a*b,1);
+      if(concurrencyOpacity>0)concurrencyPoint=p;
+    }
   }
-  if(data.collinear&&!pointMarkers.some(m=>m.clipped)){
-    const pair=pairs.reduce((best,p)=>Math.hypot(...rawPoints[p[0]].map((v,j)=>v-rawPoints[p[1]][j]))>Math.hypot(...rawPoints[best[0]].map((v,j)=>v-rawPoints[best[1]][j]))?p:best,pairs[0]);
-    const a=rawPoints[pair[0]],d=rawPoints[pair[1]].map((v,j)=>v-a[j]),length=Math.hypot(...d);
-    if(length>1e-8&&rawPoints.every(p=>Math.abs(d[0]*(p[1]-a[1])-d[1]*(p[0]-a[0]))<1e-8*length))transversal=clip(a,d);
+  if(pointPresent.every(Boolean)){
+    const center=[0,1].map(j=>rawPoints.reduce((s,p)=>s+p[j]/3,0));
+    const deviations=rawPoints.map(p=>p.map((v,j)=>v-center[j]));
+    const xx=deviations.reduce((s,p)=>s+p[0]*p[0],0),xy=deviations.reduce((s,p)=>s+p[0]*p[1],0),yy=deviations.reduce((s,p)=>s+p[1]*p[1],0);
+    const separation=Math.hypot(xx-yy,2*xy);
+    if(separation>1e-12){
+      const angle=.5*Math.atan2(2*xy,xx-yy),direction=[Math.cos(angle),Math.sin(angle)];
+      const screen=Math.hypot(...deviations.map(p=>direction[0]*p[1]-direction[1]*p[0]));
+      const complex=pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]));
+      const edge=Math.max(0,...rawPoints.flat().map(v=>Math.abs(v)-.85));
+      transversalOpacity=collar(screen,.01)*collar(complex,.01)*collar(edge,.05)*collar(1e-8/separation,1)*pointOpacities.reduce((a,b)=>a*b,1);
+      if(transversalOpacity>0)transversal=clip(center,direction);
+      if(!transversal)transversalOpacity=0;
+    }
   }
   return {valid:true,frame,observables,data,glyphs,operators,source:'balanced-weighted-tensors',
     diagnostics:{eigenvalues,eigenvalueGap:gap,phaseEigenvalues:tv,phaseEigenvalueGap:phaseGap,phaseAnchorMagnitudes:anchors.map(abs)},
     layout:{valid:true,points,rawPoints,lines,pointMarkers,pointOpacities,lineOpacities,pointWeights,lineWeights,
       incidenceColors:colors,phaseVectors,pointPhaseVectors:[[0,0],[0,0],[0,0]],cameraDefects,
-      cotangentTargets,transversal,concurrencyPoint,
+      cotangentTargets,transversal,concurrencyPoint,transversalOpacity,concurrencyOpacity,
       reconstruction:{chart:'Fixed tensor eigenframe; partial flags',camera:frame}}};
 }
 function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
