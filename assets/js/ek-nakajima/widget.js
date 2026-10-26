@@ -376,7 +376,7 @@ function activate(container) {
   function displayBalanced(result, parameters, levels, animateSnap) {
     displayedResult = result;
     refreshRepresentation();
-    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame, animateSnap: !!animateSnap });
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, chamberId: result.chamberId || chamberId, previous: balancedFrame, animateSnap: !!animateSnap });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
     incidenceFrame.setAttribute('data-displayed-levels', JSON.stringify(levels));

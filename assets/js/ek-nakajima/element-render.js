@@ -109,7 +109,11 @@ function guideOpacity(layout,key) {
 
 // Shared by the canvas and the atlas integration checks.
 export function elementFrame(view) {
-  if (view && view.balancedRep) return balancedTensorDiagram(view.balancedRep, { previous: view.previous });
+  if (view && view.balancedRep) {
+    const frame=balancedTensorDiagram(view.balancedRep, { previous: view.previous });
+    if(frame.data)frame.data.chamberId=view.chamberId;
+    return frame;
+  }
   let data = view && view.incidence ? view.incidence : null;
   let operators = view && view.cotangentOperators;
   if (data && data.valid && view.branchGauge) {
@@ -231,6 +235,12 @@ export function makeElementView(host, opts) {
       indicatorLabels.forEach(text => {
       const badge = document.createElement('div');
       badge.textContent = text;
+      if(text.indexOf('im(ϕ')===0) {
+        badge.style.pointerEvents='auto';
+        badge.setAttribute('role','note');
+        badge.setAttribute('title','ϕᵢ = xᵢ⁽²⁾yᵢ⁽²⁾ = AᵢBᵢ; im(ϕᵢ) is the full operator image in ℂ³.');
+        badge.setAttribute('aria-label',text+'. ϕᵢ = xᵢ⁽²⁾yᵢ⁽²⁾ = AᵢBᵢ; full operator image in ℂ³.');
+      }
       Object.assign(badge.style, { padding: '1px 7px', border: '1px solid #a67c00',
         borderRadius: '6px', background: pal.dark ? '#453a19' : '#f6ecc2',
         color: pal.dark ? '#e8c84a' : '#7a5c00', fontWeight: '600', maxWidth: '100%',

@@ -18,6 +18,21 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
+// Test the entire image of phi=A B, including rank-two images. Normalize
+// residuals by the Frobenius norm, so no selected column stands for the image.
+export function fullImageIncidences(rep, tolerance=1e-8) {
+  const points=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
+  const normals=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
+  return rep.A.map((A,i)=>{
+    const K=matMul(A,rep.B[i]),columns=[0,1,2].map(j=>K.map(row=>row[j]));
+    const size=Math.hypot(...columns.map(norm));
+    if(!(size>1e-12))return null;
+    return {points:points.map(p=>norm(p)>1e-12&&
+      Math.hypot(...columns.map(v=>norm(cross(unit(p),v))))/size<=tolerance),
+      planes:normals.map((n,j)=>j!==i&&norm(n)>1e-12&&
+        Math.hypot(...columns.map(v=>abs(n.reduce((s,z,k)=>cAdd(s,cMul(z,v[k])),[0,0]))))/norm(n)/size<=tolerance)};
+  });
+}
 // Rank-one image incidences in C^3, independent of the tensor camera.
 // A plane containing the entire operator image is a projective incidence;
 // the operator's own plane and equal copies do not define new events.
@@ -138,6 +153,7 @@ export function balancedTensorDiagram(rep) {
     collinear:pointPresent.every(Boolean)&&pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]))<=tolerance,
     concurrent:linePresent.every(Boolean)&&pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]))<=tolerance};
   data.cotangentIncidences=cotangentImageIncidences(rep);
+  data.imageIncidences=fullImageIncidences(rep);
   const operators=bs.map(b=>b.K);
   // The historical affine phase also orients each projected line.
   const affinePhase=v=>{const w=v.reduce(cAdd,[0,0]);return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):v;};

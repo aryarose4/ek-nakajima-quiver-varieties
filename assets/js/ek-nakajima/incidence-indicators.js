@@ -38,6 +38,18 @@ export function incidenceIndicators(data) {
     if (target === 'P₁') return 0;
     return label.indexOf('L₁⊂') === 0 ? 1 : 2;
   }
-  return labels.map((label, index) => ({ label, index, height: height(label) }))
+  const ordered=labels.map((label, index) => ({ label, index, height: height(label) }))
     .sort((a, b) => a.height - b.height || a.index - b.index).map(entry => entry.label);
+  // Image facts follow the existing stratum order; source arm order is fixed.
+  if (data.chamberId && data.chamberId !== 'default' && data.imageIncidences) {
+    data.imageIncidences.forEach((image,i)=>{
+      if(!image)return;
+      const pg=points.filter(g=>g.some(j=>image.points[j]));
+      const lg=lines.filter(g=>!g.includes(i)&&g.some(j=>image.planes[j])&&
+        !pg.some(p=>p.some(j=>g.some(k=>flag('incident',j,k)))));
+      const targets=pg.map(g=>name('L',g[0])).concat(lg.map(g=>name('P',g[0])));
+      if(targets.length)ordered.push('im(ϕ'+subs[i]+')⊂'+targets.join('∩'));
+    });
+  }
+  return ordered;
 }

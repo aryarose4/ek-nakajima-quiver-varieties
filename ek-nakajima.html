@@ -5954,6 +5954,21 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
+// Test the entire image of phi=A B, including rank-two images. Normalize
+// residuals by the Frobenius norm, so no selected column stands for the image.
+function fullImageIncidences(rep, tolerance=1e-8) {
+  const points=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
+  const normals=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
+  return rep.A.map((A,i)=>{
+    const K=matMul(A,rep.B[i]),columns=[0,1,2].map(j=>K.map(row=>row[j]));
+    const size=Math.hypot(...columns.map(norm));
+    if(!(size>1e-12))return null;
+    return {points:points.map(p=>norm(p)>1e-12&&
+      Math.hypot(...columns.map(v=>norm(cross(unit(p),v))))/size<=tolerance),
+      planes:normals.map((n,j)=>j!==i&&norm(n)>1e-12&&
+        Math.hypot(...columns.map(v=>abs(n.reduce((s,z,k)=>cAdd(s,cMul(z,v[k])),[0,0]))))/norm(n)/size<=tolerance)};
+  });
+}
 // Rank-one image incidences in C^3, independent of the tensor camera.
 // A plane containing the entire operator image is a projective incidence;
 // the operator's own plane and equal copies do not define new events.
@@ -6074,6 +6089,7 @@ function balancedTensorDiagram(rep) {
     collinear:pointPresent.every(Boolean)&&pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]))<=tolerance,
     concurrent:linePresent.every(Boolean)&&pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]))<=tolerance};
   data.cotangentIncidences=cotangentImageIncidences(rep);
+  data.imageIncidences=fullImageIncidences(rep);
   const operators=bs.map(b=>b.K);
   // The historical affine phase also orients each projected line.
   const affinePhase=v=>{const w=v.reduce(cAdd,[0,0]);return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):v;};
@@ -6200,7 +6216,7 @@ function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
 
 const experimentalBalancedDiagram=balancedTensorDiagram;
 
-return { cotangentImageIncidences, projectedBlockPhases, projectTensorPoint, balancedTensorDiagram, experimentalBalancedDiagram };
+return { fullImageIncidences, cotangentImageIncidences, projectedBlockPhases, projectTensorPoint, balancedTensorDiagram, experimentalBalancedDiagram };
 })();
 
 // ---- module: balanced-worker-source ----
@@ -6774,8 +6790,20 @@ function incidenceIndicators(data) {
     if (target === 'P₁') return 0;
     return label.indexOf('L₁⊂') === 0 ? 1 : 2;
   }
-  return labels.map((label, index) => ({ label, index, height: height(label) }))
+  const ordered=labels.map((label, index) => ({ label, index, height: height(label) }))
     .sort((a, b) => a.height - b.height || a.index - b.index).map(entry => entry.label);
+  // Image facts follow the existing stratum order; source arm order is fixed.
+  if (data.chamberId && data.chamberId !== 'default' && data.imageIncidences) {
+    data.imageIncidences.forEach((image,i)=>{
+      if(!image)return;
+      const pg=points.filter(g=>g.some(j=>image.points[j]));
+      const lg=lines.filter(g=>!g.includes(i)&&g.some(j=>image.planes[j])&&
+        !pg.some(p=>p.some(j=>g.some(k=>flag('incident',j,k)))));
+      const targets=pg.map(g=>name('L',g[0])).concat(lg.map(g=>name('P',g[0])));
+      if(targets.length)ordered.push('im(ϕ'+subs[i]+')⊂'+targets.join('∩'));
+    });
+  }
+  return ordered;
 }
 
 return { incidenceIndicators };
@@ -6897,7 +6925,11 @@ function guideOpacity(layout,key) {
 
 // Shared by the canvas and the atlas integration checks.
 function elementFrame(view) {
-  if (view && view.balancedRep) return balancedTensorDiagram(view.balancedRep, { previous: view.previous });
+  if (view && view.balancedRep) {
+    const frame=balancedTensorDiagram(view.balancedRep, { previous: view.previous });
+    if(frame.data)frame.data.chamberId=view.chamberId;
+    return frame;
+  }
   let data = view && view.incidence ? view.incidence : null;
   let operators = view && view.cotangentOperators;
   if (data && data.valid && view.branchGauge) {
@@ -7019,6 +7051,12 @@ function makeElementView(host, opts) {
       indicatorLabels.forEach(text => {
       const badge = document.createElement('div');
       badge.textContent = text;
+      if(text.indexOf('im(ϕ')===0) {
+        badge.style.pointerEvents='auto';
+        badge.setAttribute('role','note');
+        badge.setAttribute('title','ϕᵢ = xᵢ⁽²⁾yᵢ⁽²⁾ = AᵢBᵢ; im(ϕᵢ) is the full operator image in ℂ³.');
+        badge.setAttribute('aria-label',text+'. ϕᵢ = xᵢ⁽²⁾yᵢ⁽²⁾ = AᵢBᵢ; full operator image in ℂ³.');
+      }
       Object.assign(badge.style, { padding: '1px 7px', border: '1px solid #a67c00',
         borderRadius: '6px', background: pal.dark ? '#453a19' : '#f6ecc2',
         color: pal.dark ? '#e8c84a' : '#7a5c00', fontWeight: '600', maxWidth: '100%',
@@ -7831,7 +7869,7 @@ function activate(container) {
   function displayBalanced(result, parameters, levels, animateSnap) {
     displayedResult = result;
     refreshRepresentation();
-    const frame = incidenceView.setData({ balancedRep: result.solvedRep, previous: balancedFrame, animateSnap: !!animateSnap });
+    const frame = incidenceView.setData({ balancedRep: result.solvedRep, chamberId: result.chamberId || chamberId, previous: balancedFrame, animateSnap: !!animateSnap });
     if (frame && frame.valid) balancedFrame = frame.continuation;
     incidenceFrame.setAttribute('data-displayed-parameters', JSON.stringify(parameters));
     incidenceFrame.setAttribute('data-displayed-levels', JSON.stringify(levels));
