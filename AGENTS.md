@@ -33,6 +33,10 @@ Requirements for `sim/`: Python 3 with numpy, scipy, sympy, pytest.
 
 ## Rules
 
+- Commit small, coherent changes at verified milestones. Before experimental
+  changes, commit the current working result as a checkpoint so the experiment
+  can be reverted separately. Commit only task-owned files, never unrelated
+  user changes. Local commits do not authorize pushing or publishing.
 - Separate **verified / candidate / unsupported** mathematics; never present an
   unverified result as certified. A small residual is not a proof.
 - Keep conventions in `e6sim/conventions.py`; do not repair signs or factors of
