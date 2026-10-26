@@ -33,6 +33,7 @@ function source(name){if(cache[name])return cache[name];let code=fs.readFileSync
      check(distance(g.magnitudes,blocks.map(B=>Math.hypot(...B.flat(2))))<1e-10,'physical block magnitudes retained');
      check(distance(g.coefficients.flat(),rotated.glyphs[i].coefficients.flat())<1e-6,'glyph gauge invariance');
      const target=d.layout.cotangentTargets[i],other=rotated.layout.cotangentTargets[i];
+     if(!target||!other){check(target===null&&other===null,'zero cotangent image has no target in either gauge');return;}
      check(target.atInfinity===other.atInfinity&&target.clipped===other.clipped,'target gauge status');
      if(target.point)check(distance(target.point,other.point)<1e-6,'target gauge position');
    });}

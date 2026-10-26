@@ -51,6 +51,22 @@ export function projectedBlockPhases(E,K,seed) {
 // One fixed affine scale keeps the default comparison's surviving points in
 // view. It is never fitted to the current flags or their visibility weights.
 const LIMIT=.9,SCALE=.085;
+// Positive rank-one matrices represent points without choosing vector phases.
+// Marked points and cotangent images share this affine camera and clipping.
+export function projectTensorPoint(S,frame) {
+  const weight=matTrace(S)[0];
+  if(!(weight>0))return null;
+  // Any nonzero column factors a rank-one projector. Its arbitrary phase
+  // cancels in p_j / sum(p), so no eigenvector phase convention is needed.
+  // Factor before dividing to avoid cancellation in the quadratic denominator near infinity.
+  const columns=[0,1,2].map(j=>S.map(row=>row[j]));
+  const column=columns.reduce((a,b)=>norm(a)>norm(b)?a:b);
+  const p=coordinates(frame,unit(column)),W=p.reduce(cAdd,[0,0]);
+  if(abs(W)<1e-9)return {point:null,rawPoint:null,atInfinity:true,clipped:true,undefined:true};
+  const rawPoint=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
+  const extent=Math.max(1,...rawPoint.map(x=>Math.abs(x)/LIMIT));
+  return {point:rawPoint.map(x=>x/extent),rawPoint,atInfinity:false,clipped:extent>1,direction:unitReal(rawPoint)};
+}
 function clip(anchor,direction) {
   let lo=-Infinity,hi=Infinity;
   for(let j=0;j<2;j++) {
@@ -144,16 +160,13 @@ export function balancedTensorDiagram(rep) {
   for(let i=0;i<3;i++) {
     const p=norm(ps[i])>0?coordinates(frame,unit(ps[i])):null;
     const n=norm(ns[i])>0?coordinates(frame,unit(ns[i]).map(cConj)).map(cConj):null;
-    let point=[0,0],atInfinity=false;
-    if(p) {
-      const W=p.reduce(cAdd,[0,0]);
-      atInfinity=abs(W)<1e-9;
-      if(atInfinity)cameraDefects.push({kind:'affine-infinity',flag:i});
-      else point=p.slice(0,2).map(z=>SCALE*divide(z,W)[0]);
-    }
-    const extent=Math.max(1,...point.map(x=>Math.abs(x)/LIMIT));
-    const marker=point.map(x=>x/extent);
-    rawPoints.push(point);points.push(marker);pointMarkers.push({point:marker,clipped:extent>1||atInfinity,atInfinity,direction:unitReal(point)});
+    const projection=p?projectTensorPoint(ps[i].map(x=>ps[i].map(y=>cMul(x,cConj(y)))),frame):null;
+    const atInfinity=!!(projection&&projection.atInfinity);
+    if(atInfinity)cameraDefects.push({kind:'affine-infinity',flag:i});
+    const point=projection&&projection.rawPoint||[0,0];
+    const marker=projection&&projection.point||[0,0];
+    rawPoints.push(point);points.push(marker);pointMarkers.push(projection&&projection.point?projection:
+      {point:marker,clipped:atInfinity,atInfinity,direction:unitReal(point)});
     let segment=[[0,0],[0,0]];
     if(n) {
       // The dual affine gauge gives an oriented real equation. Unlike the
@@ -192,11 +205,14 @@ export function balancedTensorDiagram(rep) {
   colors.pointStrengths=colors.pointStrengths.map((s,i)=>s*[0,1,2].filter(j=>j!==i).reduce((p,j)=>p*lineOpacities[j],1));
   const cotangentTargets=glyphs.map((g,i)=>{
     if(!g)return null;
-    // A bounded physical projector contraction places the third arrow on its
-    // own line without introducing another phase-fixed flag vector.
-    const a0=lines[i][0],b0=lines[i][1],direction=b0.map((v,k)=>v-a0[k]);
-    const u=.5+.2*Math.tanh(matTrace(matMul(g.projectors[1],reference))[0]);
-    return {point:a0.map((v,k)=>v+u*direction[k]),atInfinity:false,clipped:false};
+    // q_i = [K_i e3], where e3 spans the plane's orthogonal complement.
+    // This remains the intended point when K has rank two.
+    const S=matMul(matMul(bs[i].K,g.projectors[2]),matAdj(bs[i].K));
+    const size=Math.hypot(...bs[i].K.flat().map(abs));
+    if(matTrace(S)[0]<=1e-24*Math.max(1,size*size))return null;
+    const target=projectTensorPoint(S,frame);
+    if(target&&target.atInfinity)cameraDefects.push({kind:'cotangent-affine-infinity',flag:i});
+    return target;
 
   });
   // A true complex incidence need not survive this real projection. Show
