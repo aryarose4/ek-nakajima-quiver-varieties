@@ -5979,6 +5979,24 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
+// Rank-one image incidences in C^3, independent of the tensor camera.
+// A plane containing the entire operator image is a projective incidence;
+// the operator's own plane and equal copies do not define new events.
+function cotangentImageIncidences(rep, tolerance=1e-8) {
+  const points=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
+  const normals=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
+  return rep.A.map((A,i)=>{
+    const K=matMul(A,rep.B[i]),columns=[0,1,2].map(j=>K.map(row=>row[j]));
+    const lengths=columns.map(norm),size=Math.hypot(...lengths);
+    if(size<=1e-12)return null;
+    const q=unit(columns[lengths.indexOf(Math.max(...lengths))]);
+    if(columns.some(v=>norm(cross(q,v))>tolerance*size))return null;
+    return {points:points.map(p=>norm(p)>1e-12&&norm(cross(q,unit(p)))<=tolerance),
+      planes:normals.map((n,j)=>j!==i&&norm(n)>1e-12&&norm(normals[i])>1e-12&&
+        norm(cross(unit(n),unit(normals[i])))>tolerance&&
+        abs(n.reduce((s,z,k)=>cAdd(s,cMul(z,q[k])),[0,0]))<=tolerance*norm(n))};
+  });
+}
 // The camera's common phase cancels between the two normalized projections.
 // Confidence is a smooth display regularizer, never a mathematical rank test.
 function projectedBlockPhases(E,K,seed) {
@@ -6064,6 +6082,7 @@ function balancedTensorDiagram(rep) {
     lineEqual:matrix((i,j)=>linePresent[i]&&linePresent[j]&&norm(cross(homogeneousLines[i],homogeneousLines[j]))<=tolerance),
     collinear:pointPresent.every(Boolean)&&pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]))<=tolerance,
     concurrent:linePresent.every(Boolean)&&pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]))<=tolerance};
+  data.cotangentIncidences=cotangentImageIncidences(rep);
   const operators=bs.map(b=>b.K);
   // The historical affine phase also orients each projected line.
   const affinePhase=v=>{const w=v.reduce(cAdd,[0,0]);return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):v;};
@@ -6169,7 +6188,7 @@ function unitReal(v){const n=Math.hypot(...v);return n>0?v.map(x=>x/n):[1,0];}
 
 const experimentalBalancedDiagram=balancedTensorDiagram;
 
-return { projectedBlockPhases, balancedTensorDiagram, experimentalBalancedDiagram };
+return { cotangentImageIncidences, projectedBlockPhases, balancedTensorDiagram, experimentalBalancedDiagram };
 })();
 
 // ---- module: balanced-worker-source ----
@@ -6777,6 +6796,21 @@ function incidenceFlashStrength(elapsed) {
   return elapsed >= 0 && elapsed < 750 ? Math.pow(Math.sin(Math.PI * elapsed / 750), 2) : 0;
 }
 
+function newCotangentIncidenceHighlights(previous,current,glyphs) {
+  const before=previous&&previous.cotangentIncidences,after=current&&current.cotangentIncidences;
+  if(!previous||!previous.valid||!current||!current.valid||!before||!after)return [];
+  const result=[];
+  after.forEach((event,i)=>{
+    // Follow q = im(K_1) through branch 1's c13/c23 arrows. K_3 has
+    // the same image in this chamber, but should not duplicate the cue.
+    if(i!==0||!event||!before[i]||!glyphs[i])return;
+    if(['points','planes'].some(kind=>event[kind].some((v,j)=>v&&!before[i][kind][j]))) {
+      glyphs[i].magnitudes.forEach((m,k)=>{if(k>0&&m>1e-12)result.push(3*i+k);});
+    }
+  });
+  return result;
+}
+
 // Fixed pixel lengths: geometry indicates the matrix component, not magnitude.
 // The tensor layout supplies oriented line endpoints from its dual affine
 // gauge. Keep these sides fixed as targets pass a point or approach it:
@@ -6918,6 +6952,7 @@ function makeElementView(host, opts) {
   let glyphs = [];
   let statusKind = "";
   let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+  let arrowFlashStarts=Array(9).fill(-Infinity);
   let animationFrame = null;
   let transition = null;
   function displayedLayout(now) {
@@ -6967,6 +7002,8 @@ function makeElementView(host, opts) {
     function pixel(p) { return [w / 2 + p[0] * scale, h / 2 - p[1] * scale]; }
     const now = Date.now();
     const flashing = flashStarts.map((start, i) => now - start < 750 ? i : -1).filter(i => i >= 0);
+    const flashingArrows=showYData?arrowFlashStarts.map((start,i)=>now-start<750?i:-1).filter(i=>i>=0):[];
+    canvas.setAttribute('data-cotangent-flash',flashingArrows.join(','));
     canvas.setAttribute('data-incidence-flash', flashing.join(','));
     function glow(p, index, color, opacity) {
       const strength = incidenceFlashStrength(now - flashStarts[index]);
@@ -7062,17 +7099,21 @@ function makeElementView(host, opts) {
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
         ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity*mark.weight;
+        const pulse=incidenceFlashStrength(now-arrowFlashStarts[3*i+k]);
+        ctx.shadowColor=color;ctx.shadowBlur=18*pulse;
+        ctx.lineWidth+=2*pulse;
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
           ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
         }
         ctx.stroke();
+        ctx.shadowBlur=0;
         });
       });
       ctx.globalAlpha=1;
     }
-    if ((flashing.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
+    if ((flashing.length || flashingArrows.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
       animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
@@ -7084,11 +7125,19 @@ function makeElementView(host, opts) {
     canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
     canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
     const highlights = newIncidenceHighlights(data, frame.data);
+    const arrowHighlights=newCotangentIncidenceHighlights(data,frame.data,frame.glyphs||[]);
     const now = Date.now();
     if (!frame.data || !frame.data.valid) {
+      arrowFlashStarts.fill(-Infinity);
       flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
       canvas.setAttribute('data-incidence-flash', '');
     } else {
+      arrowFlashStarts=arrowFlashStarts.map((start,index)=>{
+        const g=frame.glyphs[Math.floor(index/3)];
+        return g&&g.magnitudes&&g.magnitudes[index%3]>1e-12?start:-Infinity;
+      });
+      const reduced=typeof window!=='undefined'&&window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(showYData&&!reduced)arrowHighlights.forEach(i=>{if(now-arrowFlashStarts[i]>=750)arrowFlashStarts[i]=now;});
       for (let i = 0; i < 3; i++) {
         if (objectOpacity(frame.layout, 'point', i) === 0) flashStarts[i] = -Infinity;
       }
@@ -7124,7 +7173,7 @@ function makeElementView(host, opts) {
   };
 }
 
-return { interpolateScreenLayout, objectOpacity, newIncidenceHighlights, incidenceFlashStrength, cotangentArrowGeometry, cotangentArrowColor, cotangentArrowOpacity, cotangentGlyphStyle, elementFrame, phaseColor, makeElementView };
+return { interpolateScreenLayout, objectOpacity, newIncidenceHighlights, incidenceFlashStrength, newCotangentIncidenceHighlights, cotangentArrowGeometry, cotangentArrowColor, cotangentArrowOpacity, cotangentGlyphStyle, elementFrame, phaseColor, makeElementView };
 })();
 
 // ---- module: representation-readout ----

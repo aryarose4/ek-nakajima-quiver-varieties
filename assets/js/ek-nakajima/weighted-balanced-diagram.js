@@ -18,6 +18,24 @@ const divide=(a,b)=>cScale(cMul(a,cConj(b)),1/abs(b)**2);
 const sum=matrices=>matrices.reduce(matAdd);
 const coordinates=(frame,v)=>frame.map(e=>inner(e,v));
 const apply=(A,v)=>A.map(row=>row.reduce((s,z,j)=>cAdd(s,cMul(z,v[j])),[0,0]));
+// Rank-one image incidences in C^3, independent of the tensor camera.
+// A plane containing the entire operator image is a projective incidence;
+// the operator's own plane and equal copies do not define new events.
+export function cotangentImageIncidences(rep, tolerance=1e-8) {
+  const points=rep.A.map((A,i)=>matMul(A,rep.a[i]).map(row=>row[0]));
+  const normals=rep.A.map(A=>cross(A.map(row=>row[0]),A.map(row=>row[1])));
+  return rep.A.map((A,i)=>{
+    const K=matMul(A,rep.B[i]),columns=[0,1,2].map(j=>K.map(row=>row[j]));
+    const lengths=columns.map(norm),size=Math.hypot(...lengths);
+    if(size<=1e-12)return null;
+    const q=unit(columns[lengths.indexOf(Math.max(...lengths))]);
+    if(columns.some(v=>norm(cross(q,v))>tolerance*size))return null;
+    return {points:points.map(p=>norm(p)>1e-12&&norm(cross(q,unit(p)))<=tolerance),
+      planes:normals.map((n,j)=>j!==i&&norm(n)>1e-12&&norm(normals[i])>1e-12&&
+        norm(cross(unit(n),unit(normals[i])))>tolerance&&
+        abs(n.reduce((s,z,k)=>cAdd(s,cMul(z,q[k])),[0,0]))<=tolerance*norm(n))};
+  });
+}
 // The camera's common phase cancels between the two normalized projections.
 // Confidence is a smooth display regularizer, never a mathematical rank test.
 export function projectedBlockPhases(E,K,seed) {
@@ -103,6 +121,7 @@ export function balancedTensorDiagram(rep) {
     lineEqual:matrix((i,j)=>linePresent[i]&&linePresent[j]&&norm(cross(homogeneousLines[i],homogeneousLines[j]))<=tolerance),
     collinear:pointPresent.every(Boolean)&&pairing(homogeneousPoints[0],cross(homogeneousPoints[1],homogeneousPoints[2]))<=tolerance,
     concurrent:linePresent.every(Boolean)&&pairing(homogeneousLines[0],cross(homogeneousLines[1],homogeneousLines[2]))<=tolerance};
+  data.cotangentIncidences=cotangentImageIncidences(rep);
   const operators=bs.map(b=>b.K);
   // The historical affine phase also orients each projected line.
   const affinePhase=v=>{const w=v.reduce(cAdd,[0,0]);return abs(w)>1e-10?v.map(z=>cMul(z,cScale(cConj(w),1/abs(w)))):v;};

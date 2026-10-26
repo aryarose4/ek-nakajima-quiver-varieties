@@ -70,6 +70,21 @@ export function incidenceFlashStrength(elapsed) {
   return elapsed >= 0 && elapsed < 750 ? Math.pow(Math.sin(Math.PI * elapsed / 750), 2) : 0;
 }
 
+export function newCotangentIncidenceHighlights(previous,current,glyphs) {
+  const before=previous&&previous.cotangentIncidences,after=current&&current.cotangentIncidences;
+  if(!previous||!previous.valid||!current||!current.valid||!before||!after)return [];
+  const result=[];
+  after.forEach((event,i)=>{
+    // Follow q = im(K_1) through branch 1's c13/c23 arrows. K_3 has
+    // the same image in this chamber, but should not duplicate the cue.
+    if(i!==0||!event||!before[i]||!glyphs[i])return;
+    if(['points','planes'].some(kind=>event[kind].some((v,j)=>v&&!before[i][kind][j]))) {
+      glyphs[i].magnitudes.forEach((m,k)=>{if(k>0&&m>1e-12)result.push(3*i+k);});
+    }
+  });
+  return result;
+}
+
 // Fixed pixel lengths: geometry indicates the matrix component, not magnitude.
 // The tensor layout supplies oriented line endpoints from its dual affine
 // gauge. Keep these sides fixed as targets pass a point or approach it:
@@ -211,6 +226,7 @@ export function makeElementView(host, opts) {
   let glyphs = [];
   let statusKind = "";
   let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
+  let arrowFlashStarts=Array(9).fill(-Infinity);
   let animationFrame = null;
   let transition = null;
   function displayedLayout(now) {
@@ -260,6 +276,8 @@ export function makeElementView(host, opts) {
     function pixel(p) { return [w / 2 + p[0] * scale, h / 2 - p[1] * scale]; }
     const now = Date.now();
     const flashing = flashStarts.map((start, i) => now - start < 750 ? i : -1).filter(i => i >= 0);
+    const flashingArrows=showYData?arrowFlashStarts.map((start,i)=>now-start<750?i:-1).filter(i=>i>=0):[];
+    canvas.setAttribute('data-cotangent-flash',flashingArrows.join(','));
     canvas.setAttribute('data-incidence-flash', flashing.join(','));
     function glow(p, index, color, opacity) {
       const strength = incidenceFlashStrength(now - flashStarts[index]);
@@ -355,17 +373,21 @@ export function makeElementView(host, opts) {
         const direction=arrow.end.map((v,j)=>(v-arrow.start[j])/ARROW_LENGTH);
         const perpendicular=[-direction[1],direction[0]];
         ctx.strokeStyle=color;ctx.lineWidth=4/3;ctx.globalAlpha=style.opacity*mark.weight;
+        const pulse=incidenceFlashStrength(now-arrowFlashStarts[3*i+k]);
+        ctx.shadowColor=color;ctx.shadowBlur=18*pulse;
+        ctx.lineWidth+=2*pulse;
         ctx.beginPath();ctx.moveTo(...arrow.start);ctx.lineTo(...arrow.end);
         for(const side of [-1,1]) {
           ctx.moveTo(...arrow.end);
           ctx.lineTo(...arrow.end.map((v,j)=>v-(10/3)*direction[j]+side*2*perpendicular[j]));
         }
         ctx.stroke();
+        ctx.shadowBlur=0;
         });
       });
       ctx.globalAlpha=1;
     }
-    if ((flashing.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
+    if ((flashing.length || flashingArrows.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
       animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
@@ -377,11 +399,19 @@ export function makeElementView(host, opts) {
     canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
     canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
     const highlights = newIncidenceHighlights(data, frame.data);
+    const arrowHighlights=newCotangentIncidenceHighlights(data,frame.data,frame.glyphs||[]);
     const now = Date.now();
     if (!frame.data || !frame.data.valid) {
+      arrowFlashStarts.fill(-Infinity);
       flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
       canvas.setAttribute('data-incidence-flash', '');
     } else {
+      arrowFlashStarts=arrowFlashStarts.map((start,index)=>{
+        const g=frame.glyphs[Math.floor(index/3)];
+        return g&&g.magnitudes&&g.magnitudes[index%3]>1e-12?start:-Infinity;
+      });
+      const reduced=typeof window!=='undefined'&&window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(showYData&&!reduced)arrowHighlights.forEach(i=>{if(now-arrowFlashStarts[i]>=750)arrowFlashStarts[i]=now;});
       for (let i = 0; i < 3; i++) {
         if (objectOpacity(frame.layout, 'point', i) === 0) flashStarts[i] = -Infinity;
       }
