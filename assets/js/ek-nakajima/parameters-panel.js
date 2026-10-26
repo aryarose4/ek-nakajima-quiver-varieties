@@ -63,7 +63,6 @@ export function createParametersPanel(host, options = {}) {
         button.style.flexShrink = '0';
         if (action === 'cross' && wall.atWall === true) {
           if (button.setAttribute) button.setAttribute('data-at-wall', 'true');
-          if (box.setAttribute) box.setAttribute('data-at-wall', 'true');
         }
         if (!available) button.title = wallPending ? 'Crossing wall' : wall.canCross === true ? 'Reach this wall to cross' : 'Crossing this wall is not supported';
         button.addEventListener('click', () => {

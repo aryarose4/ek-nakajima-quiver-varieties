@@ -148,7 +148,6 @@ function ensureStyles() {
     "#ek-nakajima-widget .ek-cross-btn { border-color: var(--ek-amber); color: var(--ek-amber); background: transparent; padding: 0 6px; font-size: .75em; }",
     "#ek-nakajima-widget .ek-cross-btn:disabled { opacity: .45; cursor: default; }",
     "#ek-nakajima-widget .ek-cross-btn:not(:disabled):hover { border-color: var(--ek-amber); color: var(--ek-amber); }",
-    "#ek-nakajima-widget .ek-wall-action-row[data-at-wall='true'] { color: var(--ek-amber); background: var(--ek-amber-bg); }",
   ].join("\n");
   document.head.appendChild(style);
 }
