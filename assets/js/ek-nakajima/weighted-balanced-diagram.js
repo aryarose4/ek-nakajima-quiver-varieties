@@ -219,7 +219,6 @@ export function balancedTensorDiagram(rep) {
   // Their opacity reaches one at exact incidence and zero at the collar edge;
   // the numerical mathematical classifications above are left unchanged.
   // Gating full-strength ink on a tolerance boolean made a guide pop at a tip.
-  const pairs=[[0,1],[0,2],[1,2]];
   const equations=lines.map(([a,b])=>{
     const e=[b[1]-a[1],a[0]-b[0],b[0]*a[1]-a[0]*b[1]],n=Math.hypot(e[0],e[1]);
     return n>1e-12?e.map(v=>v/n):null;
