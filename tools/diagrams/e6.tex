@@ -1,0 +1,30 @@
+% Unframed doubled star: central SL, other vertices GL.
+\documentclass[tikz,border=6pt]{standalone}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\definecolor{cdcolor}{RGB}{CDCOLOR}
+\usetikzlibrary{arrows.meta}
+\begin{document}
+\begin{tikzpicture}[x=1.65cm,y=1.5cm,color=cdcolor,>=Stealth,
+ every node/.style={text=cdcolor},vertex/.style={inner sep=5pt}]
+\node[vertex] (c) at (0,0) {$3$};
+\node[vertex] (v00) at (-1,0) {$2$};
+\draw[->,transform canvas={yshift=2pt}] (v00) -- node[midway,above,font=\small] {$x_{1}^{(2)}$} (c);
+\draw[->,transform canvas={yshift=-2pt}] (c) -- node[midway,below,font=\small] {$y_{1}^{(2)}$} (v00);
+\node[vertex] (v01) at (-2,0) {$1$};
+\draw[->,transform canvas={yshift=2pt}] (v01) -- node[midway,above,font=\small] {$x_{1}^{(1)}$} (v00);
+\draw[->,transform canvas={yshift=-2pt}] (v00) -- node[midway,below,font=\small] {$y_{1}^{(1)}$} (v01);
+\node[vertex] (v10) at (1,0) {$2$};
+\draw[->,transform canvas={yshift=2pt}] (v10) -- node[midway,above,font=\small] {$x_{2}^{(2)}$} (c);
+\draw[->,transform canvas={yshift=-2pt}] (c) -- node[midway,below,font=\small] {$y_{2}^{(2)}$} (v10);
+\node[vertex] (v11) at (2,0) {$1$};
+\draw[->,transform canvas={yshift=2pt}] (v11) -- node[midway,above,font=\small] {$x_{2}^{(1)}$} (v10);
+\draw[->,transform canvas={yshift=-2pt}] (v10) -- node[midway,below,font=\small] {$y_{2}^{(1)}$} (v11);
+\node[vertex] (v20) at (0,1) {$2$};
+\draw[->,transform canvas={xshift=2pt}] (v20) -- node[midway,right,font=\small] {$x_{3}^{(2)}$} (c);
+\draw[->,transform canvas={xshift=-2pt}] (c) -- node[midway,left,font=\small] {$y_{3}^{(2)}$} (v20);
+\node[vertex] (v21) at (0,2) {$1$};
+\draw[->,transform canvas={xshift=2pt}] (v21) -- node[midway,right,font=\small] {$x_{3}^{(1)}$} (v20);
+\draw[->,transform canvas={xshift=-2pt}] (v20) -- node[midway,left,font=\small] {$y_{3}^{(1)}$} (v21);
+\end{tikzpicture}
+\end{document}
