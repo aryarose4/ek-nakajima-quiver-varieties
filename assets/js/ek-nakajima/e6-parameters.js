@@ -58,6 +58,7 @@ export function e6AtCrossingWall(beta) {
 }
 const coefficients = e6BoundedRealRoots().map(root => root.outer.reduce((out, value, i) =>
   out.concat([value - root.center / 3, root.middle[i] - 2 * root.center / 3]), []));
+export function e6BetaWallCoefficients() { return coefficients.map(row => row.slice()); }
 function flat(beta) {
   if (!Array.isArray(beta) || beta.length !== 3 || beta.some(row =>
     !Array.isArray(row) || row.length !== 2 || !row.every(Number.isFinite))) {

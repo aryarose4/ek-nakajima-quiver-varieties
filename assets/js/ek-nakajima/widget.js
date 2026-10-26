@@ -531,6 +531,7 @@ function activate(container) {
     window.addEventListener("resize", resize);
   }
   const themeObserver = new MutationObserver(function () {
+    parametersPanel.refreshTheme();
     if (coreView) coreView.refreshTheme();
     incidenceView.refreshTheme();
     if (matrices.refreshTheme) matrices.refreshTheme();

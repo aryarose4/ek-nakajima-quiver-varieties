@@ -16,7 +16,7 @@ function buttons(node) {
 async function main() {
   const plain = element('div'); createParametersPanel(plain);
   assert.strictEqual(buttons(plain).length, 0);
-  assert.strictEqual(plain.children[0].children.length, 2, 'default has no wall row');
+  assert.strictEqual(plain.children[0].children.length, 3, 'default has slice row and no wall row');
   const host = element('div');
   let descriptor = {id: 'facet', label: 'period > 0', canCross: true, atWall: false};
   let calls = 0, finish;

@@ -56,6 +56,7 @@ const MODULES = [
   "e6-parameters",
   "e6-wall-transitions",
   "e6-areas",
+  "chamber-slices",
   "parameters-panel",
   "element-view",
   "element-model",

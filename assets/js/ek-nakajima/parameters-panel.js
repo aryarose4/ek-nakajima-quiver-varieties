@@ -1,5 +1,7 @@
 ﻿import { E6_DEFAULT_BETA, E6_BETA_DISPLAY_MAX, betaToLevels, e6BetaInterval, constrainE6Beta } from './e6-parameters.js';
 
+import { createChamberSlices } from './chamber-slices.js';
+
 export function createParametersPanel(host, options = {}) {
   let beta = E6_DEFAULT_BETA.map(row => row.slice());
   let enabled = true;
@@ -7,6 +9,7 @@ export function createParametersPanel(host, options = {}) {
   panel.className = 'ek-panel ek-parameters';
   const heading = document.createElement('div');
   heading.className = 'ek-sec'; heading.textContent = 'Parameters'; panel.appendChild(heading);
+  const slices = createChamberSlices(panel, getBeta);
   const grid = document.createElement('div');
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px';
   panel.appendChild(grid); host.appendChild(panel);
@@ -35,6 +38,7 @@ export function createParametersPanel(host, options = {}) {
         : wall.atWall !== true && wall.canApproach === true);
   }
   function refreshWallActions() {
+    slices.draw();
     if (!wallRow) return;
     const revision = ++wallRevision;
     wallRow.textContent = '';
@@ -126,7 +130,7 @@ export function createParametersPanel(host, options = {}) {
   }
   function getBeta() { return beta.map(row => row.slice()); }
   refresh();
-  return { getBeta, refresh, refreshWallActions, getLevels: () => betaToLevels(beta), setEnabled(value) {
+  return { getBeta, refresh, refreshWallActions, refreshTheme: slices.draw, getLevels: () => betaToLevels(beta), setEnabled(value) {
     enabled = !!value; panel.style.display = enabled ? '' : 'none'; refresh();
   } };
 }
