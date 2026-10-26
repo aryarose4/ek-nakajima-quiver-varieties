@@ -36,7 +36,7 @@ export function createChamberSlices(host, getBeta) {
   const canvases = [];
   for (let branch = 0; branch < 3; branch++) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;color:var(--ek-box-tx)';
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;color:var(--ek-chamber-tx)';
     const title = document.createElement('div'); title.textContent = 'Branch ' + (branch + 1); title.style.fontSize = '.8em';
     const canvas = document.createElement('canvas');
     canvas.style.cssText = 'display:block;width:100%;max-width:110px;aspect-ratio:1;height:auto';
@@ -50,6 +50,9 @@ export function createChamberSlices(host, getBeta) {
   function draw() {
     const beta = getBeta();
     const dark = document.documentElement && document.documentElement.getAttribute && document.documentElement.getAttribute('data-theme') === 'dark';
+    const root = document.getElementById && document.getElementById('ek-nakajima-widget');
+    const style = typeof getComputedStyle === 'function' && root ? getComputedStyle(root) : null;
+    const css = (name, fallback) => style && style.getPropertyValue ? style.getPropertyValue(name).trim() || fallback : fallback;
     canvases.forEach((canvas, branch) => {
       if (typeof canvas.getContext !== 'function') return;
       const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -61,14 +64,14 @@ export function createChamberSlices(host, getBeta) {
       const pad = 7, span = size - 2 * pad;
       const x = value => pad + value / E6_BETA_DISPLAY_MAX * span;
       const y = value => size - pad - value / E6_BETA_DISPLAY_MAX * span;
-      ctx.strokeStyle = dark ? '#59616b' : '#cfd4da'; ctx.lineWidth = 1; ctx.strokeRect(pad, pad, span, span);
-      ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.2;
+      ctx.strokeStyle = css('--ek-box-bd', dark ? '#4a4a4a' : '#cfd4da'); ctx.lineWidth = 1; ctx.strokeRect(pad, pad, span, span);
+      ctx.strokeStyle = css('--ek-wall', dark ? '#e07060' : '#c0392b'); ctx.lineWidth = 1.2;
       e6BranchSlice(beta, branch).forEach(segment => {
         const p = segment.points;
         ctx.beginPath(); ctx.moveTo(x(p[0][0]), y(p[0][1])); ctx.lineTo(x(p[1][0]), y(p[1][1])); ctx.stroke();
       });
-      ctx.fillStyle = dark ? '#ffffff' : '#000000'; ctx.beginPath();
-      ctx.arc(x(beta[branch][0]), y(beta[branch][1]), 3, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = dark ? '#ffffff' : '#000000'; ctx.strokeStyle = css('--ek-box-bd', dark ? '#4a4a4a' : '#cfd4da'); ctx.lineWidth = 1; ctx.beginPath();
+      ctx.arc(x(beta[branch][0]), y(beta[branch][1]), 3, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
     });
   }
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(draw).observe(row);

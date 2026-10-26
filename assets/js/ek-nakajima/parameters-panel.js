@@ -57,14 +57,13 @@ export function createParametersPanel(host, options = {}) {
         const label = document.createElement('span'); label.textContent = wall.label || '';
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'ek-btn';
+        if (action === 'cross') button.className += ' ek-cross-btn';
         button.textContent = action === 'cross' ? 'Cross Wall' : 'Approach Wall';
         button.disabled = !available;
         button.style.flexShrink = '0';
         if (action === 'cross' && wall.atWall === true) {
           if (button.setAttribute) button.setAttribute('data-at-wall', 'true');
-          button.style.backgroundColor = '#d4a64b';
-          button.style.borderColor = '#a97920';
-          button.style.color = '#241b0d';
+          if (box.setAttribute) box.setAttribute('data-at-wall', 'true');
         }
         if (!available) button.title = wallPending ? 'Crossing wall' : wall.canCross === true ? 'Reach this wall to cross' : 'Crossing this wall is not supported';
         button.addEventListener('click', () => {
