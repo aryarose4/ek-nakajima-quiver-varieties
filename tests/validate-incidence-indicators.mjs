@@ -16,12 +16,29 @@ d.pointPresent[0]=true;d.linePresent[1]=false;
 assert.deepStrictEqual(incidenceIndicators(d),['L₁⊂P₃']);
 d.valid=false;assert.deepStrictEqual(incidenceIndicators(d),[]);
 d=generic();d.collinear=d.concurrent=true;
-assert.deepStrictEqual(incidenceIndicators(d),['dim(L₁+L₂+L₃)≤2','P₁∩P₂∩P₃≠{0}']);
+assert.deepStrictEqual(incidenceIndicators(d),['P₁∩P₂∩P₃≠{0}','dim(L₁+L₂+L₃)≤2']);
 d.pointPresent[1]=d.linePresent[1]=false;assert.deepStrictEqual(incidenceIndicators(d),[]);
 d=generic();d.pointEqual=d.lineEqual=d.incident=matrix(()=>true);d.collinear=d.concurrent=true;
 assert.deepStrictEqual(incidenceIndicators(d),['L₁=L₂=L₃','P₁=P₂=P₃'],'equalities suppress tautological memberships and aggregate rank facts');
 d=generic();d.pointEqual[0][1]=d.pointEqual[1][0]=true;d.incident[0][1]=d.incident[1][0]=true;
 assert.deepStrictEqual(incidenceIndicators(d),['L₁=L₂']);
+// Certified atlas climbs append their new relation, including fresh high
+// strata with no earlier renderer frame or user interaction history.
+for (const r of [0,.5,1]) {
+  const expected = r===0 ? ['L₂⊂P₁','L₁⊂P₃','L₃⊂P₂'] : r===1 ?
+    ['L₃⊂P₁','L₁⊂P₂','L₂⊂P₃'] : ['P₁∩P₂∩P₃≠{0}','dim(L₁+L₂+L₃)≤2'];
+  const stages = r===.5 ? [[0,false,0,1],[0,false,.3,1],[0,false,1,2],[0,true,.3,2]] :
+    [[0,false,0,1],[0,false,.3,1],[0,false,1,2],[1,false,0,2],[1,false,.3,2],
+      [1,false,1,3],[1,true,0,3],[1,true,.3,3]];
+  for (const [sphere,outgoing,t,count] of stages) {
+    const solution=solveBalancedAtlas({r,sphere,outgoing,t,theta:0,phi:.2});
+    assert.ok(solution.success);
+    assert.deepStrictEqual(incidenceIndicators(flagIncidence(solution.solvedRep)),expected.slice(0,count),
+      JSON.stringify({r,sphere,outgoing,t}));
+  }
+}
+const initial=solveBalancedAtlas({r:.25,sphere:0,t:0,theta:0,phi:0});
+assert.ok(initial.success);assert.deepStrictEqual(incidenceIndicators(flagIncidence(initial.solvedRep)),[]);
 // A small DOM double gives textContent its real child-clearing behavior.
 function element(){const e={style:{},children:[],appendChild(c){this.children.push(c);},
   setAttribute(k,v){this[k]=v;},addEventListener(){},getContext(){return null;}};
@@ -34,6 +51,8 @@ const frame=renderer.setData({...solved.view,incidence:flagIncidence(solved.rep)
 assert.ok(frame.data.valid);
 assert.deepStrictEqual(overlay.children.map(e=>e.textContent),incidenceIndicators(frame.data));
 assert.ok(overlay.children.length,'singular solved fixture has active incidences');
+assert.strictEqual(overlay.style.fontFamily,'inherit');
+assert.ok(overlay.children.every(e=>e.style.fontFamily==='inherit'));
 const before=overlay.children.map(e=>e.textContent);
 renderer.setStatus('Solving','pending');assert.deepStrictEqual(overlay.children.map(e=>e.textContent),before);
 theme='dark';renderer.refreshTheme();assert.strictEqual(overlay.children[0].style.color,'#e8c84a');

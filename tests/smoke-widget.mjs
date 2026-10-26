@@ -194,6 +194,8 @@ async function main() {
   const radius = all.find(function(e) { return e.id === "ek-r"; });
   const theta = all.find(function(e) { return e.id === "ek-theta"; });
   check("one compact radius slider", radius && radius.min === "0" && radius.max === "1");
+  check('initial radius is generic quarter position', Number(radius.value) === .25);
+  check('initial incidence indicators are empty', all.find(e => e.className === 'ek-incidence-indicators').children.length === 0);
   check("one theta slider", !!theta);
   const ranges = all.filter(function(e) { return e.tagName === "INPUT" && e.type === "range"; });
   check("four coordinate and six beta sliders are enabled", ranges.length === 10 && ranges.every(function(e) { return !e.disabled; }));
@@ -222,7 +224,7 @@ async function main() {
   check('copy follows selected complex matrices', copied.length === 1 && copied[0].includes(cells[0].textContent));
   set(radius, 0.3);
   check('complex selection persists across slider changes', complexButton.getAttribute('aria-pressed') === 'true' && cells.every(e => e.textContent !== '\u2014'));
-  set(radius, 0.5);
+  set(radius, 0.25);
   balancedButton._fire('click');
   check('balanced toggle restores balanced matrices', matrixText() === balancedText && balancedButton.getAttribute('aria-pressed') === 'true');
   copyButton._fire('click'); await Promise.resolve(); await Promise.resolve();

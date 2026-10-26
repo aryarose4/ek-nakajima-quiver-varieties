@@ -148,6 +148,8 @@ function incidenceColor(hue, strength, dark) {
 
 export function makeElementView(host, opts) {
   opts = opts || {};
+  const pageFont = () => typeof getComputedStyle === 'function' ? getComputedStyle(host).fontFamily :
+    (typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(host).fontFamily : 'sans-serif');
   const canvas = document.createElement("canvas");
   canvas.style.display = "block";
   canvas.style.width = "100%";
@@ -167,6 +169,7 @@ export function makeElementView(host, opts) {
   yToggleLabel.style.alignItems = 'center';
   yToggleLabel.style.gap = '5px';
   yToggleLabel.style.fontSize = '12px';
+  yToggleLabel.style.fontFamily = 'inherit';
   yToggleLabel.style.cursor = 'pointer';
   const yToggle = document.createElement('input');
   yToggle.id = 'ek-y-data';
@@ -182,7 +185,7 @@ export function makeElementView(host, opts) {
   indicators.className = 'ek-incidence-indicators';
   Object.assign(indicators.style, { position: 'absolute', top: '8px', right: '8px',
     left: '90px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
-    gap: '3px', pointerEvents: 'none', fontSize: '.78em' });
+    gap: '3px', pointerEvents: 'none', fontSize: '.78em', fontFamily: 'inherit' });
   indicators.setAttribute('aria-label', 'Numerical Flag Incidences');
   host.appendChild(indicators);
   let indicatorKey = null;
@@ -194,6 +197,7 @@ export function makeElementView(host, opts) {
   status.style.left = "12px";
   status.style.right = "12px";
   status.style.fontSize = "12px";
+  status.style.fontFamily = 'inherit';
   status.style.pointerEvents = "none";
   status.style.display = "none";
   host.appendChild(status);
@@ -230,7 +234,7 @@ export function makeElementView(host, opts) {
       Object.assign(badge.style, { padding: '1px 7px', border: '1px solid #a67c00',
         borderRadius: '6px', background: pal.dark ? '#453a19' : '#f6ecc2',
         color: pal.dark ? '#e8c84a' : '#7a5c00', fontWeight: '600', maxWidth: '100%',
-        boxSizing: 'border-box', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' });
+        boxSizing: 'border-box', fontFamily: 'inherit' });
       indicators.appendChild(badge);
       });
     }
@@ -248,7 +252,7 @@ export function makeElementView(host, opts) {
     ctx.clearRect(0, 0, w, h);
     if (!data || !data.valid || !layout || !layout.valid) {
       ctx.fillStyle = pal.text;
-      ctx.font = "13px sans-serif";
+      ctx.font = '13px ' + pageFont();
       ctx.textAlign = "center";
       ctx.fillText("Incidence unavailable", w / 2, h / 2);
       return;
@@ -274,7 +278,7 @@ export function makeElementView(host, opts) {
       ctx.globalAlpha = 1;
     }
     ctx.lineCap = "round";
-    ctx.font = "bold 13px sans-serif";
+    ctx.font = 'bold 13px ' + pageFont();
     ctx.textAlign = "left";
     if (layout.transversal) {
       const a = pixel(layout.transversal[0]), b = pixel(layout.transversal[1]);
