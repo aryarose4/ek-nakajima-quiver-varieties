@@ -40,9 +40,10 @@ export function incidenceIndicators(data) {
   }
   const ordered=labels.map((label, index) => ({ label, index, height: height(label) }))
     .sort((a, b) => a.height - b.height || a.index - b.index).map(entry => entry.label);
-  // Image facts follow the existing stratum order; source arm order is fixed.
+  // Image facts follow base flags and their chamber/arm's canonical climb.
   if (data.chamberId && data.chamberId !== 'default' && data.imageIncidences) {
-    data.imageIncidences.forEach((image,i)=>{
+    (data.imageSourceOrder||ids).forEach(i=>{
+      const image=data.imageIncidences[i];
       if(!image)return;
       const pg=points.filter(g=>g.some(j=>image.points[j]));
       const lg=lines.filter(g=>!g.includes(i)&&g.some(j=>image.planes[j])&&

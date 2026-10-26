@@ -2,6 +2,7 @@
 import { flagDiagram, cotangentGlyphs, branchDisplayGauge, centralDisplayGauge } from "./flag-diagram.js";
 import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
 import { incidenceIndicators } from './incidence-indicators.js';
+import { imageSourceOrder } from './image-incidence-order.js';
 
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
@@ -111,7 +112,10 @@ function guideOpacity(layout,key) {
 export function elementFrame(view) {
   if (view && view.balancedRep) {
     const frame=balancedTensorDiagram(view.balancedRep, { previous: view.previous });
-    if(frame.data)frame.data.chamberId=view.chamberId;
+    if(frame.data) {
+      frame.data.chamberId=view.chamberId;
+      frame.data.imageSourceOrder=imageSourceOrder(view.chamberId,view.parameters);
+    }
     return frame;
   }
   let data = view && view.incidence ? view.incidence : null;

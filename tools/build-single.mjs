@@ -62,6 +62,7 @@ const MODULES = [
   "element-screen",
   "element-render",
   "incidence-indicators",
+  "image-incidence-order",
   "flag-incidence",
   "flag-diagram",
   "representation-readout",
