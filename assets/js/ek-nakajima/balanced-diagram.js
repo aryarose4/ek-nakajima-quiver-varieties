@@ -64,7 +64,7 @@ function descriptors(data, operators) {
 // Correlating homogeneous projectors avoids all arbitrary vector phases. The
 // maximum spanning tree recovers an exact diagonal gauge on a connected graph;
 // coordinate ascent then improves the approximate match during actual motion.
-export function alignPhases(current, previous) {
+function alignPhases(current, previous) {
   if (!previous) return [[1,0],[1,0],[1,0]];
   const C = [0,1,2].map(j => [0,1,2].map(k => current.reduce((s,M,i) =>
     cAdd(s,cMul(M[j][k],cConj(previous[i][j][k]))),[0,0])));

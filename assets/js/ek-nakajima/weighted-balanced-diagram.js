@@ -8,7 +8,7 @@
 import { matMul,matAdj,matTrace,matAdd,matSub,matScale,eyeZ,cAdd,cSub,cMul,cConj,cScale } from './core-math.js';
 import { eigvalsHermitian3 } from './element-view.js';
 import { balancedObservables } from './balanced-observables.js';
-import { incidenceColors,alignPhases } from './balanced-diagram.js';
+import { incidenceColors } from './balanced-diagram.js';
 
 const abs=z=>Math.hypot(...z), norm=v=>Math.hypot(...v.map(abs));
 const inner=(u,v)=>u.reduce((s,z,i)=>cAdd(s,cMul(cConj(z),v[i])),[0,0]);
@@ -76,7 +76,7 @@ function clip(anchor,direction) {
   return lo<=hi&&Number.isFinite(lo)&&Number.isFinite(hi)?[lo,hi].map(t=>anchor.map((x,j)=>x+t*direction[j])):null;
 }
 
-export function balancedTensorDiagram(rep,options={}) {
+export function balancedTensorDiagram(rep) {
   const observables=balancedObservables(rep),bs=observables.branches;
   const H=sum(bs.map((b,i)=>matScale(b.H,[1,2,4][i])));
   const T=sum(bs.map((b,i)=>matAdd(matScale(b.J,[3,1,2][i]),
@@ -95,14 +95,6 @@ export function balancedTensorDiagram(rep,options={}) {
     const columns=[0,1,2].map(j=>P.map(row=>row[j]));
     return unit(columns.reduce((a,b)=>norm(a)>norm(b)?a:b));
   });
-  const previous=options.previous&&(options.previous.continuation||options.previous);
-  const previousDescriptors=previous&&previous.tensorDescriptors;
-  const continuing=Array.isArray(previousDescriptors)&&previousDescriptors.length===9&&previousDescriptors.every(M=>
-    Array.isArray(M)&&M.length===3&&M.every(row=>Array.isArray(row)&&row.length===3&&row.every(z=>Array.isArray(z)&&z.length===2&&z.every(Number.isFinite))));
-  // Correlations of tensor entries, rather than world-vector overlaps, cancel
-  // independent central unitary gauges in successive solved representatives.
-  const tensors=bs.reduce((out,b)=>out.concat([b.H,b.J,b.K]),[]);
-  const descriptors=()=>tensors.map(M=>frame.map(u=>frame.map(v=>inner(u,apply(M,v)))));
   // A fixed polynomial includes two-step correlations. Direct correlations
   // vanish at regular tips even though the tensor coupling graph is connected.
   // Each summand has the same phase covariance; there is no endpoint switch.
@@ -116,17 +108,12 @@ export function balancedTensorDiagram(rep,options={}) {
   const correlation=matSub(phaseTensor,sum(frame.map(v=>matScale(v.map(x=>v.map(y=>cMul(x,cConj(y)))),inner(v,apply(phaseTensor,v))))));
   const tv=eigvalsHermitian3(correlation);
   const phaseGap=tv[0]-tv[1];
-  let anchors;
-  if(continuing){
-    anchors=alignPhases(descriptors(),previousDescriptors);
-  }else{
-    if(phaseGap<1e-11*tSize)return {valid:false,reason:'Tensor phase synchronizer has a repeated leading eigenvalue.',cameraDefects:[{kind:'phase-eigenvalue-gap'}]};
-    const Q=matScale(matMul(matSub(correlation,matScale(eyeZ(3),tv[1])),matSub(correlation,matScale(eyeZ(3),tv[2]))),1/((tv[0]-tv[1])*(tv[0]-tv[2])));
-    const cols=[0,1,2].map(j=>Q.map(row=>row[j]));
-    const q=unit(cols.reduce((a,b)=>norm(a)>norm(b)?a:b));
-    anchors=frame.map(v=>inner(v,q));
-    if(anchors.some(z=>abs(z)<1e-12))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
-  }
+  if(phaseGap<1e-11*tSize)return {valid:false,reason:'Tensor phase synchronizer has a repeated leading eigenvalue.',cameraDefects:[{kind:'phase-eigenvalue-gap'}]};
+  const Q=matScale(matMul(matSub(correlation,matScale(eyeZ(3),tv[1])),matSub(correlation,matScale(eyeZ(3),tv[2]))),1/((tv[0]-tv[1])*(tv[0]-tv[2])));
+  const cols=[0,1,2].map(j=>Q.map(row=>row[j]));
+  const q=unit(cols.reduce((a,b)=>norm(a)>norm(b)?a:b));
+  const anchors=frame.map(v=>inner(v,q));
+  if(anchors.some(z=>abs(z)<1e-12))return {valid:false,reason:'Tensor camera phase correlation vanishes.',cameraDefects:[{kind:'phase-anchor'}]};
   frame.forEach((v,i)=>{frame[i]=v.map(z=>cMul(z,cScale(anchors[i],1/abs(anchors[i]))));});
   // Contrast cutoffs are fixed display units, not beta/rank classifications.
   // Full strength above cutoff retains the ordinary default appearance.
@@ -266,7 +253,7 @@ export function balancedTensorDiagram(rep,options={}) {
       if(!transversal)transversalOpacity=0;
     }
   }
-  return {valid:true,frame,observables,data,glyphs,operators,continuation:{tensorDescriptors:descriptors()},source:'balanced-weighted-tensors',
+  return {valid:true,frame,observables,data,glyphs,operators,source:'balanced-weighted-tensors',
     diagnostics:{eigenvalues,eigenvalueGap:gap,phaseEigenvalues:tv,phaseEigenvalueGap:phaseGap,phaseAnchorMagnitudes:anchors.map(abs)},
     layout:{valid:true,points,rawPoints,lines,pointMarkers,pointOpacities,lineOpacities,pointWeights,lineWeights,
       incidenceColors:colors,phaseVectors,pointPhaseVectors:[[0,0],[0,0],[0,0]],cameraDefects,
