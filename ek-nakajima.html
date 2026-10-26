@@ -6359,7 +6359,7 @@ function createChamberSlices(host, getBeta) {
   const canvases = [];
   for (let branch = 0; branch < 3; branch++) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;color:var(--ek-chamber-tx)';
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;color:var(--ek-box-tx)';
     const title = document.createElement('div'); title.textContent = 'Branch ' + (branch + 1); title.style.fontSize = '.8em';
     const canvas = document.createElement('canvas');
     canvas.style.cssText = 'display:block;width:100%;max-width:110px;aspect-ratio:1;height:auto';
