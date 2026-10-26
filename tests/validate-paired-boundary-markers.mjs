@@ -3,7 +3,7 @@ import {source,distance} from './continuity-features.mjs';
 (async function(){
  const {solveBalancedAtlas}=await import(source('balanced-model.js'));
  const {balancedTensorDiagram}=await import(source('weighted-balanced-diagram.js'));
- const {makeElementView,interpolateScreenLayout}=await import(source('element-render.js'));
+ const {makeElementView}=await import(source('element-render.js'));
  const {betaToLevels,E6_DEFAULT_BETA}=await import(source('e6-parameters.js'));
  const {applyComplexGauge}=await import(source('solver.js'));
  const {eyeZ}=await import(source('core-math.js'));
@@ -52,8 +52,6 @@ import {source,distance} from './continuity-features.mjs';
   const yFeatures=x=>features(x.strokes.filter(s=>s.width===4/3));
   assert(distance(yFeatures(renderNonzeroY(solve(root-1e-6))),yFeatures(renderNonzeroY(solve(root+1e-6))))<.2,'actual nonzero y arrow paths and alpha join across pole');
   assert(markers(left.d).every(m=>Math.abs(Math.max(...m.point.map(Math.abs))-.9)<1e-10));
-  const snap=interpolateScreenLayout(left.d.layout,right.d.layout,.5);
-  markers({layout:snap}).forEach((m,k)=>assert(distance(m.point,markers(left.d)[k].point.map((v,j)=>(v+markers(right.d)[k].point[j])/2))<1e-12));
   results.push({root,errors});
  }
  // Entry preserves the real point and turns the secondary mark off.
@@ -64,10 +62,6 @@ import {source,distance} from './continuity-features.mjs';
  assert.deepStrictEqual(inside.layout.points[1],inside.layout.rawPoints[1]);
  assert(Math.min(...pair.map(m=>m.weight))<1e-6);
  assert(distance(pair.reduce((a,b)=>a.weight>b.weight?a:b).point,inside.layout.points[1])<1e-5);
- for(const [a,b]of [[inside.layout,outside.layout],[outside.layout,inside.layout]]){
-  const halfway=interpolateScreenLayout(a,b,.5).pointMarkers[1].boundaryPair;
-  assert(halfway&&Math.abs(halfway[0].weight+halfway[1].weight-1)<1e-12,'snap interpolates pair birth and loss');
- }
  // Verify actual nonzero-y arrows: two point-based blocks split their alpha,
  // while the line-based block appears once. Inject nonzero intrinsic sizes
  // into an actual rendered frame so the geometry check cannot pass on zero ink.

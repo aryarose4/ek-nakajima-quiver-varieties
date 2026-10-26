@@ -407,15 +407,15 @@ async function main() {
   asyncRadius.value='.47';asyncRadius._fire('input');
   asyncRadius.value='.46';asyncRadius._fire('input');flushRaf();
   worker.finish(); // Obsolete snapped request is validated progress.
-  check('obsolete snapped worker progress retains easing intent',asyncCanvas.getAttribute('data-snap-transition')==='true');
+  check('obsolete snapped worker progress keeps exact solved geometry',asyncCanvas.getAttribute('data-snap-transition')==='false');
   check('obsolete progress keeps latest request status busy',initialStatus.textContent==='Solving\u2026');
   worker.finish(); // Latest coalesced nonsnap request completes.
   check('latest completion clears status',initialStatus.textContent==='');
-  check('coalesced nonsnap final retains pending snap ease',asyncCanvas.getAttribute('data-snap-transition')==='true');
+  check('coalesced nonsnap final draws exact solved geometry',asyncCanvas.getAttribute('data-snap-transition')==='false');
   check('coalesced final remains mathematically exact',JSON.parse(asyncIncidence.getAttribute('data-displayed-parameters')).r===.46);
   const realDateNow=Date.now,future=Date.now()+1000;Date.now=()=>future;
   set(asyncRadius,.4);worker.finish();
-  check('accepted final clears snap intent for ordinary later inputs',asyncCanvas.getAttribute('data-snap-transition')==='false');
+  check('ordinary later inputs also draw exact solved geometry',asyncCanvas.getAttribute('data-snap-transition')==='false');
   Date.now=realDateNow;
   const {E6_ADJACENT_WORD,e6ReflectLevels}=await import('./e6-chamber-transport.js');
   const {E6_REGULAR_LEVELS}=await import('./e6-levels.js');

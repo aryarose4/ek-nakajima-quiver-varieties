@@ -5,44 +5,9 @@ import { balancedTensorDiagram } from './weighted-balanced-diagram.js';
 const LINE = ["P₁", "P₂", "P₃"];
 const ARROW_LENGTH = 16;
 
-// Only projected drawing coordinates move; classification and tensors remain
-// those of the exact target representation throughout the short transition.
-export function interpolateScreenLayout(from, target, progress) {
-  if (!from || !from.valid || !target || !target.valid || progress >= 1) return target;
-  const u = Math.max(0, progress), t = u * u * (3 - 2 * u);
-  function coordinates(a, b) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return b;
-    return b.map((v, i) => Array.isArray(v) ? coordinates(a[i], v) :
-      Number.isFinite(a[i]) && Number.isFinite(v) ? a[i] + t * (v - a[i]) : v);
-  }
-  const result = { ...target };
-  for (const key of ['points', 'lines', 'transversal', 'concurrencyPoint']) {
-    if (from[key] && target[key]) result[key] = coordinates(from[key], target[key]);
-  }
-  if (target.cotangentTargets) result.cotangentTargets = target.cotangentTargets.map((v, i) =>
-    v && from.cotangentTargets && from.cotangentTargets[i] ? { ...v,
-      point: coordinates(from.cotangentTargets[i].point, v.point) } : v);
-  if (target.pointMarkers) result.pointMarkers=target.pointMarkers.map((m,i)=>{
-    const old=from.pointMarkers&&from.pointMarkers[i];
-    if(!old||(!m.boundaryPair&&!old.boundaryPair))return m;
-    function expanded(marker,point,reference) {
-      if(marker.boundaryPair)return marker.boundaryPair;
-      const nearest=reference.reduce((best,v,k)=>
-        Math.hypot(...v.point.map((x,j)=>x-point[j]))<Math.hypot(...reference[best].point.map((x,j)=>x-point[j]))?k:best,0);
-      return reference.map((v,k)=>({...v,point,weight:k===nearest?1:0}));
-    }
-    const reference=m.boundaryPair||old.boundaryPair;
-    let a=expanded(old,from.points[i],reference);
-    const b=expanded(m,target.points[i],reference);
-    const cost=(x,y)=>Math.hypot(...x.point.map((v,j)=>v-y.point[j]));
-    if(old.boundaryPair&&m.boundaryPair&&cost(a[0],b[1])+cost(a[1],b[0])<cost(a[0],b[0])+cost(a[1],b[1]))a=[a[1],a[0]];
-    return {...m,clipped:true,boundaryPair:b.map((v,k)=>({...v,
-      point:coordinates(a[k].point,v.point),
-      direction:coordinates(a[k].direction,v.direction),
-      weight:a[k].weight+t*(v.weight-a[k].weight)}))};
-  });
-  return result;
-}
+// Draw each solved frame as a whole. Independent screen-coordinate easing
+// does not preserve projective incidence, and can collapse unoriented lines.
+// Geometry, classifications and cotangent glyphs must share the same frame.
 
 // Missing opacity arrays retain the legacy full-strength drawing.
 export function objectOpacity(layout, kind, index) {
@@ -230,14 +195,6 @@ export function makeElementView(host, opts) {
   let flashStarts = [-Infinity, -Infinity, -Infinity, -Infinity];
   let arrowFlashStarts=Array(9).fill(-Infinity);
   let animationFrame = null;
-  let transition = null;
-  function displayedLayout(now) {
-    if (!transition) return layout;
-    const progress = (now - transition.start) / 160;
-    const result = interpolateScreenLayout(transition.from, layout, progress);
-    if (progress >= 1) transition = null;
-    return result;
-  }
 
   function palette() {
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -251,9 +208,7 @@ export function makeElementView(host, opts) {
   }
 
   function draw() {
-    // Shadow the mathematical target with a temporary screen-only layout.
-    const layout = displayedLayout(Date.now());
-    canvas.setAttribute('data-snap-transition', String(!!transition));
+    canvas.setAttribute('data-snap-transition', 'false');
     const pal = palette();
     yToggleLabel.style.color = pal.text;
     canvas.setAttribute('data-y-data', String(showYData));
@@ -389,14 +344,12 @@ export function makeElementView(host, opts) {
       });
       ctx.globalAlpha=1;
     }
-    if ((flashing.length || flashingArrows.length || transition) && animationFrame === null && typeof requestAnimationFrame === 'function') {
+    if ((flashing.length || flashingArrows.length) && animationFrame === null && typeof requestAnimationFrame === 'function') {
       animationFrame = requestAnimationFrame(function () { animationFrame = null; draw(); });
     }
   }
 
   function setData(view) {
-    const from = displayedLayout(Date.now());
-    const wasTransitioning = !!transition;
     const frame = elementFrame(view);
     canvas.setAttribute('data-frame-source', frame.source || (view && view.balancedRep ? 'balanced-tensors' : 'legacy-flags'));
     canvas.setAttribute('data-frame-valid', String(!!(frame.data && frame.data.valid && frame.layout && frame.layout.valid)));
@@ -424,8 +377,6 @@ export function makeElementView(host, opts) {
       });
     }
     data = frame.data; layout = frame.layout; glyphs = frame.glyphs;
-    transition = view && (view.animateSnap || wasTransitioning) && from && from.valid && layout && layout.valid ?
-      { from, start: now } : null;
     draw();
     return frame;
   }
