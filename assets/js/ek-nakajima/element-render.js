@@ -75,12 +75,14 @@ export function newCotangentIncidenceHighlights(previous,current,glyphs) {
   if(!previous||!previous.valid||!current||!current.valid||!before||!after)return [];
   const result=[];
   after.forEach((event,i)=>{
-    // Follow q = im(K_1) through branch 1's c13/c23 arrows. K_3 has
-    // the same image in this chamber, but should not duplicate the cue.
-    if(i!==0||!event||!before[i]||!glyphs[i])return;
-    if(['points','planes'].some(kind=>event[kind].some((v,j)=>v&&!before[i][kind][j]))) {
-      glyphs[i].magnitudes.forEach((m,k)=>{if(k>0&&m>1e-12)result.push(3*i+k);});
-    }
+    if(!event||!before[i]||!glyphs[i]||!glyphs[i].magnitudes)return;
+    const gained=['points','planes'].some(kind=>event[kind].some((v,j)=>v&&!before[i][kind][j]));
+    // c13 ends at its own marked point P_i; c23 ends at q = im(K_i).
+    // Equal images on different branches still have distinct drawn arrows.
+    // The tangent c12 arrow does not depict this image incidence.
+    const magnitudes=glyphs[i].magnitudes;
+    if(gained&&event.points[i]&&magnitudes[1]>1e-12)result.push(3*i+1);
+    if(gained&&magnitudes[2]>1e-12)result.push(3*i+2);
   });
   return result;
 }
