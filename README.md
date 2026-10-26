@@ -126,11 +126,10 @@ the outgoing paraboloid at the short arm's tip, rather than a second sphere.
 The new chart satisfies the complex equations; stability throughout the chart
 and the metric interpretation of its portrait coordinates are not certified.
 
-The live incidence view uses a representation-derived unitary camera. A
-Hermitian tensor and its spectral correlations determine a projective seed q;
-QR orthonormalization of q, Hq and Rq supplies three axes sharing one common
-phase. The common phase cancels in the affine coordinates, avoiding the old
-independent phase-reference flips. The same rule applies across chambers.
+The live incidence view uses the restored tensor eigenframe camera. A
+Hermitian tensor supplies the axes, and spectral correlations fix their
+phases. The same rule applies across chambers. Vanishing phase references
+and repeated eigenvalues can still cause position or color discontinuities.
 There is no incidence fitting or residual-dependent attraction. See
 [the camera construction and current limits](docs/e6-continuous-incidence.md).
 
@@ -144,7 +143,7 @@ Selected coordinate-wall limits and positive-beta contractions have numerical
 regressions; this does not certify every camera chart at every wall.
 
 Line phase cues come from the signed complex correlation of the first two
-dual-line coordinates in the common-phase QR camera. The correlation is
+dual-line coordinates in the tensor camera. The correlation is
 unchanged by a common phase of the line coordinates; no component's phase
 is normalized individually. It moves each line within its separate hue band.
 Dot hues use the true complex incidence residuals against the other planes;
@@ -152,6 +151,11 @@ a matching hue indicates that pairing, while a double match becomes neutral.
 Disappearing planes also lose their influence on dot color. These cues are
 separate from the cotangent arrows. Nearly incident configurations can have
 perceptually indistinguishable hues, so color is not an exact certificate.
+
+Concurrency and collinearity guides fade within a narrow neighborhood of
+complex and screen incidence instead of appearing abruptly at a numerical
+tolerance. This does not move flags, alter their colors, or change the
+underlying incidence classifications.
 
 The screen remains a real projection of complex flags, rather than a complete
 invariant. Source classifications and hues use the actual complex pairings.

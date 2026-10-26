@@ -1,5 +1,24 @@
 # Representation-derived flag camera
 
+## Current implementation note (2026-10-26)
+
+The live source has restored the tensor eigenframe camera; the QR construction
+below describes an earlier experiment. Concurrency/collinearity guides now
+use continuous residual-based opacity, with least-squares/PCA screen geometry.
+Numerical incidence classifications, flag positions, and color formulas are
+unchanged by this guide fix.
+
+Two remaining discontinuities were reproduced in the asymmetric fixture from
+`tests/scan-adaptive-camera-continuity.mjs`: a phase-reference zero near
+`r=.08739584684, theta=t=phi=0`, and a camera eigenvalue crossing near
+`r=0, sphere=1, t=.44873428345, theta=phi=0`. The second changes saturation as
+well as position. A local phase-reference perturbation only moved the zero;
+it was rejected. Experimental camera transport smooths the first crossing,
+but introduces path-dependent pictures (a full angle loop need not return to
+its initial orientation/colors). It is not enabled in the live source.
+
+## Earlier QR experiment
+
 The main widget now uses the straight-line QR camera accepted in the isolated
 preview. It replaces the bounded 12-variable incidence fit. No incidence
 residual changes a geometric fitting weight, and there is no temporal camera
