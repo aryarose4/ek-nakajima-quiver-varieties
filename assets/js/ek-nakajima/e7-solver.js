@@ -1,6 +1,6 @@
 // Numerical balancing on the E7 open chart; convergence is checked directly.
 import {expmHermitian} from './solver.js';
-import {validateE7Levels,positiveE7Gauge,gaugeActionE7,packRealResidualE7,complexResidualNormE7} from './e7-core.js';
+import {validateE7Rep,validateE7Levels,positiveE7Gauge,gaugeActionE7,packRealResidualE7,complexResidualNormE7} from './e7-core.js';
 const norm=v=>Math.hypot(...v);
 function linear(A,b){
  const n=b.length,M=A.map((r,i)=>r.concat(b[i]));
@@ -14,6 +14,7 @@ function linear(A,b){
 }
 export function solveE7(rep,levels,options={}){
  validateE7Levels(levels);
+ const errors=validateE7Rep(rep);if(errors.length)throw new Error(errors.join('; '));
  let coords=options.warmStart?options.warmStart.slice():Array(47).fill(0);
  const tolerance=options.tolerance===undefined?1e-9:options.tolerance,maxIterations=options.maxIterations===undefined?100:options.maxIterations;
  if(!(tolerance>0)||!Number.isFinite(tolerance)||!Number.isInteger(maxIterations)||maxIterations<0)throw new Error('Invalid E7 solver options');
@@ -43,3 +44,4 @@ export function solveE7(rep,levels,options={}){
  if(success)reason='converged';
  return {rep:state.rep,coords,success,realNorm,complexNorm,iterations,reason,jacobianRank:lastRank};
 }
+
