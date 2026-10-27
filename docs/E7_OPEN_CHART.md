@@ -25,3 +25,26 @@ Consequently the forward-arrow representation is stable throughout z outside {0,
 ## 3D Picture
 
 Full flags in C4 are projective point contained in line contained in plane in CP3; the short C2 gives a projective line. On the real slice these sit literally in RP3, using an affine chart and clipping near infinity. For complex data the real-part affine projection of a selected real-coefficient slice is a display only; complex incidence is checked before projection. General complex lines and planes do not project faithfully to real lines and planes. Never claim literal projected incidence for all complex flags or describe this as an su4 polygon.
+
+## Regular Default Levels
+
+The symmetric fixture above lies on root walls, although this particular open chart consists of stable points. The prototype instead uses regular levels
+
+    [1.0001, 1.0002, 1.0004, 1.0008, 1.0016, 1.0032, 0.5064]
+
+in arm order A1,A2,A3,B1,B2,B3,C2. Beta is half this tuple. The exact integer numerators over 10000 are [10001,10002,10004,10008,10016,10032,5064]. The sum weighted by vertex dimensions is 130281/10000, so the auxiliary central King weight is -130281/40000. This King weight is bookkeeping for subrepresentations, not an extra U(4) level: the actual central moment equation remains traceless SL(4).
+
+The weighted absolute perturbation from the symmetric fixture is 281/10000, less than its uniform strict King margin 1/4, hence stability survives throughout the same open chart for every p. The independent exact integer battery `tests/validate-e7-stability.mjs` verifies the stronger direct inequalities for 2173 possible dimension bounds and coordinate subspaces; its largest King weight is -10003/40000. It also enumerates the 126 vectors 0 <= d <= delta with affine Tits form q(d)=1, finding no zero parameter pairing (smallest absolute pairing 42/40000). This is the affine E7 real-root regularity check; it does not construct the exceptional-divisor atlas.
+
+## Cotangent Normalization And Coverage
+
+Only the short forward arrow W depends on z, and its derivative has sole nonzero entry (row 4,column 2)=1. The corresponding short reverse entry is y(row 2,column 4)=p. Thus the tautological one-form sum tr(y dx) restricts to p dz. In particular p is a genuine cotangent coordinate, not an arbitrary amplitude relabeling.
+
+Every pair of opposite full flags can be normalized to the standard/reversed pair. Their residual diagonal torus normalizes a generic plane graph to the displayed M by setting three nonzero entries to 1; the fourth is z. Nonzero six minors say precisely z != 0,1 in this normalization. Its stabilizer is scalar, so the forward gauge differential has rank 47. The moment-map annihilator in the 48-dimensional reverse-arrow space consequently has dimension one, and the displayed nonzero reverse-arrow tuple spans it. These facts establish a genuine local open cotangent parameterization with coordinates (z,p). They do not cover configurations with non-opposite full flags, degenerate Pluecker minors, or chart infinity. New representatives and transition maps are required for a global E7 atlas.
+
+## Verification Commands
+
+    node tests/validate-e7-core.mjs
+    node tests/validate-e7-stability.mjs
+
+The algebraic chart equations, stability inequalities and exact root certificate are distinct from numerical convergence. The solver directly checks real and complex residuals. A successful solve establishes the tested point to its stated tolerance; a failed solve is not an instability certificate.
