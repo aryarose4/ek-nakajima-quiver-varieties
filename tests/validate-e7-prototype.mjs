@@ -1,7 +1,7 @@
 // Browser-independent worker protocol and prototype wiring smoke check.
 import fs from 'fs';import os from 'os';import path from 'path';import {pathToFileURL} from 'url';import assert from 'assert';
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'e7-prototype-'));fs.writeFileSync(path.join(temp,'package.json'),'{"type":"module"}');
-for(const name of ['core-math','solver','e7-core','e7-solver','e7-worker'])fs.copyFileSync(new URL('../assets/js/ek-nakajima/'+name+'.js',import.meta.url),path.join(temp,name+'.js'));
+for(const name of ['core-math','solver','e7-core','e7-solver','e7-atlas','e7-frame-transport','e7-worker'])fs.copyFileSync(new URL('../assets/js/ek-nakajima/'+name+'.js',import.meta.url),path.join(temp,name+'.js'));
 async function main(){
  const C=await import(pathToFileURL(path.join(temp,'e7-core.js')).href);
  let response;global.self={postMessage:data=>{response=data;}};

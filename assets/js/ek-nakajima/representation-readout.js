@@ -32,7 +32,7 @@ export function formatComplex(z) {
   return scalar(re) + (im < 0 ? "\u2212" : "+") + imaginary;
 }
 
-export function makeRepresentationReadout(host) {
+export function makeRepresentationReadout(host, options = {}) {
   const style = document.createElement("style");
   style.textContent = `
 .ek-rep-readout { display:grid; gap:10px; min-width:0; color:var(--ek-box-tx,inherit); }
@@ -152,7 +152,16 @@ export function makeRepresentationReadout(host) {
     body.appendChild(code);
     card.appendChild(body);
     root.appendChild(card);
-    const views = [matrix(code,"x",1,i,"a",2,1), matrix(code,"x",2,i,"A",3,2), matrix(code,"y",1,i,"b",1,2), matrix(code,"y",2,i,"B",2,3)];
+    const views = options.type === 'E7' ? [] : [matrix(code,"x",1,i,"a",2,1), matrix(code,"x",2,i,"A",3,2), matrix(code,"y",1,i,"b",1,2), matrix(code,"y",2,i,"B",2,3)];
+    if (options.type === 'E7') {
+      const dims = i === 2 ? [2] : [1,2,3];
+      ['x','y'].forEach(letter => dims.forEach((d,k) => {
+        const target = k === dims.length - 1 ? 4 : dims[k+1];
+        const view = matrix(code,letter,k+1,i,letter,letter === 'x' ? target : d,letter === 'x' ? d : target);
+        view.arrow = k; views.push(view);
+      }));
+      body.style.height = '440px'; body.style.overflowY = 'auto';
+    }
     let feedbackTimer;
     button.addEventListener("click", function() {
       const text = branchText(views);
@@ -170,7 +179,8 @@ export function makeRepresentationReadout(host) {
   return {
     setData(rep) {
       matrices.forEach(function(view) {
-        const values = rep && rep[view.key] && rep[view.key][view.branch];
+        let values = rep && rep[view.key] && rep[view.key][view.branch];
+        if (options.type === 'E7') values = values && values[view.arrow];
         for (let i = 0; i < view.rows; i++) {
           for (let j = 0; j < view.cols; j++) {
             const z = values && values[i] && values[i][j];

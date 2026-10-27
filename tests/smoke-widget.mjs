@@ -303,7 +303,7 @@ async function main() {
   set(radius, 0.25);
   check("leaving an arm resets sphere selection and restores finite chart", balanced());
   set(radius, 0); set(t, 1); limit._fire("click", { type: "click" }); flushRaf();
-  findByText(container, "E7")._fire("click", {type:"click"}); flushRaf();
+  findByText(container, "E8")._fire("click", {type:"click"}); flushRaf();
   complexButton._fire('click');
   check('unsupported complex toggle cannot restore stale matrices', cells.every(e => e.textContent === '\u2014'));
   balancedButton._fire('click');
@@ -341,7 +341,7 @@ async function main() {
   check("leaving concurrency resets outgoing chart", moduli["data-flow"] === "central" && balanced());
   const data = await import("./quiver-data.js");
   const core = await import("./core-view.js");
-  ["E6", "E7", "E8"].forEach(function(key) {
+  ["E6", "E8"].forEach(function(key) {
     findByText(container, key)._fire("click", { type: "click" }); flushRaf();
     const layout = core.buildSideLayout(data.AFFINE_ADE[key]);
     layout.arms.forEach(function(arm, index) {
@@ -437,7 +437,7 @@ async function main() {
   check('failed solve cannot restore previous complex representation',asyncCells.every(e=>e.textContent==='\u2014'));
   check('failed solve clears status',initialStatus.textContent==='' && initialStatus.parentNode.parentNode.getAttribute('aria-busy')==='false');
   set(asyncRadius,.43);
-  findByText(asyncContainer,'E7')._fire('click',{type:'click'});flushRaf();
+  findByText(asyncContainer,'E8')._fire('click',{type:'click'});flushRaf();
   check('unsupported type clears matrices and solving status',asyncCells.every(e=>e.textContent==='\u2014') && initialStatus.textContent==='');
   worker.finish();
   check('obsolete completion cannot restore unsupported matrices or status',asyncCells.every(e=>e.textContent==='\u2014') && initialStatus.textContent==='');

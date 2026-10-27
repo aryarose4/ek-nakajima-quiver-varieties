@@ -10,6 +10,7 @@ import { createParametersPanel } from "./parameters-panel.js";
 import { E6_DEFAULT_BETA, betaToLevels, e6DisplayBeta, e6ChamberWallOptions, e6ChamberWord } from './e6-parameters.js';
 import { makeRepresentationReadout, representativeForDisplay } from "./representation-readout.js";
 import { makeElementView } from "./element-render.js";
+import { makeE7Interface } from './e7-interface.js';
 import { snapSliderInput } from "./slider-magnet.js";
 
 const TYPE_KEYS = ["E6", "E7", "E8"];
@@ -169,7 +170,7 @@ function introMarkup(key) {
   const alt = 'Doubled ' + key + ' quiver, dimensions ' + q.marks.join(', ') + '. Left, right and upper branches; x points inward and y outward. Central SL(' + q.rStar + ', C), GL at other vertices; no framing.';
   const typeMarkup = 'E<sub>' + key.slice(1) + '</sub>';
   return '<figure class="ek-quiver" data-type="'+key+'"><img class="ek-quiver-light" src="'+image('light')+'" alt="'+alt+'"><img class="ek-quiver-dark" src="'+image('dark')+'" alt="'+alt+'"><figcaption>Q: doubled affine '+typeMarkup+' quiver</figcaption></figure>'+
-    '<div class="intro"><p>'+(key === "E6" ? "The sliders" : "In the E<sub>6</sub> explorer, the sliders")+' parameterize &beta;-stable representations (x,y) of Q with complex moment 0, up to the action of the complex symmetry group. The solver finds a complex gauge transformation that balances (x, y) at &mu;<sub>&Ropf;</sub> = &beta;; the flag incidence panel displays the result.</p><p>For generic &beta;, this moduli space of four real dimensions is the minimal resolution of &Copf;&sup2;/&Gamma;, where &Gamma; &sub; SU(2) is the binary '+group+' group. With its hyperk&auml;hler metric, it is the ALE-'+typeMarkup+' gravitational instanton.</p><p class="ek-intro-note">'+(key === 'E6' ? 'The live solver and flag-incidence view currently support E<sub>6</sub>.' : 'The '+typeMarkup+' quiver and schematic core are available; its solver and flag-incidence view are not yet implemented.')+'</p></div>';
+    '<div class="intro"><p>'+(key !== "E8" ? "The sliders" : "In the E<sub>6</sub> explorer, the sliders")+' parameterize &beta;-stable representations (x,y) of Q with complex moment 0, up to the action of the complex symmetry group. The solver finds a complex gauge transformation that balances (x, y) at &mu;<sub>&Ropf;</sub> = &beta;; the flag incidence panel displays the result.</p><p>For generic &beta;, this moduli space of four real dimensions is the minimal resolution of &Copf;&sup2;/&Gamma;, where &Gamma; &sub; SU(2) is the binary '+group+' group. With its hyperk&auml;hler metric, it is the ALE-'+typeMarkup+' gravitational instanton.</p><p class="ek-intro-note">'+(key === 'E7' ? 'The live E<sub>7</sub> view currently covers the central sphere; t and &phi; are not yet extended.' : key === 'E6' ? 'The live solver and flag-incidence view currently support E<sub>6</sub>.' : 'The '+typeMarkup+' quiver and schematic core are available; its solver and flag-incidence view are not yet implemented.')+'</p></div>';
 }
 
 function activate(container) {
@@ -233,7 +234,9 @@ function activate(container) {
     representationButtons[entry[0]] = button;
     representationSelector.appendChild(button);
   });
-  const matrices = makeRepresentationReadout(matrixHost);
+  let e7Interface = null;
+  const e6MatrixHost = document.createElement('div');matrixHost.appendChild(e6MatrixHost);
+  const matrices = makeRepresentationReadout(e6MatrixHost);
   function refreshRepresentation() {
     Object.keys(representationButtons).forEach(function(mode) {
       const selected = mode === representationMode;
@@ -243,6 +246,7 @@ function activate(container) {
     const rep = representativeForDisplay(displayedResult, representationMode);
     matrixHost.title = representationMode === 'complex' ? 'A gauge-equivalent representative of the current complex orbit' : '';
     matrices.setData(rep);
+    if (e7Interface) e7Interface.setMode(representationMode);
   }
   function clearRepresentation() {
     displayedResult = null;
@@ -357,6 +361,7 @@ function activate(container) {
   let chamberId = 'default';
   let chamberEpoch = 0;
   const balancedClient = createBalancedClient({ onProgress: function (result, parameters, levels) {
+    if (state.key !== 'E6') return;
     displayBalanced(result, parameters, levels, outstandingSnap);
     // This is a validated intermediate representation, not the latest request.
     incidenceFrame.setAttribute('aria-busy', 'true');
@@ -396,6 +401,11 @@ function activate(container) {
     incidenceFrame.setAttribute('data-real-residual', String(result.residuals.real_norm));
     incidenceView.setStatus('', 'info');
   }
+  const e6IncidenceChildren = Array.from(incidenceFrame.children);
+  const e6ChildDisplay = e6IncidenceChildren.map(child => child.style.display);
+  let previousType = 'E6';
+  const savedCoordinates = {};
+  const savedTabState = {};
   let lastFlow = null;
   function limitMode(t) {
     if (!lastFlow) return null;
@@ -436,6 +446,14 @@ function activate(container) {
     else setTimeout(run, 0);
   }
   function update() {
+    if (state.key === 'E7') {
+      tControl.input.value='0';phiControl.input.value='0';
+      [rControl,thetaControl,tControl,phiControl].forEach(c=>c.refresh());
+      const parameters={r:rControl.getValue(),theta:thetaControl.getValue(),t:0,phi:0,sphere:0,outgoing:false};
+      lastFlow=coreView?coreView.update(layout,parameters,true):null;
+      limBtn.style.display='none';coreFrame.setAttribute('data-flow','central');coreFrame.setAttribute('data-sphere','0');coreFrame.setAttribute('data-fixed','true');
+      e7Interface.update(parameters);return;
+    }
     const r = rControl.getValue();
     const theta = thetaControl.getValue();
     const phi = phiControl.getValue();
@@ -488,7 +506,7 @@ function activate(container) {
       incidenceFrame.setAttribute('aria-busy', 'true');
       incidenceFrame.setAttribute('data-balanced', 'pending');
       balancedClient.request(parameters, function (result) {
-        if (epoch !== chamberEpoch || key !== lastBalancedKey) return;
+        if (state.key !== 'E6' || epoch !== chamberEpoch || key !== lastBalancedKey) return;
         setRepresentationBusy(false);
         incidenceFrame.setAttribute('aria-busy', 'false');
         if (!result.success) {
@@ -520,6 +538,22 @@ function activate(container) {
     if (coreView) coreView.setLayout(layout);
   }
   function sync() {
+    if (previousType !== state.key) {
+      savedCoordinates[previousType] = [rControl,thetaControl,tControl,phiControl].map(c=>c.input.value);
+      savedTabState[previousType] = {arm:state.arm,sphere:state.sphere,outgoing:state.outgoing};
+      const values = savedCoordinates[state.key] || ['0.25','0','0','0'];
+      [rControl,thetaControl,tControl,phiControl].forEach((c,i)=>{c.input.value=values[i];});
+      balancedClient.invalidate();lastBalancedKey=null;balancedFrame=null;outstandingSnap=false;
+      clearRepresentation();setRepresentationBusy(false);
+      if(state.key === 'E7' && !e7Interface)e7Interface=makeE7Interface({left,right,incidenceFrame,matrixHost,setBusy:setRepresentationBusy,onChange:apply});
+      if(e7Interface)e7Interface.setActive(state.key === 'E7');
+      previousType=state.key;
+    }
+    e6MatrixHost.style.display=state.key === 'E7' ? 'none' : '';
+    e6IncidenceChildren.forEach((child,i)=>{child.style.display=state.key === 'E7' ? 'none' : e6ChildDisplay[i];});
+    tControl.input.disabled=phiControl.input.disabled=state.key === 'E7';
+    tControl.input.parentNode.style.opacity=phiControl.input.parentNode.style.opacity=state.key === 'E7' ? '.45' : '';
+    tControl.input.title=phiControl.input.title=state.key === 'E7' ? 'Not yet extended beyond the E7 central sphere' : '';
     intro.innerHTML = introMarkup(state.key);
     parametersPanel.setEnabled(state.key === "E6");
     Object.keys(tabButtons).forEach(function (key) {
@@ -527,14 +561,16 @@ function activate(container) {
       tabButtons[key].setAttribute("aria-pressed", String(key === state.key));
     });
     refreshCoreLayout();
-    state.arm = -1;
-    state.sphere = 0;
-    state.outgoing = false;
+    const saved = savedTabState[state.key];
+    state.arm = saved ? saved.arm : -1;
+    state.sphere = saved ? saved.sphere : 0;
+    state.outgoing = saved ? saved.outgoing : false;
     apply();
   }
   function resize() {
     if (coreView) coreView.resize();
     incidenceView.resize();
+    if(e7Interface)e7Interface.resize();
   }
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(resize);
@@ -547,6 +583,7 @@ function activate(container) {
     parametersPanel.refreshTheme();
     if (coreView) coreView.refreshTheme();
     incidenceView.refreshTheme();
+    if(e7Interface)e7Interface.refreshTheme();
     if (matrices.refreshTheme) matrices.refreshTheme();
   });
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
