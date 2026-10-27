@@ -19,7 +19,8 @@ const coords=Array.from({length:47},(_,i)=>.1*Math.sin(i*1.7)),g=C.positiveE7Gau
 assert(C.complexResidualNormE7(r)<1e-11);
 // Off the zero set, check full complex-map covariance, not only zero preservation.
 const perturbed=JSON.parse(JSON.stringify(rep));perturbed.y[0][2][0][3][1]+=.037;
-const before=C.complexResidualE7(perturbed),after=C.complexResidualE7(C.gaugeActionE7(perturbed,g.gauge,g.inverse));
+const expectedCenter=A.traceless(perturbed.x.reduce((sum,arm,b)=>A.matSub(sum,A.matMul(arm[arm.length-1],perturbed.y[b][arm.length-1])),A.zerosZ(4,4)));
+const before=C.complexResidualE7(perturbed);assert(A.frobNorm(A.matSub(before.center,expectedCenter))<1e-14);const after=C.complexResidualE7(C.gaugeActionE7(perturbed,g.gauge,g.inverse));
 assert(A.frobNorm(A.matSub(after.center,A.matMul(A.matMul(g.gauge.center,before.center),g.inverse.center)))<1e-11);
 before.branches.forEach((arm,b)=>arm.forEach((Q,k)=>assert(A.frobNorm(A.matSub(after.branches[b][k],A.matMul(A.matMul(g.gauge.branches[b][k],Q),g.inverse.branches[b][k])))<1e-11)));
 assert.strictEqual(C.packRealResidualE7(r,levels).length,47);
@@ -37,5 +38,6 @@ assert.throws(()=>S.solveE7(C.makeE7Chart(2),levels,{warmStart:[0]}));
 console.log('E7 core and balancing validation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
+
 
 

@@ -51,7 +51,7 @@ export function gaugeActionE7(rep,gauge,inverse){
 export function complexResidualE7(rep){
  let center=zerosZ(4,4);const branches=E7_BRANCH_DIMS.map((ds,b)=>ds.map((d,k)=>{
  let m=matMul(rep.y[b][k],rep.x[b][k]);if(k)m=matSub(m,matMul(rep.x[b][k-1],rep.y[b][k-1]));
- if(k===ds.length-1)center=matAdd(center,matMul(rep.x[b][k],rep.y[b][k]));return m;
+ if(k===ds.length-1)center=matSub(center,matMul(rep.x[b][k],rep.y[b][k]));return m;
  }));return {center:traceless(center),branches};
 }
 export function complexResidualNormE7(rep){const m=complexResidualE7(rep);return Math.sqrt(frob2(m.center)+m.branches.reduce((s,arm)=>s+arm.reduce((t,M)=>t+frob2(M),0),0));}
@@ -79,3 +79,4 @@ export function validateE7Rep(rep){
  }
  return errors;
 }
+
