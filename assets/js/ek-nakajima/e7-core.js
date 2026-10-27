@@ -2,6 +2,9 @@
 import {zerosZ,eyeZ,matMul,matAdd,matSub,matScale,matAdj,traceless,frob2,hermitianBasis,tracelessHermitianBasis,packHermitian,unpackHermitian} from './core-math.js';
 export const E7_BRANCH_DIMS=[[1,2,3],[1,2,3],[2]];
 export const E7_GAUGE_DIM=47;
+// A nearby regular level fixture; root-wall certificate is documented separately.
+export const E7_DEFAULT_BETA=Object.freeze([.50005,.5001,.5002,.5004,.5008,.5016,.2532]);
+export const E7_DEFAULT_LEVELS=Object.freeze(betaToE7Levels(E7_DEFAULT_BETA));
 const bases=[tracelessHermitianBasis(4)].concat([1,2,3,1,2,3,2].map(hermitianBasis));
 const scalar=v=>typeof v==='number'?[v,0]:v;
 const finitePair=v=>Array.isArray(v)&&v.length===2&&v.every(Number.isFinite);
@@ -79,4 +82,5 @@ export function validateE7Rep(rep){
  }
  return errors;
 }
+
 

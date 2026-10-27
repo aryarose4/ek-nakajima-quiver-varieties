@@ -35,9 +35,11 @@ assert(result.success);assert(result.realNorm<1e-7);assert.strictEqual(result.ja
 const fail=S.solveE7(C.makeE7Chart(2),levels,{maxIterations:0});assert(!fail.success);assert.strictEqual(fail.reason,'iteration limit');
 const cold=S.solveE7(C.makeE7Chart([2,.12],[.02,.01]),levels);assert(cold.success);console.log('Cold complex solve:',cold.realNorm,cold.iterations);
 assert.throws(()=>S.solveE7(C.makeE7Chart(2),levels,{warmStart:[0]}));
+const regular=S.solveE7(C.makeE7Chart(2),C.E7_DEFAULT_LEVELS);assert(regular.success);console.log('Regular fixture:',regular.realNorm,regular.complexNorm,regular.iterations);
 console.log('E7 core and balancing validation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
+
 
 
 
