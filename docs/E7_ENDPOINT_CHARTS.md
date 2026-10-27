@@ -55,3 +55,14 @@ These two charts give the cotangent bundle of the stable forward-flag quotient P
 The base is now covered; the remaining boundary problem is cotangent infinity. On the north chart det(T_N)=z(1-z); on the south chart det(T_S)=w(w-1). Thus the cotangent endomorphism drops from rank two to rank one precisely above the three base points 0,1,infinity (for nonzero fiber coordinate). These are distinguished directions for investigating new boundary charts. Rank alone does not identify the remaining exceptional components or prove that a given large-fiber path has a compact limit.
 
 A next experiment should follow the balanced representatives as |p_N| grows above z=0 and z=1, and as |p_S| grows above w=0; measure gauge growth, then derive any required rescaling in v=1/p before extending to a candidate tip chart. The limiting representatives must satisfy the complex equations and their own stability inequalities. Neither a large solver gauge nor an apparent finite rendered limit is sufficient evidence of a new chart.
+
+## Implemented And Numerically Checked
+
+`assets/js/ek-nakajima/e7-atlas.js` exports `makeE7AtlasChart(chart,base,fiber)` for north/south and `transitionE7NorthToSouth(base,fiber)`, returning the south coordinates and all-node gauge/inverse. The prototype UI remains unchanged; the new atlas is a separately tested mathematical module.
+
+    node tests/validate-e7-endpoint-stability.mjs
+    node tests/validate-e7-atlas.mjs
+
+The integer certificate checks 2173 dimension bounds per endpoint and obtains the weights above without floating-point decisions. The arrow battery verifies the raw destabilizing subrepresentation for zero, small complex, and large complex cotangent values. The maximum tested complex-moment residual is 3.56e-15; full forward/reverse overlap error is 1.79e-15, with determinant-one central gauge and the canonical cotangent transition independently checked.
+
+At fiber 0.02+0.01i, cold balancing of north0, north1, south0 takes 14,11,14 iterations, with real residuals 9.08e-12,5.59e-11,6.43e-13. Nearby complex continuation also converges. Independently balanced north/south overlap representatives agree in their central-arm Frobenius norms within 1.51e-13 (these are unitary-invariant comparisons, not raw matrix equality). Bounded 20-iteration raw0/rawInfinity solves fail with residuals approximately 0.002346 and 0.001186; their instability is proved by the exact weights, not inferred from these numerical failures.
