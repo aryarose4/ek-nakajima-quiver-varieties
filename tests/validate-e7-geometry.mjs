@@ -1,4 +1,4 @@
-import fs from 'fs';import os from 'os';import path from 'path';import {pathToFileURL} from 'url';import assert from 'assert';
+﻿import fs from 'fs';import os from 'os';import path from 'path';import {pathToFileURL} from 'url';import assert from 'assert';
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'e7-geometry-'));fs.writeFileSync(path.join(temp,'package.json'),'{"type":"module"}');
 for(const name of ['core-math','solver','e7-core','e7-solver','e7-geometry'])fs.copyFileSync(new URL('../assets/js/ek-nakajima/'+name+'.js',import.meta.url),path.join(temp,name+'.js'));
 async function main(){
@@ -7,7 +7,7 @@ async function main(){
  for(const pair of [[2,0],[[2,.2],[.03,.01]]]){
   const solved=S.solveE7(C.makeE7Chart(...pair),[1,1,1,1,1,1,.5]);assert(solved.success);
   for(const rep of [solved.rep,(()=>{const g=C.positiveE7Gauge(Array.from({length:47},(_,i)=>.17*Math.cos(i)),M.expmHermitian);return C.gaugeActionE7(solved.rep,g.gauge,g.inverse);})()]){
-   const geometry=G.e7FlagGeometry(rep);worst=Math.max(worst,geometry.maxIncidenceNorm);assert(geometry.maxIncidenceNorm<1e-10);
+   const geometry=G.e7FlagGeometry(rep);worst=Math.max(worst,geometry.maxIncidenceNorm);assert(geometry.maxIncidenceNorm<1e-10);assert.deepStrictEqual(geometry.intersections.map(item=>item.dimension),[1,1,0,0]);
    assert.deepStrictEqual(geometry.flags.map(f=>f.dimensions),[[1,2,3],[1,2,3],[2]]);
    for(const flag of geometry.flags){
     assert(flag.anchorComplex);assert(flag.line);assert.strictEqual(flag.directionsComplex.length,flag.name==='Short Line'?1:2);
@@ -20,6 +20,8 @@ async function main(){
  }
  const infinity=C.makeE7Chart(2);infinity.x[0][2][0][0]=[1,0];infinity.x[0][2][1][0]=[-1,0];const f=G.e7FlagGeometry(infinity).flags[0];assert.strictEqual(f.status,'at infinity');assert.strictEqual(f.point,null);
  assert.throws(()=>G.e7FlagGeometry(C.makeE7Chart(2),{bound:0}));
+ assert.strictEqual(G.complexIntersectionDimension([[[1,0],[0,0]]],[[[1,0],[0,0]]]),1);
  console.log('E7 geometry passed; maximum exact-complex membership norm',worst);
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
+

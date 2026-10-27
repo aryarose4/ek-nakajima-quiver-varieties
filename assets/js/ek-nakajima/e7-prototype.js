@@ -23,8 +23,8 @@ function drawGeometry(rep){
  const geometry=e7FlagGeometry(rep),colors=[0xff9b71,0x71b7ff,0xb5dd7c];
  geometry.flags.forEach((flag,index)=>{
   const color=colors[index];
-  if(flag.point&&flag.point.every(x=>Math.abs(x)<=geometry.bound)){
-   const point=new THREE.Mesh(new THREE.SphereGeometry(index===2?.065:.12,16,12),new THREE.MeshBasicMaterial({color}));point.position.set(...flag.point);drawing.add(point);
+  if(index!==2&&flag.point&&flag.point.every(x=>Math.abs(x)<=geometry.bound)){
+   const point=new THREE.Mesh(new THREE.SphereGeometry(.12,16,12),new THREE.MeshBasicMaterial({color}));point.position.set(...flag.point);drawing.add(point);
   }
   if(flag.line)line(flag.line,color);
   if(flag.plane&&flag.plane.length>=3){
@@ -34,32 +34,32 @@ function drawGeometry(rep){
    line(flag.plane.concat([flag.plane[0]]),color);
   }
  });
- document.getElementById('projection-note').textContent=geometry.isReal?'Real Slice: These Are Literal RP³ Affine Flags.':'Complex Data: Selected Real-Coefficient Slices Are Shown. A Complex Projective Line Or Plane Is Not Faithfully Represented By This 3D Picture.';
- document.getElementById('geometry-status').textContent='Exact Complex Membership Residual: '+geometry.maxIncidenceNorm.toExponential(2)+' · '+geometry.flags.map(f=>f.name+': '+f.status).join(' · ');
+ document.getElementById('projection-note').textContent=geometry.isReal?'Real slice: these are literal RP³ affine flags.':'Complex data: selected real-coefficient slices are shown. A complex projective line or plane is not faithfully represented by this 3D picture.';
+ document.getElementById('geometry-status').textContent='Exact complex membership residual: '+geometry.maxIncidenceNorm.toExponential(2)+' · '+geometry.flags.map(f=>f.name+': '+f.status).join(' · ')+'\nComplex intersections: '+geometry.intersections.map(item=>item.label+': '+item.dimension).join(', ')+'. Dimensions are complex vector-space dimensions; 0 means empty projective intersection.';
  return geometry;
 }
-function read(id){const element=document.getElementById(id);if(element.value.trim()===''||!Number.isFinite(element.valueAsNumber))throw new Error('Enter A Finite Number For '+id);return element.valueAsNumber;}
+function read(id){const element=document.getElementById(id);if(element.value.trim()===''||!Number.isFinite(element.valueAsNumber))throw new Error('Enter a finite number for '+id);return element.valueAsNumber;}
 function balance(){
  requestId++;const id=requestId;if(worker)worker.terminate();clearGeometry();latestResult=null;
  let payload;
  try{payload={id,z:[read('z-re'),read('z-im')],p:[read('p-re'),read('p-im')],beta:Array.from({length:7},(_,i)=>read('beta-'+i)),warmStart};}
  catch(error){currentState='failed';status.textContent=error.message;return;}
- currentState='balancing';status.textContent='Balancing Flags…';
+ currentState='balancing';status.textContent='Balancing flags…';
  worker=new Worker(new URL('./e7-worker.js',import.meta.url),{type:'module'});
  worker.onmessage=event=>{
   if(event.data.id!==requestId)return;
   const {error,result,levels}=event.data;
-  if(error){currentState='failed';status.textContent='Balance Failed: '+error;return;}
+  if(error){currentState='failed';status.textContent='Balance failed: '+error;return;}
   latestResult=result;
-  const details='Real Residual: '+result.realNorm.toExponential(3)+'\nComplex Residual: '+result.complexNorm.toExponential(3)+'\nIterations: '+result.iterations+' · Jacobian Rank: '+result.jacobianRank+'\nEquation Levels: '+levels.join(', ');
-  if(!result.success){currentState='failed';status.textContent='Balance Failed: '+result.reason+'\n'+details;return;}
-  try{drawGeometry(result.rep);warmStart=result.coords;currentState='balanced';status.textContent='Balanced Flags\n'+details;}
-  catch(e){clearGeometry();currentState='failed';status.textContent='Geometry Failed: '+e.message+'\n'+details;}
+  const details='Real residual: '+result.realNorm.toExponential(3)+'\nComplex residual: '+result.complexNorm.toExponential(3)+'\nIterations: '+result.iterations+' · Jacobian rank: '+result.jacobianRank+'\nEquation levels: '+levels.join(', ');
+  if(!result.success){currentState='failed';status.textContent='Balance failed: '+result.reason+'\n'+details;return;}
+  try{drawGeometry(result.rep);warmStart=result.coords;currentState='balanced';status.textContent='Balanced flags\n'+details;}
+  catch(e){clearGeometry();currentState='failed';status.textContent='Geometry failed: '+e.message+'\n'+details;}
  };
- worker.onerror=event=>{if(id!==requestId)return;currentState='failed';status.textContent='Worker Failed: '+event.message;};
+ worker.onerror=event=>{if(id!==requestId)return;currentState='failed';status.textContent='Worker failed: '+event.message;};
  worker.postMessage(payload);
 }
-inputs.forEach(input=>input.addEventListener('input',()=>{requestId++;currentState='stale';latestResult=null;clearGeometry();status.textContent='Inputs Changed — Balance Flags To Update';}));
+inputs.forEach(input=>input.addEventListener('input',()=>{requestId++;currentState='stale';latestResult=null;clearGeometry();status.textContent='Inputs changed — balance flags to update';}));
 document.getElementById('balance').addEventListener('click',balance);
 document.getElementById('reset').addEventListener('click',()=>{['z-re','z-im','p-re','p-im'].forEach((id,i)=>document.getElementById(id).value=i===0?'2':'0');for(let i=0;i<7;i++)document.getElementById('beta-'+i).value=String(E7_DEFAULT_BETA[i]);warmStart=null;balance();});
 function resize(){const width=host.clientWidth,height=host.clientHeight;renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();}
@@ -67,4 +67,5 @@ window.addEventListener('resize',resize);resize();
 function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);}animate();
 window.e7PrototypeDiagnostics=()=>({state:currentState,requestId,result:latestResult,renderedObjects:drawing.children.length});
 balance();
+
 

@@ -1,4 +1,4 @@
-// Projective C4 flags in an affine tetrahedron frame. For complex flags the
+﻿// Projective C4 flags in an affine tetrahedron frame. For complex flags the
 // displayed real-coefficient slice is not a faithful projection of CP1/CP2.
 import {matMul,cAdd,cSub,cMul,cConj,cScale,cAbs2} from './core-math.js';
 import {validateE7Rep} from './e7-core.js';
@@ -25,6 +25,19 @@ function orthonormalColumns(M){
  return basis;
 }
 export function complexMembershipNorm(v,basis){let r=v;for(const q of basis)r=sub(r,scale(q,inner(q,r)));return norm(r);}
+// Numerical complex rank, with pivoted twice-reorthogonalized columns. Inputs
+// below are orthonormal image bases; dimensions are invariant under GL gauges.
+export function complexIntersectionDimension(U,V,tolerance=1e-9){
+ const pending=U.concat(V).map(v=>v.map(z=>z.slice())),basis=[];
+ while(pending.length){
+  let bestIndex=0,bestNorm=-1;
+  pending.forEach((v,i)=>{const n=norm(v);if(n>bestNorm){bestIndex=i;bestNorm=n;}});
+  if(bestNorm<=tolerance)break;
+  const q=scale(pending.splice(bestIndex,1)[0],1/bestNorm);basis.push(q);
+  for(let i=0;i<pending.length;i++)for(let pass=0;pass<2;pass++)pending[i]=sub(pending[i],scale(q,inner(q,pending[i])));
+ }
+ return U.length+V.length-basis.length;
+}
 export function clipE7Line(anchor,direction,bound){
  let lo=-Infinity,hi=Infinity;
  for(let i=0;i<3;i++){
@@ -88,5 +101,13 @@ export function e7FlagGeometry(rep,options={}){
   if(point.some(x=>Math.abs(x)>bound)&&flag.status==='finite')flag.status='anchor outside display box';
   return flag;
  });
- return {flags,isReal,bound,maxIncidenceNorm:Math.max(...flags.map(f=>f.incidenceNorm))};
+ const W=flags[2].bases[0];
+ const intersections=[
+  {label:'W ∩ H_A',dimension:complexIntersectionDimension(W,flags[0].bases[2])},
+  {label:'W ∩ H_B',dimension:complexIntersectionDimension(W,flags[1].bases[2])},
+  {label:'W ∩ P_A',dimension:complexIntersectionDimension(W,flags[0].bases[1])},
+  {label:'W ∩ P_B',dimension:complexIntersectionDimension(W,flags[1].bases[1])}
+ ];
+ return {flags,isReal,bound,intersections,maxIncidenceNorm:Math.max(...flags.map(f=>f.incidenceNorm))};
 }
+

@@ -4,12 +4,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>E7 Complex Flags</title>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#1c1c1d;color:#e8e8e8;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 20px}h1{font-size:1.9rem;margin:0}p{margin:.6rem 0}.muted{color:#aaa}.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;margin-top:20px}aside,.view{background:#212529;border:1px solid #424246;border-radius:8px;padding:16px}fieldset{border:1px solid #424246;margin:0 0 14px;padding:10px}legend{padding:0 5px}label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;gap:8px}input{width:115px;padding:6px;background:#1c1c1d;border:1px solid #666;border-radius:4px;color:inherit;font:inherit}button{padding:9px 12px;border:1px solid #777;border-radius:5px;background:#333;color:inherit;font:inherit;cursor:pointer;margin:0 5px 8px 0}button:first-of-type{background:#176d88}#scene{height:560px;min-height:300px;position:relative}canvas{display:block;width:100%;height:100%}#status{white-space:pre-line;font-size:.9rem;overflow-wrap:anywhere;min-height:7em}.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:.9rem}.a{color:#ff9b71}.b{color:#71b7ff}.c{color:#b5dd7c}#projection-note,#geometry-status{font-size:.9rem}.view{min-width:0}@media(max-width:760px){.layout{grid-template-columns:1fr}#scene{height:420px}aside{display:grid;grid-template-columns:1fr 1fr;gap:10px}#status,.actions{grid-column:1/-1}}@media(max-width:430px){aside{display:block}}
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#1c1c1d;color:#e8e8e8;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 20px}h1{font-size:1.9rem;margin:0}p{margin:.6rem 0}.muted{color:#aaa}.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;margin-top:20px}aside,.view{background:#212529;border:1px solid #424246;border-radius:8px;padding:16px}fieldset{border:1px solid #424246;margin:0 0 14px;padding:10px}legend{padding:0 5px}label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;gap:8px}input{width:115px;padding:6px;background:#1c1c1d;border:1px solid #666;border-radius:4px;color:inherit;font:inherit}button{padding:9px 12px;border:1px solid #777;border-radius:5px;background:#333;color:inherit;font:inherit;cursor:pointer;margin:0 5px 8px 0}button:first-of-type{background:#176d88}#scene{height:560px;min-height:300px;position:relative}canvas{display:block;width:100%;height:100%}#status{white-space:pre-line;font-size:.9rem;overflow-wrap:anywhere;min-height:7em}.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:.9rem}.a{color:#ff9b71}.b{color:#71b7ff}.c{color:#b5dd7c}#projection-note,#geometry-status{font-size:.9rem}#geometry-status{white-space:pre-line}.view{min-width:0}@media(max-width:760px){.layout{grid-template-columns:1fr}#scene{height:420px}aside{display:grid;grid-template-columns:1fr 1fr;gap:10px}#status,.actions{grid-column:1/-1}}@media(max-width:430px){aside{display:block}}
 </style>
 </head>
 <body><main class="wrap">
 <h1>E7 Complex Flags</h1>
-<p>Two Full Flags And A Short Line In Projective Three-Space</p>
+<p>Two full flags and a short line in projective three-space</p>
 <p class="muted">Open cotangent chart: z ≠ 0, 1. This prototype does not cover the global E7 core atlas. The central gauge group is SL(4); no framing is added.</p>
 <div class="layout"><aside>
 <fieldset><legend>Complex Chart</legend>
@@ -28,18 +28,20 @@
 <label>Beta C2 <input id="beta-6" type="number" value="0.2532" step="0.05"></label>
 </fieldset>
 <div class="actions"><button id="balance">Balance Flags</button><button id="reset">Reset Fixture</button></div>
-<div id="status" role="status" aria-live="polite">Ready To Balance</div>
+<div id="status" role="status" aria-live="polite">Ready to balance</div>
 <p class="muted">Real equation levels equal twice beta. Arbitrary beta changes have no stability or convergence guarantee.</p>
 </aside><section class="view" aria-label="Three-Dimensional Flags">
 <div class="legend"><span class="a">● Flag A: Point, Line, Plane</span><span class="b">● Flag B: Point, Line, Plane</span><span class="c">● Short Line</span></div>
 <div id="scene"></div>
 <p id="projection-note"></p><p id="geometry-status"></p>
-<p class="muted">Drag To Orbit · Scroll To Zoom. The display uses the affine chart h = x₁ + x₂ + x₃ + x₄ and a fixed tetrahedron coordinate frame. Lines and planes are clipped to the display box; points at infinity are reported explicitly.</p>
+<p class="muted">Drag to orbit · scroll to zoom. The display uses the affine chart h = x₁ + x₂ + x₃ + x₄ and a fixed tetrahedron coordinate frame. Lines and planes are clipped to the display box; points at infinity are reported explicitly.</p>
 </section></div>
 </main>
 <script src="assets/js/ek-nakajima/lib/three.min.js"></script>
 <script src="assets/js/ek-nakajima/lib/OrbitControls.js"></script>
 <script type="module" src="assets/js/ek-nakajima/e7-prototype.js"></script>
 </body></html>
+
+
 
 
