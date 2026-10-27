@@ -5601,7 +5601,7 @@ return { balancedObservables };
 
 // ---- module: element-view ----
 const __ek_mod_element_view = (function () {
-const { NB, CENTER_BASIS, eyeZ, matAdd, matAdj, matMul, matScale, matSub, matTrace, frob2, frobNorm, traceless, packHermitian, cAdd, cSub, cMul } = __ek_mod_core_math;
+const { NB, CENTER_BASIS, eyeZ, matAdd, matAdj, matMul, matScale, matSub, frob2, frobNorm, traceless, packHermitian } = __ek_mod_core_math;
 // element-view.js — dependency-free, Node-safe ES module implementing
 // visualizer milestone V2: the weighted-flag geometry at y = 0 and its
 // projected su(3) "triangle + flag marker" display data.
@@ -5657,14 +5657,6 @@ function outerProduct(a) {
   return matMul(a, matAdj(a));
 }
 
-// Real part of det(M) for a 3x3 complex matrix (real for Hermitian M).
-function det3(M) {
-  const t1 = cSub(cMul(M[1][1], M[2][2]), cMul(M[1][2], M[2][1]));
-  const t2 = cSub(cMul(M[1][0], M[2][2]), cMul(M[1][2], M[2][0]));
-  const t3 = cSub(cMul(M[1][0], M[2][1]), cMul(M[1][1], M[2][0]));
-  return cAdd(cSub(cMul(M[0][0], t1), cMul(M[0][1], t2)), cMul(M[0][2], t3))[0];
-}
-
 // ---------------------------------------------------------------------------
 // flag projectors (V1)
 // ---------------------------------------------------------------------------
@@ -5714,43 +5706,60 @@ function planeProjector(X) {
 }
 
 // ---------------------------------------------------------------------------
-// eigenvalues of a 3x3 Hermitian matrix (analytic, dependency-free)
+// eigenvalues of a 3x3 Hermitian matrix (scaled complex Jacobi)
 // ---------------------------------------------------------------------------
-function cubicRealRoots(p, q) {
-  // Real roots of x^3 + p x + q = 0 (Hermitian => three real roots).
-  const eps = 1e-14;
-  if (Math.abs(p) < eps) {
-    if (Math.abs(q) < eps) return [0, 0, 0];
-    const r = Math.cbrt(-q);
-    return [r, r, r];
-  }
-  if (p < 0) {
-    const m = 2 * Math.sqrt(-p / 3);
-    let arg = ((3 * q) / (2 * p)) * Math.sqrt(-3 / p);
-    arg = Math.max(-1, Math.min(1, arg));
-    const theta = Math.acos(arg);
-    const roots = [0, 1, 2].map((k) => m * Math.cos(theta / 3 - (2 * Math.PI * k) / 3));
-    return roots.sort((u, v) => v - u);
-  }
-  // p >= 0: numerically a single real root (Cardano); not expected for Hermitian.
-  const disc = (q / 2) * (q / 2) + (p / 3) * (p / 3) * (p / 3);
-  const sq = Math.sqrt(Math.max(0, disc));
-  const r = Math.cbrt(-q / 2 + sq) + Math.cbrt(-q / 2 - sq);
-  return [r, r, r];
-}
-
 function eigvalsHermitian3(Q) {
-  // Descending real eigenvalues from the invariants tr, tr(Q^2), det.
-  const tr = matTrace(Q)[0];
-  const tr2 = matTrace(matMul(Q, Q))[0];
-  const det = det3(Q);
-  const a = -tr;
-  const b = (tr * tr - tr2) / 2;
-  const c0 = -det;
-  const p = b - (a * a) / 3;
-  const q = (2 * a * a * a) / 27 - (a * b) / 3 + c0;
-  const roots = cubicRealRoots(p, q).map((r) => r - a / 3);
-  return roots.sort((u, v) => v - u);
+  // Shift before scaling to preserve small gaps on a large common diagonal.
+  // A zero shift handles finite diagonal differences that would overflow.
+  // No squared invariants or cubic discriminant are formed.
+  let shift = Q[0][0][0];
+  if (Q.some((row, i) => !Number.isFinite(row[i][0] - shift))) shift = 0;
+  const diagonal = Q.map((row, i) => row[i][0] - shift);
+  let scale = Math.max(...diagonal.map(Math.abs));
+  for (let i = 0; i < 3; i++) {
+    for (let j = i + 1; j < 3; j++) {
+      scale = Math.max(scale, Math.abs(Q[i][j][0]), Math.abs(Q[i][j][1]));
+    }
+  }
+  if (scale === 0) return [shift, shift, shift];
+  const A = Q.map((row, i) => row.map((z, j) =>
+    i === j ? [diagonal[i] / scale, 0] : [z[0] / scale, z[1] / scale]));
+
+  // Maximum-pivot unitary Jacobi rotations. The phase of A[p][q] makes its
+  // 2x2 rotation real; the stable tangent formula covers equal diagonals.
+  // Three dimensions converge in a handful of rotations; 32 is a safe cap.
+  for (let iteration = 0; iteration < 32; iteration++) {
+    let p = 0, q = 1, off = 0;
+    for (let i = 0; i < 3; i++) {
+      for (let j = i + 1; j < 3; j++) {
+        const magnitude = Math.hypot(...A[i][j]);
+        if (magnitude > off) { p = i; q = j; off = magnitude; }
+      }
+    }
+    const size = Math.max(...A.map((row, i) => Math.abs(row[i][0])));
+    if (off === 0 || off <= Number.EPSILON * size) break;
+    const u = A[p][q].map((x) => x / off);
+    const delta = (A[q][q][0] - A[p][p][0]) / 2;
+    const t = (delta < 0 ? -1 : 1) * off / (Math.abs(delta) + Math.hypot(delta, off));
+    const c = 1 / Math.hypot(1, t), s = t * c;
+    A[p][p][0] -= t * off;
+    A[q][q][0] += t * off;
+    A[p][q] = A[q][p] = [0, 0];
+    for (let k = 0; k < 3; k++) {
+      if (k === p || k === q) continue;
+      const x = A[k][p], y = A[k][q];
+      const xp = [c * x[0] - s * (u[0] * y[0] + u[1] * y[1]),
+        c * x[1] - s * (u[0] * y[1] - u[1] * y[0])];
+      const yq = [s * (u[0] * x[0] - u[1] * x[1]) + c * y[0],
+        s * (u[0] * x[1] + u[1] * x[0]) + c * y[1]];
+      A[k][p] = xp; A[p][k] = [xp[0], -xp[1]];
+      A[k][q] = yq; A[q][k] = [yq[0], -yq[1]];
+    }
+  }
+  return A.map((row, i) => {
+    const value = row[i][0] * scale;
+    return Number.isFinite(value) ? shift + value : (shift / scale + row[i][0]) * scale;
+  }).sort((u, v) => v - u);
 }
 
 // ---------------------------------------------------------------------------
