@@ -48,3 +48,12 @@ Every pair of opposite full flags can be normalized to the standard/reversed pai
     node tests/validate-e7-stability.mjs
 
 The algebraic chart equations, stability inequalities and exact root certificate are distinct from numerical convergence. The solver directly checks real and complex residuals. A successful solve establishes the tested point to its stated tolerance; a failed solve is not an instability certificate.
+
+## Prototype And Checked Milestone
+
+Open `e7-prototype.html` through a local HTTP server. It runs the independent E7 worker/renderer and does not change the E6 widget. Additional checks:
+
+    node tests/validate-e7-geometry.mjs
+    node tests/validate-e7-prototype.mjs
+
+The tested regular real fixture balanced in seven iterations, with real residual 2.57e-11 and complex residual zero. A browser sample z=2+0.2i, p=0.03i balanced in three warm-start iterations, with real residual 1.14e-11 and complex residual below 2.7e-16. Browser review also checked the explicit complex projection note, a 390-pixel mobile layout without horizontal overflow, and invalid z=0 clearing the geometry and reporting failure without JavaScript errors. These are bounded numerical/UI checks, not global convergence or continuity claims.

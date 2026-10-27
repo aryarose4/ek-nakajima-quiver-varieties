@@ -1,4 +1,4 @@
-﻿import {E7_DEFAULT_BETA} from './e7-core.js';
+import {E7_DEFAULT_BETA} from './e7-core.js';
 import {e7FlagGeometry} from './e7-geometry.js';
 const THREE=window.THREE;
 const host=document.getElementById('scene'),status=document.getElementById('status');
@@ -53,7 +53,7 @@ function balance(){
   latestResult=result;
   const details='Real residual: '+result.realNorm.toExponential(3)+'\nComplex residual: '+result.complexNorm.toExponential(3)+'\nIterations: '+result.iterations+' · Jacobian rank: '+result.jacobianRank+'\nEquation levels: '+levels.join(', ');
   if(!result.success){currentState='failed';status.textContent='Balance failed: '+result.reason+'\n'+details;return;}
-  try{drawGeometry(result.rep);warmStart=result.coords;currentState='balanced';status.textContent='Balanced flags\n'+details;}
+  try{drawGeometry(result.rep);warmStart=result.coords;currentState='balanced';status.textContent='Balanced Flags\n'+details;}
   catch(e){clearGeometry();currentState='failed';status.textContent='Geometry failed: '+e.message+'\n'+details;}
  };
  worker.onerror=event=>{if(id!==requestId)return;currentState='failed';status.textContent='Worker failed: '+event.message;};
