@@ -1,4 +1,4 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {pathToFileURL} from 'url';
@@ -10,11 +10,12 @@ async function main(){
 const C=await import(pathToFileURL(path.join(temp,'e7-core.js')).href),S=await import(pathToFileURL(path.join(temp,'e7-solver.js')).href),M=await import(pathToFileURL(path.join(temp,'solver.js')).href);
 const A=await import(pathToFileURL(path.join(temp,'core-math.js')).href);
 const levels=[1,1,1,1,1,1,.5];
+assert.deepStrictEqual(C.E7_DEFAULT_LEVELS,[10001,10002,10004,10008,10016,10032,5064].map(n=>n/10000));
 assert.deepStrictEqual(C.betaToE7Levels([.5,.5,.5,.5,.5,.5,.25]),levels);
 for(const z of [0,1,[NaN,0],[1,Infinity]])assert.throws(()=>C.makeE7Chart(z));
 for(const b of [[],[1,2],Array(7).fill(NaN)])assert.throws(()=>C.betaToE7Levels(b));
 for(const z of [[2,.3],[-.4,.7],[.5,-.2]])for(const p of [[.2,.1],[-.3,.25]]){
-const rep=C.makeE7Chart(z,p);assert(C.complexResidualNormE7(rep)<1e-13);assert.deepStrictEqual(C.validateE7Rep(rep),[]);
+const rep=C.makeE7Chart(z,p);assert.deepStrictEqual(rep.y[2][0][1][3],p);assert(C.complexResidualNormE7(rep)<1e-13);assert.deepStrictEqual(C.validateE7Rep(rep),[]);
 const coords=Array.from({length:47},(_,i)=>.1*Math.sin(i*1.7)),g=C.positiveE7Gauge(coords,M.expmHermitian),r=C.gaugeActionE7(rep,g.gauge,g.inverse);
 assert(C.complexResidualNormE7(r)<1e-11);
 // Off the zero set, check full complex-map covariance, not only zero preservation.
@@ -24,6 +25,7 @@ const before=C.complexResidualE7(perturbed);assert(A.frobNorm(A.matSub(before.ce
 assert(A.frobNorm(A.matSub(after.center,A.matMul(A.matMul(g.gauge.center,before.center),g.inverse.center)))<1e-11);
 before.branches.forEach((arm,b)=>arm.forEach((Q,k)=>assert(A.frobNorm(A.matSub(after.branches[b][k],A.matMul(A.matMul(g.gauge.branches[b][k],Q),g.inverse.branches[b][k])))<1e-11)));
 assert.strictEqual(C.packRealResidualE7(r,levels).length,47);
+const rm=C.realResidualE7(r,levels),frobenius=Math.sqrt(A.frob2(rm.center)+rm.branches.reduce((total,arm)=>total+arm.reduce((subtotal,Q)=>subtotal+A.frob2(Q),0),0));assert(Math.abs(frobenius-Math.hypot(...C.packRealResidualE7(r,levels)))<1e-10);
 }
 assert(C.validateE7Rep({}).length>0);
 let warm;
@@ -39,6 +41,7 @@ const regular=S.solveE7(C.makeE7Chart(2),C.E7_DEFAULT_LEVELS);assert(regular.suc
 console.log('E7 core and balancing validation passed');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
+
 
 
 
