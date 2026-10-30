@@ -3,6 +3,10 @@ tests/*.js
 
 .DS_Store
 
+# Local task checkouts and generated publication artifact.
+.worktrees/
+_site/
+
 # Progress journals for long-running agent work: local only, never published
 # (the repository is public). Keep agent scratch notes here.
 journal/

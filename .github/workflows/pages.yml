@@ -1,0 +1,44 @@
+name: Publish static Pages package
+
+# Publication is an explicit manual operation, never a side effect of a push.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/configure-pages@v5
+      - name: Build selective static package
+        run: node tools/build-site.mjs
+      - name: Validate publication contents
+        run: node tests/validate-site-package.mjs --check-only
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy reviewed package
+        id: deployment
+        uses: actions/deploy-pages@v4
