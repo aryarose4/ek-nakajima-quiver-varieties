@@ -6,7 +6,8 @@ top-level await, no dependencies. There is no build step.
 
 ## What it validates
 
-The batteries cover the geometry layers, E6 complex charts, solver, and widget integration:
+The batteries cover geometry, E6 charts/chambers, numerical solvers, cameras,
+E7 charts and live integration. The original geometry checks include:
 
 - `validate-data.mjs` — the per-type affine ADE table
   (`quiver-data.js`): the affine Cartan condition `2 delta_i =
@@ -21,6 +22,14 @@ The batteries cover the geometry layers, E6 complex charts, solver, and widget i
   finite positions, connectivity, the finite core is a tree with
   `coreSpheres - 1` edges, cycle spacing for the A-type members, and
   tree non-overlap.
+
+Additional families include E6 exact atlas/fixed-point/stability checks,
+root/chamber transport and wall controls; numerical balancing and continuation;
+incidence/camera/glyph regressions; and worker cancellation and UI smoke tests.
+E7 has standalone algebraic and exact stability batteries for the open and
+endpoint charts, plus atlas, geometry, prototype, frame-transport and live
+widget-worker checks. See the explicit list in [run.sh](run.sh) for the
+aggregate selection; it does not include every standalone diagnostic.
 
 ## Running
 
@@ -37,10 +46,13 @@ bash run.sh                # from tests/
 ```
 
 `run.sh` copies the live modules next to the batteries, then runs
-every battery; the script exits non-zero if any battery fails. This is
-the gate to run after any change to the geometry layers.
+its explicit battery list; it exits non-zero if any selected battery fails.
+The suite includes historical camera/continuity diagnostics. Reports should
+name checked scripts and failures rather than imply that all standalone
+scripts or historical camera contracts passed. Run focused batteries and
+relevant integration checks for each change.
 
-## Not covered
+## Scope and limitations
 
 Balanced-view batteries cover solver continuation and bounded limit charts,
 unitary display-frame invariance, real concurrency, short-arm endpoint

@@ -1,4 +1,4 @@
-# E6 quiver simulation: implementation milestones
+# E6 quiver simulation: mathematical roadmap
 
 ## Purpose and scope
 
@@ -6,19 +6,31 @@ Build a simulation of the star-shaped E6 ALE quiver variety at complex moment-ma
 
 The intended controls are `(r, theta, t, psi)` together with six real stability parameters. The `t` slider changes a **complex representative**; the solver then restores the real moment-map equations. It does not directly change the solved matrices. Eventually, buttons labeled `lim_{t -> 0}` and `~_{t -> infinity}` will navigate between classified core components and higher Morse strata using verified transition rules.
 
-This is an implementation plan, not a completed chamber or fixed-point classification. Earlier conversation supplied a candidate chart but no independently verified exhaustive chamber table. Do not invent missing chambers, stability domains, endpoint matrices, or transitions.
+This roadmap records mathematical requirements and acceptance criteria, including
+work already implemented. It is not a completed global chamber or fixed-point
+classification. See [STATE.md](STATE.md) for current implementation scope and
+the distinction between the frozen Python fixture and the live browser.
+The browser already includes a Hermitian solver, continuation, supported chart
+and component navigation, matrix inspection, and E6 chamber transport. The
+visualizer track below preserves earlier triangle/projection proposals as
+design specifications; it does not describe every current display.
 
-Primary supplied source: `assets/tex/Star-Shaped-Quiver-Slides-Source.tex`, especially the frames “Star-Shaped Nakajima Quiver Varieties” and “Stability.” The conversation supplies the candidate chart below and the desired interaction model. Keep the source available to every implementation agent.
+The equations and candidate chart are stated below, so no private notes or
+external TeX source are required. Executable conventions live in
+[e6sim/conventions.py](e6sim/conventions.py),
+[e6sim/moment_maps.py](e6sim/moment_maps.py), and
+[e6sim/stability.py](e6sim/stability.py). Browser transport is documented in
+[e6-chamber-transport.md](../docs/e6-chamber-transport.md).
 
-## Working rules for agents
+## Verification principles
 
-1. Complete milestones in dependency order. The first delivery should cover milestones 0–2, with a numerical smoke test; do not begin the full visualization first.
-2. For each milestone, deliver the code, relevant tests, a short explanation, and unresolved mathematical questions. Record the exact input that reproduces any failure.
-3. Separate `verified`, `candidate`, and `unsupported` mathematical data. Only verified entries may be selected automatically by the simulation.
-4. A failed nonlinear solve is not proof of instability or emptiness. A small real residual is not proof of an exhaustive chamber classification.
-5. Preserve the most recent successful solution if a new input fails. Never display stale matrices as the solution for the new input.
-6. Keep all conventions in one module. Do not repair sign errors by changing equations in multiple places.
-7. Default reference implementation: Python with NumPy/SciPy, and SymPy for exact calculations. Adapt to an existing repository if one is supplied. Do not couple the mathematical core to a UI framework.
+Separate **verified**, **candidate**, and **unsupported** mathematical data.
+Only verified entries may be selected automatically. A failed nonlinear solve
+is not proof of instability or emptiness; a small residual is not a proof of
+an exhaustive classification. Preserve the last successful result on failure,
+and label it with its actual input. Keep conventions centralized and the
+mathematical core independent of the UI. Each extension needs reproducible
+fixtures, checks, and an explicit statement of unsupported cases.
 
 ## Milestone 0 — Freeze the equations and data contract
 
@@ -78,7 +90,7 @@ The central level is traceless zero. Do not impose an additional independent cen
 
 **Goal:** obtain a trusted input family before numerical gauge fixing.
 
-Use the conversation's candidate finite chart, with `z = r exp(i theta)`:
+Use the candidate finite chart, with `z = r exp(i theta)`:
 
 ```text
 a_1 = a_2 = a_3 = [[1], [0]]
@@ -219,7 +231,7 @@ Maintain two distinct records:
 Tasks:
 
 1. Derive the wall forms in these coordinates, including the central level determined by the branch levels. Use exact rational arithmetic for reference chamber enumeration.
-2. Enumerate chambers and certify an interior rational sample for each one. Do not reuse provisional counts from earlier conversation.
+2. Enumerate chambers and certify an interior rational sample for each one. Counts require exact certificates in the stated parameter coordinates.
 3. Implement branch permutations together with their actions on levels, matrices, coordinates, and solver seeds.
 4. Derive any proposed duality as an actual map of this oriented doubled-quiver problem; verify the transformed levels and residual circle action. Duality is not just swapping `x` and `y` in code.
 5. Reduce to representative templates only under transformations actually established as valid. An arbitrary Weyl action cannot be assumed to preserve the chosen circle action or the `y = 0` locus.
@@ -238,7 +250,7 @@ Verify fixedness modulo gauge. One convention is `lambda . rep = g(lambda) . rep
 
 For every family away from a fixed component, provide an exact complex-zero construction. At a nonzero-`y` base point, an arbitrary linearized deformation need not integrate to an exact family: the complex equations are bilinear when both `x` and `y` vary. Uniform `y` scaling still preserves complex zero, but scaling a fixed orbit may remain constant in the quotient.
 
-**Acceptance checks:** explicit compensation identity; residual equations; tangent weights; valid small transverse families; consistency with supplied classification. Solver convergence alone does not certify fixedness.
+**Acceptance checks:** explicit compensation identity; residual equations; tangent weights; valid small transverse families; consistency with the verified classification. Solver convergence alone does not certify fixedness.
 
 ## Milestone 8 — Implement the limit and asymptotic navigation buttons
 
@@ -287,10 +299,6 @@ tests/               # algebra, solver, continuation, and transition tests
 
 These are proposed filenames, not files already implemented. Add a registry entry only when its mathematical dependencies have been checked.
 
-## First task to give an implementation agent
-
-> Implement milestones 0–2 only. Read the supplied TeX moment-map and stability frames. Use the stated `SL(3)` central convention and the candidate finite `y = 0` matrices. First derive a certified stable rational fixture, including all necessary flag intersection patterns and exact strict inequalities. Then implement a 23-variable Hermitian gauge solver that accepts arbitrary complex-zero `(x,y)` inputs. Deliver a command-line example, algebra tests, residual diagnostics, and a short progress note. Do not implement exhaustive chambers, endpoint formulas, the UI, or transverse families in this first task. If the fixture's stability proof is unresolved, say exactly which incidence/inequality remains and do not label it certified.
-
 ## Completion record for every milestone
 
 ```text
@@ -303,7 +311,7 @@ Known unsupported cases:
 Open question and next smallest task:
 ```
 
-The next agent should be able to reproduce the current state from this record without relying on an earlier agent's confidence or undocumented reasoning.
+Each record should make its claims independently reproducible from committed sources and fixtures.
 
 ## Visualizer Milestones
 
@@ -487,7 +495,3 @@ Keep the geometry extractor independent of the selected holomorphic chart. Prese
 For the limit and asymptotic buttons, show the predicted target geometry from the transition registry. Only animate between mathematically supported points; interpolation of matrix entries generally does not preserve moment-map equations. Distinguish a genuine limit from an asymptotic change of description. Update the inspector, projection quality, and solve status with the same input-generation identifier as the rendered scene.
 
 **Acceptance checks:** supported chart/component changes maintain consistent geometry and labels; no stale inspector data; failures retain the last valid scene; regression examples include the special values `z = 0, 1, infinity`, nonzero transverse fibers, and every enabled navigation button.
-
-### First task for the visualizer agent
-
-> Implement V0–V2 against already certified balanced fixtures. Derive and check the weighted-projector and eigenvalue identities at positive-level `y = 0`. Render the exact closed triangle with branch colors and projected line markers, and expose full matrix data in an inspector. Demonstrate that the triangle shape is fixed at fixed levels while flag decorations can vary. Keep the geometry extraction independent of the UI. Do not claim the projection separates all moduli points, use general SO(8) rotations as gauge transformations, or apply the y = 0 spectral formula to nonzero y. Coordinate with the solver agent before implementing V3 continuity.

@@ -7,14 +7,17 @@ core**. A copy on the author's website is a downstream mirror.
 ## Read first
 
 - Touching `sim/` → read **`sim/STATE.md`** first: frozen conventions, the exact
-  certified fixture, verified/candidate/unsupported split, and the next task.
-- The running work log is `journal/` (local, **untracked** — never commit it).
+  certified fixture, verified/candidate/unsupported split, and current scope.
+- Public status and reproducible commands live in `sim/STATE.md`; optional
+  local notes are not required to use this repository.
 
 ## Layout
 
 - `sim/` — Python mathematical core for the E6 star-shaped simulator
   (`e6sim` package + `tests/`). Reference implementation; keep it decoupled
-  from any UI. A browser JS port comes later.
+  from any UI. The browser JS implementation is already available under
+  `assets/js/ek-nakajima/`; its live levels and atlas differ from the frozen
+  Python fixture.
 - `assets/js/ek-nakajima/` — browser widget modules (dependency-free ES modules).
 - `tests/` — Node batteries for the widget modules.
 - `tools/build-single.mjs` — regenerates `ek-nakajima.html` from `index.html`.

@@ -5,10 +5,11 @@ star-shaped Nakajima quiver variety at complex moment-map level zero, per
 `E6_Quiver_Simulation_Milestones.md`.
 
 This package is deliberately decoupled from any UI framework.  It is the
-reference implementation (NumPy / SciPy / SymPy); a browser JS port may come
-later once the mathematics is verified.
+reference implementation (NumPy / SciPy / SymPy) for a frozen E6 fixture.
+The browser JS implementation is already shipped, with a broader live atlas
+and different regular default levels; see [`STATE.md`](STATE.md) for scope.
 
-> **Current state & next task: see [`STATE.md`](STATE.md).** Run the suite with
+> **Current state: see [`STATE.md`](STATE.md).** Run the suite with
 > `python -m pytest -q` from this directory.
 
 ## Layout
@@ -56,7 +57,9 @@ tests/                 pytest suite
 - **JS port** (dependency-free, Node batteries via Docker): `core-math.js`
   (M0 + V0/V5, 40 checks), `element-view.js` (V2, 28 checks), `solver.js`
   (M2 solver, 35 checks): done.
-- **M7-M9**, V3-V4, V6: open.
+- These milestone labels describe the Python reference package. The browser
+  already includes continuation, chart/component navigation, matrix inspection
+  and supported chamber transport. See [`STATE.md`](STATE.md) for limits.
 
 Run the tests from this directory:
 

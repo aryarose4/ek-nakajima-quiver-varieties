@@ -1,11 +1,11 @@
-# E6 simulation — STATE (read this first)
+# Simulation status and frozen E6 reference fixture
 
 Standalone repo `ek-nakajima-quiver-varieties` is the **source of truth** for
 the E6 star-shaped Nakajima quiver-variety simulator (`r_star = 3`), complex
 moment-map level zero, per `sim/E6_Quiver_Simulation_Milestones.md`.
 
-Two short facts let a fresh agent start without exploring: this file and
-`journal/` (a local, untracked work log; read `PROGRESS.md`'s top RESUME block).
+This public status record uses committed sources and fixtures; local work
+journals are not required for reproduction.
 
 ## Run
 
@@ -17,26 +17,33 @@ python -m e6sim.cli_solve    # solver demo (certified fixture)
 
 Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
 
-## Status (branch `main` — run `git log --oneline -1` for HEAD)
+## Python reference implementation
 
-| Milestone | State |
-|---|---|
-| M0 conventions / representation / moment maps | done, verified |
-| M1 certified stable y=0 chart + exact King certificate | done, verified |
-| M2 positive-Hermitian real moment-map solver | done, verified |
-| M3 continuation + chart seed transport | done (core) |
-| M4 north/south chart atlas | done, **PARTIAL** coverage |
-| M5 exact transverse y kernel Y(z) | done (core) |
-| V0 geometry extraction | done |
-| V5 bilinear K_i = X_i Y_i geometry | done |
-| V1 weighted-flag geometry (flags.py, 9 tests) | done, verified |
-| V2 element view JS (element-view.js, 28 checks) | done (pure layer) |
-| JS core-math port (core-math.js, 40 checks) | done, verified |
-| JS solver port (solver.js, 35 checks) | done, verified |
-| JS live element driver (chart/element-model, 17 checks) | done, verified |
-| JS element projection/render + widget view toggle (screen 18, smoke 14) | done (pure + smoke) |
-| M6 wall arrangement + chambers (chambers.py, 11 tests) | done, verified |
-| M7-M9, V3-V4/V6 (gauge-aligned continuity, inspector) | not started |
+The Python package is a frozen E6 reference, not a mirror of every browser
+feature. M0-M2 (conventions, exact stable fixture and Hermitian solver), M3
+continuation/seed transport, M4 partial north/south atlas, M5 exact transverse
+kernel, V0/V5 geometry, V1 weighted flags, and M6 chart-specific walls/chambers
+are implemented. M6 has 20 generic-chart wall forms and 64 positive-orthant
+sign chambers, with one stable chamber for that template. This is not the
+full E6 root arrangement or a global atlas classification.
+
+## Current browser implementation
+
+The dependency-free JS port is shipped under assets/js/ek-nakajima/, with
+Node batteries under tests/. E6 has live background balancing, compact and
+branch charts, continuation, matrix inspection, fixed-point certificates and
+supported chamber transport. See [chamber transport](../docs/e6-chamber-transport.md),
+[wall controls](../docs/e6-wall-controls.md), and
+[incidence display](../docs/e6-continuous-incidence.md) for their scope.
+These features supersede the roadmap's initial implementation tasks; they do
+not establish complete coverage or global convergence/continuity.
+
+E7 now has a live central-sphere solver and flag-incidence/matrix views in the
+main widget. Its t and phi controls are not extended beyond the central
+sphere. Separate modules and the prototype test cotangent charts; see
+[open chart](../docs/E7_OPEN_CHART.md) and
+[endpoint charts](../docs/E7_ENDPOINT_CHARTS.md). E8 remains a quiver and
+schematic-core portrait, without a live solver or flag-incidence view.
 
 ## Frozen exact fixture (do not change without re-deriving)
 
@@ -50,7 +57,7 @@ Python 3 with numpy, scipy, sympy, pytest. `pip install sympy` if missing.
   **strictly unstable** (max weight `+1`) — genuinely different strata, not
   missing representatives.
 
-## Data contract (frozen)
+## Browser contract and its distinction from the reference
 
 Live balanced display (2026-10-21): `balanced-model.js` now solves the E6
 atlas at the display levels below, in a background worker. Exact bounded
@@ -70,7 +77,8 @@ and two overlapping charts on each long arm.
 `fixed-point.js`, `stability-certificates.js`, and the Node batteries verify
 integer C* gradings and exact rational King certificates for all eight
 canonical E6 attachment/intersection/tip configurations. This does not claim
-global atlas coverage or certify arbitrary nonzero-y matrices. The original
+complete coverage of the quiver variety or certify arbitrary nonzero-y matrices.
+The original
 compact endpoint representatives remain unstable; the new endpoints are
 limits of differently gauged families, not gauges of those unstable orbits.
 
@@ -81,16 +89,28 @@ into `3 + 3*4 + 8 = 23` Frobenius-orthonormal Hermitian coordinates.
 
 ## Verified / candidate / unsupported
 
-- **verified**: M0-M2, M3 core, M4 endpoints+coverage, M5 kernel+transpose, V0, V5.
-- **candidate**: the chart family itself is supplied (its *stability at z=2* is verified).
-- **unsupported / not claimed**: negative levels (maximal-subspace shortcut off),
-  nonzero-y stability, global sphere coverage, M6+ chambers/fixed points.
+- **Verified in the Python reference:** exact complex equations, strict King
+  stability at the frozen rational fixture, gauge rank and local quotient
+  tangent, overlap identities, M4 endpoint classification, M5 kernel/transpose
+  identities, weighted-flag/bilinear geometry, and chart-specific M6 walls.
+  Numerical solver checks establish only their tested tolerances.
+- **Candidate scope:** the named candidate chart is the input family; its
+  certified fixture and stated stable domain do not certify every proposed
+  extension, global parameterization, or visualizer design in the roadmap.
+- **Browser certificates:** exact E6 fixed-point/King and root/chamber checks
+  are distinct from bounded numerical continuation and camera regression
+  checks. E7's documented chart proofs are distinct from solver convergence.
+- **Unsupported / not claimed:** negative-level use of the positive-level
+  maximal-subspace shortcut, arbitrary nonzero-y stability from the frozen
+  y=0 certificate, complete E6/E7 global atlas coverage, a global convergence
+  or continuity theorem, E7 live transverse navigation, or an E8 live solver.
+  Particular nonzero-y families can have their own certificates; these do
+  not extend the frozen fixture's proof to arbitrary matrices.
 
-## Next smallest tasks
+## Remaining mathematical directions
 
-1. **V3 / live view**: JS chart + warm-started continuation driver so the
-   browser solves `rep(z = r e^{i theta})` continuously and renders the
-   element view; wire it into the widget (the hyperpolygon-like product).
-2. **M6 task 3**: branch permutations and their actions on levels, matrices,
-   coordinates, and solver seeds (forward/inverse tests).
-3. Nonzero-y stability (the M4 open question) feeding M5/M7.
+Complete exceptional charts and their exact overlaps/stability domains;
+classify unsupported nonzero-y families and asymptotic transitions; extend
+E7's live controls beyond the central sphere; and establish the mathematics
+needed for an E8 solver. The [roadmap](E6_Quiver_Simulation_Milestones.md)
+preserves acceptance criteria, including options that are not current features.

@@ -58,7 +58,7 @@ A next experiment should follow the balanced representatives as |p_N| grows abov
 
 ## Implemented And Numerically Checked
 
-`assets/js/ek-nakajima/e7-atlas.js` exports `makeE7AtlasChart(chart,base,fiber)` for north/south and `transitionE7NorthToSouth(base,fiber)`, returning the south coordinates and all-node gauge/inverse. The prototype UI remains unchanged; the new atlas is a separately tested mathematical module.
+`assets/js/ek-nakajima/e7-atlas.js` exports `makeE7AtlasChart(chart,base,fiber)` for north/south and `transitionE7NorthToSouth(base,fiber)`, returning the south coordinates and all-node gauge/inverse. The atlas also serves the main widget's live central-sphere view at zero fiber. Its t and phi controls remain disabled; the nonzero-fiber charts are separately tested mathematical functionality.
 
     node tests/validate-e7-endpoint-stability.mjs
     node tests/validate-e7-atlas.mjs
