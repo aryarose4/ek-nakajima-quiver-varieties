@@ -1,3 +1,5 @@
+[Open the simulation](https://aryayae.com/ek-nakajima-quiver-varieties/)
+
 <div align="center">
 
 <img src="assets/img/Star-Shaped_Quiver.jpg" alt="Affine ADE quiver diagram" width="160">
@@ -33,6 +35,13 @@ python3 -m http.server 8000
 Open <http://localhost:8000/>. The app requires HTTP. The downloadable
 [single HTML file](ek-nakajima.html) includes the widget modules and assets;
 serve it over HTTP too. MathJax typesetting uses a CDN.
+
+For embedding, use `?bare&theme=light` (or `dark`) to hide the standalone
+header, theme button and footer while retaining the widget introduction.
+The iframe accepts `{type: "ek-nakajima-theme", theme: "light" | "dark"}`
+from its parent origin and reports `{type: "ek-nakajima-height", height: number}`
+when its content size changes. Preserve the parent referrer so the iframe can
+identify that origin. Run `node tests/validate-embed.mjs` to check the bridge.
 
 ## Explore
 

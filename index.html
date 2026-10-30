@@ -50,6 +50,11 @@
   #ek-nakajima-widget { margin-top: 22px; }
   footer { margin-top: 40px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 16px; }
   footer a { color: var(--accent); }
+  body.ek-bare .topbar,
+  body.ek-bare header.hero,
+  body.ek-bare footer { display: none; }
+  body.ek-bare .wrap { padding: 0; max-width: none; }
+  body.ek-bare #ek-nakajima-widget { margin-top: 0; }
   .topbar { display: flex; justify-content: flex-end; }
   button.theme-toggle {
     background: var(--panel); color: var(--fg); border: 1px solid var(--border);
@@ -91,11 +96,52 @@
     });
 
     var params = new URLSearchParams(location.search);
-    if (params.get("theme")) document.documentElement.setAttribute("data-theme", params.get("theme"));
+    if (params.has("bare")) document.body.classList.add("ek-bare");
+    if (params.get("theme") === "light" || params.get("theme") === "dark") document.documentElement.setAttribute("data-theme", params.get("theme"));
     else {
       var stored = null;
       try { stored = localStorage.getItem("theme"); } catch (e) {}
       if (stored === "dark" || stored === "light") document.documentElement.setAttribute("data-theme", stored);
+    }
+
+    // Trust the immediate parent and its known origin. Measure content rather
+    // than scrollHeight, which cannot shrink below the iframe viewport height.
+    if (window.parent !== window) {
+      var parentOrigin = null;
+      try {
+        if (document.referrer) parentOrigin = new URL(document.referrer).origin;
+        else if (location.ancestorOrigins && location.ancestorOrigins.length) parentOrigin = location.ancestorOrigins[0];
+      } catch (e) {}
+      if (parentOrigin && parentOrigin !== "null") {
+        var wrap = document.querySelector(".wrap");
+        var lastHeight = null;
+        var heightPending = false;
+        function reportHeight() {
+          heightPending = false;
+          var height = Math.ceil(wrap.getBoundingClientRect().height);
+          if (!isFinite(height) || height <= 0 || height === lastHeight) return;
+          lastHeight = height;
+          window.parent.postMessage({ type: "ek-nakajima-height", height: height }, parentOrigin);
+        }
+        function scheduleHeight() {
+          if (heightPending) return;
+          heightPending = true;
+          window.requestAnimationFrame(reportHeight);
+        }
+        window.addEventListener("message", function (event) {
+          var data = event.data;
+          if (event.source !== window.parent || event.origin !== parentOrigin || !data ||
+              data.type !== "ek-nakajima-theme" || (data.theme !== "light" && data.theme !== "dark")) return;
+          document.documentElement.setAttribute("data-theme", data.theme);
+          scheduleHeight();
+        });
+        if (window.ResizeObserver) new ResizeObserver(scheduleHeight).observe(wrap);
+        else if (window.MutationObserver) new MutationObserver(scheduleHeight).observe(wrap, { childList: true, subtree: true, attributes: true });
+        window.addEventListener("resize", scheduleHeight);
+        window.addEventListener("load", scheduleHeight);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleHeight);
+        scheduleHeight();
+      }
     }
 
     // Optional state freeze for screenshots: ?type=E6&r=0.5&theta=0
