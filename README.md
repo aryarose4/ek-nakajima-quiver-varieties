@@ -20,13 +20,13 @@ gravitational instantons** — the minimal resolutions of $\mathbb C^2/\Gamma$
 for the binary tetrahedral (E6), octahedral (E7) and icosahedral (E8)
 subgroups of $\mathrm{SU}(2)$.
 
-> **Status.** The E6 flag picture and matrix readout use numerically balanced representatives at the selected beta parameters. A background worker solves the real moment maps before displaying new matrices. A stateless tensor camera displays the balanced flags and their cotangent data, with visibility following actual map ranks. E7/E8 remain portrait-only; atlas coverage and global continuity are not claimed.
+> **Status.** The E6 flag picture and matrix readout use numerically balanced representatives at the selected beta parameters. A background worker solves the real moment maps before displaying new matrices. A stateless tensor camera displays the balanced flags and their cotangent data, with visibility following actual map ranks. E7 has a numerically balanced central-sphere flag view; its transverse controls are not yet extended. E8 remains portrait-only. Both are marked under construction; complete atlas coverage and global continuity are not claimed.
 
 ## Try it
 
 | | |
 |---|---|
-| **Single file** | Download [`ek-nakajima.html`](ek-nakajima.html) — everything inlined, works offline when opened over HTTP |
+| **Single file** | Download [`ek-nakajima.html`](ek-nakajima.html) — widget and assets inlined; serve over HTTP (MathJax typesetting uses a CDN) |
 | **Local** | `python3 -m http.server 8000` in this folder, then open <http://localhost:8000/> |
 
 The widget is an ES-module app, so it must be served over **HTTP**, not opened
@@ -168,8 +168,7 @@ near-pixel discrepancy and degenerate synthetic camera failures are recorded
 in the camera documentation. Spectral collisions, affine infinity and vanishing
 projected normals remain possible. Tests cover the reported phase jumps,
 unitary gauge invariance, slider motion and selected wall limits. Historical
-camera code remains as a regression fixture. No additional on-page explanation
-accompanies this change.
+camera code remains as a regression fixture.
 The outgoing coordinate has weight two under reverse-arrow scaling:
 `v = (t/(1-t))^2 exp(2i phi)`. This preserves the original scaling/phase
 meaning of the controls; the outgoing circle action has a half-turn stabilizer.
@@ -178,7 +177,7 @@ These charts do not yet represent every complex-gauge class. In particular,
 generic fixed `z` does not have a finite `w -> infinity` limit: the invariant
 `trace((A_1 B_1)^2 A_2 B_2) = -w^3 z^2 (z-1)^2` diverges away from
 `z=0,1`. Additional exceptional charts and their stability/overlap checks
-are needed before claiming complete coverage. E7/E8 remain portrait-only.
+are needed before claiming complete coverage. E7 currently supports its central sphere; E8 remains portrait-only.
 At the frozen levels `alpha=(3,3,3)`, `gamma=(1,2,3)`, the old compact endpoint
 families are unstable for every reverse-arrow amplitude: the central plane
 `P_3` defines a subrepresentation with middle dimensions `(1,1,2)` and outer
@@ -271,13 +270,17 @@ The repository ships the Node validation harness for the geometry layers. It
 has no dependencies and runs on plain Node.
 
 ```bash
-bash tests/run.sh    # validate-data, validate-layout, validate-diagram
+bash tests/run.sh    # algebra, solver, atlas, rendering, worker, and UI batteries
 ```
 
 The batteries assert the arithmetic that makes the views trustworthy: the
 affine Cartan condition, the unique junction and finite-tree structure, the
 dimension count $\dim_{\mathbb H}M=1$ at every framing node, external
-tangency of the whole core packing, and the diagram layout invariants. See
+tangency of the whole core packing, and the diagram layout invariants. They
+also exercise balancing, atlas transitions, chamber transport, rendering, and
+headless widget interactions. Some retained camera-continuity batteries test
+superseded designs and are diagnostic rather than current acceptance gates;
+see [the camera restoration scope](docs/e6-first-wall-camera-rollback.md). See
 [`tests/README.md`](tests/README.md).
 
 ### Single-file build
@@ -300,7 +303,7 @@ here.
 ## License
 
 Released under the [MIT License](LICENSE). The bundled `three.js` is under its
-own MIT license (see `assets/js/ek-nakajima/lib/`).
+own [MIT license](assets/js/ek-nakajima/lib/LICENSE), also embedded in the single-file download. See [third-party notices](THIRD_PARTY_NOTICES.txt).
 
 The y arrows use darker strokes and a short smooth opacity fade near zero
 magnitude: half opacity at .025 and full opacity from .05 onward.
@@ -439,3 +442,34 @@ Hue confidence multiplies saturation by `p/hypot(p,.001)`, where `p` is the
 product of the two seed-projection norms. The `.001` is a smooth display
 regularizer, not a rank threshold. At zero projection, phase is undefined
 and the nonzero physical arrow remains neutral at its physical opacity.
+
+## Source repository and hosted release
+
+This repository includes the Python reference implementation, tests, mathematical
+documentation, build tools, and development previews. These remain public source
+materials. Local journals, worktrees, caches, and generated test copies are ignored.
+
+Build the hosted release with plain Node (no dependencies):
+
+```bash
+node tools/build-site.mjs
+node tests/validate-site-package.mjs
+python3 -m http.server 8000 --directory _site
+```
+
+The build regenerates the single-file download and stages only the intended
+entry pages, runtime assets, and license notices in `_site/`. It excludes
+`dev/`, `e7-prototype.html`, simulation code, tests, documentation, build
+tools, and local data from the hosted website. The two development previews
+remain available from a local HTTP server serving the repository root.
+E7 and E8 appear in the main explorer with an under-construction notice.
+
+For GitHub Pages, select **Settings > Pages > Build and deployment > Source:
+GitHub Actions**, then manually run **Deploy selected website files** from
+the Actions tab. The workflow uploads only `_site/`; it has no push trigger.
+Preparing or committing these files does not publish the repository or deploy
+a site. Switching an existing branch-based Pages site to this workflow is
+necessary for the selective deployment to take effect.
+
+Git ignores and deployment exclusions do not remove files from Git history.
+Review the history separately before changing repository visibility.

@@ -287,6 +287,8 @@ function build() {
   // it. We only swap the external references for their inlined equivalents.
   const INDEX = path.join(ROOT, "index.html");
   let html = fs.readFileSync(INDEX, "utf8");
+  const threeLicense = fs.readFileSync(path.join(SRC_JS, "lib", "LICENSE"), "utf8");
+  html = replaceOnce(html, '<head>', '<head>\n<!-- Bundled Three.js and OrbitControls:\n' + threeLicense + '\n-->', 'third-party license');
 
   html = replaceOnce(
     html,

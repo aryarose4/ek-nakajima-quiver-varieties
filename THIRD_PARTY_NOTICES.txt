@@ -1,0 +1,13 @@
+Three.js r128 and OrbitControls
+Files: assets/js/ek-nakajima/lib/three.min.js and OrbitControls.js
+Project: https://github.com/mrdoob/three.js/tree/r128
+License source: https://github.com/mrdoob/three.js/blob/r128/LICENSE
+Copyright 2010-2021 three.js authors. MIT License.
+
+The full license is included at assets/js/ek-nakajima/lib/LICENSE and is
+embedded in the generated ek-nakajima.html download.
+
+MathJax 3
+index.html and ek-nakajima.html load MathJax from jsDelivr for mathematical
+typesetting. MathJax is an external resource, not bundled in this repository.
+Project and license: https://github.com/mathjax/MathJax
