@@ -59,21 +59,30 @@ schematic-core portrait, without a live solver or flag-incidence view.
 
 ## Browser contract and its distinction from the reference
 
-Live balanced display (2026-10-21): `balanced-model.js` now solves the E6
-atlas at the display levels below, in a background worker. Exact bounded
-overlaps handle incoming long-arm and concurrency limits. `balanced-diagram.js`
-uses only a unitary display frame, with temporal phase alignment, to extract
-positions, slopes and cotangent glyphs from the solved matrices. Numerical
-tests cover fixed configurations, branch interiors and near-limit continuity;
-this is not a global convergence or continuity theorem. General complex
-incidences need not be literal incidences in the real-part affine projection.
-The previous schematic display gauges are no longer used by the live widget.
+The live E6 background worker balances representatives at the selected beta
+parameters. Current default beta pairs are (1.23, .40), (1.64, 1.41), and
+(1.06, 1.82), as defined in e6-parameters.js; Hermitian solver levels are twice
+beta. These defaults are separate from the certified chamber reference and
+from the frozen Python fixture.
 
-Browser atlas update (2026-10-21): the explorer now uses separate regular
-levels `alpha=(3,3,3), gamma=(1,21/10,3)`; the Python fixture above is unchanged.
-The frozen levels lie on two root hyperplanes. `assets/js/ek-nakajima/branch-charts.js`
-provides a compact moving-line-1 chart, stable on the whole central sphere,
-and two overlapping charts on each long arm.
+The live balanced-diagram.js camera is a stateless tensor eigenframe: a
+Hermitian tensor supplies axes and spectral correlations fix their phases.
+It does not use temporal camera phase alignment. Repeated eigenvalues and
+vanishing phase references can still cause discontinuities; complex incidences
+need not be literal incidences in the real-part affine projection. See
+[the camera construction](../docs/e6-continuous-incidence.md). Earlier temporal
+alignment and schematic display gauges are historical implementations, not
+the current live camera contract.
+
+The 2026-10-21 browser atlas used the regular chamber-reference levels
+alpha=(3,3,3), gamma=(1,21/10,3). This vector remains the certified reference
+for that chamber, not the current slider default. The frozen Python levels
+above are unchanged and lie on two root hyperplanes. branch-charts.js provides
+a compact moving-line-1 chart, stable on the central sphere in its certified
+chamber, and overlapping long-arm charts. Numerical tests cover fixed
+configurations, branch interiors and selected limits; these are bounded checks,
+not a global convergence or continuity theorem.
+
 `fixed-point.js`, `stability-certificates.js`, and the Node batteries verify
 integer C* gradings and exact rational King certificates for all eight
 canonical E6 attachment/intersection/tip configurations. This does not claim

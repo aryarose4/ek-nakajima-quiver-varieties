@@ -2,9 +2,9 @@
 
 ## Purpose and scope
 
-Build a simulation of the star-shaped E6 ALE quiver variety at complex moment-map level zero. Start with one verified chart of the stable `y = 0` locus. Then add a reusable Hermitian gauge solver, continuation, transverse complex representatives, chamber routing, and fixed-component navigation.
+The original goal was a simulation of the star-shaped E6 ALE quiver variety at complex moment-map level zero, beginning with a verified stable `y = 0` chart and extending to Hermitian balancing, continuation, transverse representatives, chamber routing, and fixed-component navigation. These capabilities now have bounded implementations; the remaining roadmap describes requirements for extending their certified domains.
 
-The intended controls are `(r, theta, t, psi)` together with six real stability parameters. The `t` slider changes a **complex representative**; the solver then restores the real moment-map equations. It does not directly change the solved matrices. Eventually, buttons labeled `lim_{t -> 0}` and `~_{t -> infinity}` will navigate between classified core components and higher Morse strata using verified transition rules.
+The intended controls are `(r, theta, t, psi)` together with six real stability parameters. The `t` slider changes a **complex representative**; the solver then restores the real moment-map equations. It does not directly change the solved matrices. The original navigation proposal used buttons labeled `lim_{t -> 0}` and `~_{t -> infinity}`. Current chart/component navigation implements supported bounded transitions; a general classification of core components, higher Morse strata, and asymptotic navigation remains a goal requiring verified transition rules.
 
 This roadmap records mathematical requirements and acceptance criteria, including
 work already implemented. It is not a completed global chamber or fixed-point
