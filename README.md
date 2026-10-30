@@ -61,11 +61,20 @@ In E6, sphere areas determine the rendered radii, while the round shapes and
 embedding remain schematic. The picture does not reproduce the intrinsic
 hyperkähler metric. The flag drawing projects complex incidence into a real
 screen image; intersections and colors are visual cues rather than exact
-certificates. The atlas has bounded coverage, and singular camera positions
-can still produce discontinuities. See the
-[incidence technical notes](docs/e6-continuous-incidence.md),
-[E6 sphere areas and derivation](docs/e6-sphere-areas.md), and
-[chamber transport notes](docs/e6-chamber-transport.md) for precise scope.
+certificates. The atlas has bounded coverage. See
+[E6 sphere areas and derivation](docs/e6-sphere-areas.md) and
+[chamber transport notes](docs/e6-chamber-transport.md) for details.
+
+## Known issues
+
+**E6 flag display discontinuities.** Points, lines and colors can jump as the
+inputs vary continuously. Along regular input families, balanced representatives
+can be chosen continuously in a consistent unitary gauge. The documented
+flag-display jumps are camera artifacts: repeated camera eigenvalues or
+vanishing phase references can abruptly change the displayed frame. They do
+not indicate a jump in the underlying moduli point. Raw matrix entries may
+also change at chart switches, where the representative's gauge changes.
+See the [camera notes](docs/e6-continuous-incidence.md).
 
 ## Develop and validate
 
