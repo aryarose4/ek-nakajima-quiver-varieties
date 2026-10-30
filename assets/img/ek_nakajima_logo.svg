@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 576 576" role="img" aria-labelledby="ek-title ek-desc">
+  <title id="ek-title">E_k Nakajima quiver varieties</title>
+  <desc id="ek-desc">Three blue, pink, and lime straight lines meet in three luminous nodes at the vertices of an equilateral triangle.</desc>
+  <defs>
+    <!-- All three sides are 158 sqrt(3) units long. The line tails extend
+         45 percent beyond each vertex; only their opacity changes. -->
+    <linearGradient id="blue-line" gradientUnits="userSpaceOnUse" x1="317.574406209074" y1="19.35" x2="57.593579992985" y2="469.65">
+      <stop stop-color="#71b7ff" stop-opacity="0"/>
+      <stop offset=".08" stop-color="#71b7ff" stop-opacity=".55"/>
+      <stop offset=".15" stop-color="#71b7ff"/>
+      <stop offset=".85" stop-color="#71b7ff"/>
+      <stop offset=".92" stop-color="#71b7ff" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#71b7ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="pink-line" gradientUnits="userSpaceOnUse" x1="194.425593790926" y1="19.35" x2="454.406420007015" y2="469.65">
+      <stop stop-color="#ec74b9" stop-opacity="0"/>
+      <stop offset=".08" stop-color="#ec74b9" stop-opacity=".55"/>
+      <stop offset=".15" stop-color="#ec74b9"/>
+      <stop offset=".85" stop-color="#ec74b9"/>
+      <stop offset=".92" stop-color="#ec74b9" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#ec74b9" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lime-line" gradientUnits="userSpaceOnUse" x1="-3.980826216088" y1="363" x2="515.980826216088" y2="363">
+      <stop stop-color="#b5dd7c" stop-opacity="0"/>
+      <stop offset=".08" stop-color="#b5dd7c" stop-opacity=".55"/>
+      <stop offset=".15" stop-color="#b5dd7c"/>
+      <stop offset=".85" stop-color="#b5dd7c"/>
+      <stop offset=".92" stop-color="#b5dd7c" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#b5dd7c" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="blue-pink" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#71b7ff"/><stop offset="1" stop-color="#ec74b9"/>
+    </linearGradient>
+    <linearGradient id="blue-lime" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#71b7ff"/><stop offset="1" stop-color="#b5dd7c"/>
+    </linearGradient>
+    <linearGradient id="pink-lime" x1="1" y1="0" x2="0" y2="1">
+      <stop stop-color="#ec74b9"/><stop offset="1" stop-color="#b5dd7c"/>
+    </linearGradient>
+    <filter id="line-glow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="node-glow" x="-150%" y="-150%" width="400%" height="400%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <g id="lines" fill="none" stroke-width="14" stroke-linecap="round">
+      <path d="M317.574406209074 19.35 57.593579992985 469.65" stroke="url(#blue-line)"/>
+      <path d="M194.425593790926 19.35 454.406420007015 469.65" stroke="url(#pink-line)"/>
+      <path d="M-3.980826216088 363H515.980826216088" stroke="url(#lime-line)"/>
+    </g>
+    <g id="nodes">
+      <circle cx="256" cy="126" r="17" fill="url(#blue-pink)"/>
+      <circle cx="119.167986202059" cy="363" r="17" fill="url(#blue-lime)"/>
+      <circle cx="392.832013797941" cy="363" r="17" fill="url(#pink-lime)"/>
+    </g>
+  </defs>
+  <g transform="rotate(-10 256 256)">
+    <use href="#lines" filter="url(#line-glow)" opacity=".35"/>
+    <use href="#lines"/>
+    <use href="#nodes" filter="url(#node-glow)" opacity=".9"/>
+    <use href="#nodes"/>
+    <g fill="#fff" stroke="#fff" stroke-opacity=".3" stroke-width="5">
+      <circle cx="256" cy="126" r="8"/>
+      <circle cx="119.167986202059" cy="363" r="8"/>
+      <circle cx="392.832013797941" cy="363" r="8"/>
+    </g>
+  </g>
+</svg>

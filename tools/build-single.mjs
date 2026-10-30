@@ -26,7 +26,7 @@ const SRC_JS = path.join(ROOT, "assets", "js", "ek-nakajima");
 const SRC_SHARED = path.join(ROOT, "assets", "js", "hyperpolygon");
 const OUT = path.join(ROOT, "ek-nakajima.html");
 
-const LOGO = path.join(ROOT, "assets", "img", "Star-Shaped_Quiver.jpg");
+const LOGO = path.join(ROOT, "assets", "img", "ek_nakajima_logo.svg");
 
 // The bundle entry is widget.js; the rest is its transitive local import
 // graph. sideview-shared.js lives under assets/js/hyperpolygon/ (the shared
@@ -280,7 +280,7 @@ function build() {
   const three = fs.readFileSync(path.join(SRC_JS, "lib", "three.min.js"), "utf8");
   const orbit = fs.readFileSync(path.join(SRC_JS, "lib", "OrbitControls.js"), "utf8");
 
-  const logoURI = "data:image/jpeg;base64," + fs.readFileSync(LOGO).toString("base64");
+  const logoURI = "data:image/svg+xml;base64," + fs.readFileSync(LOGO).toString("base64");
 
   // index.html is the single source of truth for the page shell: markup, CSS,
   // intro text, theme toggle and state-freeze scripts all come straight from
@@ -292,13 +292,13 @@ function build() {
 
   html = replaceOnce(
     html,
-    'href="assets/img/Star-Shaped_Quiver.jpg"',
+    'href="assets/img/ek_nakajima_logo.svg"',
     'href="' + logoURI + '"',
     "favicon <link> icon"
   );
   html = replaceOnce(
     html,
-    'src="assets/img/Star-Shaped_Quiver.jpg"',
+    'src="assets/img/ek_nakajima_logo.svg"',
     'src="' + logoURI + '"',
     "hero <img> image"
   );

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="assets/img/Star-Shaped_Quiver.jpg" alt="Affine ADE quiver diagram" width="160">
+<img src="assets/img/ek_nakajima_logo.svg" alt="E_k Nakajima quiver varieties logo" width="160">
 
 # E_k Nakajima Quiver Varieties
 
