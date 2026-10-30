@@ -1,4 +1,4 @@
-name: Publish static Pages package
+name: Deploy selected website files
 
 # Publication is an explicit manual operation, never a side effect of a push.
 on:
